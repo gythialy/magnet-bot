@@ -1,4 +1,4 @@
-module github.com/gythialy/url
+module github.com/gythialy/magnet
 
 go 1.19
 
