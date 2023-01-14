@@ -1,9 +1,9 @@
 NAME=magnet
 BINDIR=bin
 VERSION=$(shell git describe --tags || echo "unknown version")
-BUILDTIME=$(shell date -u)
-GOBUILD=CGO_ENABLED=0 go build -trimpath -ldflags '-X "github.com/gythialy/url/constant.Version=$(VERSION)" \
-		-X "github.com/gythialy/url/constant.BuildTime=$(BUILDTIME)" \
+BUILDTIME=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+GOBUILD=CGO_ENABLED=0 go build -trimpath -ldflags '-X "github.com/gythialy/magnet/constant.Version=$(VERSION)" \
+		-X "github.com/gythialy/magnet/constant.BuildTime=$(BUILDTIME)" \
 		-w -s -buildid='
 
 PLATFORM_LIST = \

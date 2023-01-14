@@ -23,7 +23,7 @@ const (
 
 // magnet:?xt=urn:btih:aad8482b43cca3342a9a56ee9064a836dd6c7195&dn=Enola.Holmes.2.2022.1080p.NF.WEB-DL.x265.10bit.HDR.DDP5.1.Atmos-SMURF&tr=http%3A%2F%2Ftracker.trackerfix.com%3A80%2Fannounce&tr=udp%3A%2F%2F9.rarbg.me%3A2990&tr=udp%3A%2F%2F9.rarbg.to%3A2930&tr=udp%3A%2F%2Ftracker.tallpenguin.org%3A15760&tr=udp%3A%2F%2Ftracker.thinelephant.org%3A12760
 func main() {
-	log.Printf("magnet %s @%s\n", constant.Version, constant.BuildTime)
+	log.Printf("magnet %s @ %s\n", constant.Version, constant.BuildTime)
 	uri, err := magneturi.Parse(os.Args[1], true)
 	if err != nil {
 		log.Fatal(err)
@@ -37,7 +37,10 @@ func main() {
 	dir, _ := os.Executable()
 	f := filepath.Join(path.Dir(dir), BestFile)
 
+	log.Printf("file: %s", f)
+
 	if s, err := os.Stat(f); errors.Is(err, os.ErrNotExist) || s.ModTime().Add(time.Hour*24).Before(time.Now()) {
+		_ = os.Remove(f)
 		// create client
 		client := grab.NewClient()
 		req, _ := grab.NewRequest(f, BestUrlFile)
