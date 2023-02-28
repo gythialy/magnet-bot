@@ -1,4 +1,6 @@
 github.com/cavaliergopher/grab/v3 v3.0.1 h1:4z7TkBfmPjmLAAmkkAZNX/6QJ1nNFdv3SdIHXju0Fr4=
 github.com/cavaliergopher/grab/v3 v3.0.1/go.mod h1:1U/KNnD+Ft6JJiYoYBAimKH2XrYptb8Kl3DFGmsjpq4=
+github.com/go-telegram/bot v0.5.1 h1:xy/TK5XGOwX5PeQOHmIxLRL9m12F57u0O/kB+URMQfM=
+github.com/go-telegram/bot v0.5.1/go.mod h1:i2TRs7fXWIeaceF3z7KzsMt/he0TwkVC680mvdTFYeM=
 github.com/nmmh/magneturi v0.0.0-20180607142838-464c677b3fb5 h1:BEYgtKU14i2fXQ2MwBAzO/YRK4IsB2tMIYADodiGW0w=
 github.com/nmmh/magneturi v0.0.0-20180607142838-464c677b3fb5/go.mod h1:Ba1Kx0jP1Jdj8YebTpPewkUYOwirRWl23oThXozXB/U=

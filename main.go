@@ -1,14 +1,18 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"github.com/cavaliergopher/grab/v3"
+	"github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
 	"github.com/gythialy/magnet/constant"
 	"github.com/nmmh/magneturi/magneturi"
 	"log"
 	"net/url"
 	"os"
+	"os/signal"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -19,21 +23,67 @@ import (
 const (
 	BestUrlFile = "https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt"
 	BestFile    = "trackers_best.txt"
+	MAGNET      = "/magnet"
 )
 
-// magnet:?xt=urn:btih:aad8482b43cca3342a9a56ee9064a836dd6c7195&dn=Enola.Holmes.2.2022.1080p.NF.WEB-DL.x265.10bit.HDR.DDP5.1.Atmos-SMURF&tr=http%3A%2F%2Ftracker.trackerfix.com%3A80%2Fannounce&tr=udp%3A%2F%2F9.rarbg.me%3A2990&tr=udp%3A%2F%2F9.rarbg.to%3A2930&tr=udp%3A%2F%2Ftracker.tallpenguin.org%3A15760&tr=udp%3A%2F%2Ftracker.thinelephant.org%3A12760
+var SplitRegex = regexp.MustCompile("\r?\n")
+
 func main() {
 	log.Printf("magnet %s @ %s\n", constant.Version, constant.BuildTime)
-	uri, err := magneturi.Parse(os.Args[1], true)
-	if err != nil {
-		log.Fatal(err)
-	}
-	filter, err := uri.Filter("xt", "dn", "tr")
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
 
-	if err != nil {
-		log.Fatal("invalid magnet url.")
+	opts := []bot.Option{
+		bot.WithDefaultHandler(defaultHandler),
 	}
 
+	b, _ := bot.New(os.Getenv("TELEGRAM_BOT_TOKEN"), opts...)
+
+	b.RegisterHandler(bot.HandlerTypeMessageText, MAGNET, bot.MatchTypePrefix, magnetHandler)
+
+	b.Start(ctx)
+}
+
+func magnetHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	text := update.Message.Text
+	tmp := strings.TrimPrefix(text, MAGNET)
+	urls := SplitRegex.Split(tmp, -1)
+	server := fetchServer()
+	result := strings.Builder{}
+	for _, url := range urls {
+		u := strings.TrimSpace(url)
+		if u != "" {
+			uri, err := magneturi.Parse(u, true)
+			if err != nil {
+				log.Println(err)
+			}
+			filter, err := uri.Filter("xt", "dn", "tr")
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+			result.WriteString(filter.String() + server + "\n")
+		}
+	}
+
+	if result.Len() == 0 {
+		result.WriteString("No links found")
+	}
+
+	b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID: update.Message.Chat.ID,
+		Text:   result.String(),
+	})
+}
+
+func defaultHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID: update.Message.Chat.ID,
+		Text:   "/magnet append tracker servers",
+	})
+}
+
+func fetchServer() string {
 	dir, _ := os.Executable()
 	f := filepath.Join(path.Dir(dir), BestFile)
 
@@ -79,12 +129,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	lines := regexp.MustCompile("\r?\n").Split(string(data), -1)
+	lines := SplitRegex.Split(string(data), -1)
 	sb := strings.Builder{}
 	for _, line := range lines {
 		if line != "" {
 			sb.WriteString(fmt.Sprintf("&tr=%s", url.QueryEscape(line)))
 		}
 	}
-	fmt.Println(filter.String() + sb.String())
+	return sb.String()
 }
