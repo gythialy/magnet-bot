@@ -12,8 +12,10 @@ RUN --mount=type=cache,sharing=private,target=/var/cache/apt \
 RUN --mount=type=bind,source=.,rw \
     --mount=type=cache,target=/root/.cache \
     --mount=type=cache,target=/go/pkg/mod <<EOT
-VERSION=`git describe --tags || echo "develop"`
-BUILDTIME=`date -u +%Y-%m-%dT%H:%M:%SZ`
+TAG=$(git describe --tags --abbrev=0)
+HASH=$(git rev-parse --short HEAD)
+VERSION="${TAG:-develop}-${HASH}"
+BUILDTIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 LDFLAGS="-s -w -buildid= -X github.com/gythialy/magnet/pkg/constant.Version=${VERSION} -X github.com/gythialy/magnet/pkg/constant.BuildTime=${BUILDTIME}"
 
