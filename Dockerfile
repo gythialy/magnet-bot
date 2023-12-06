@@ -1,11 +1,10 @@
 # syntax=docker/dockerfile:1
 
-FROM --platform=$BUILDPLATFORM crazymax/goxx:1.21 AS base
+FROM --platform=$BUILDPLATFORM crazymax/goxx:1.21 AS builder
 ENV GO111MODULE=auto
 ENV CGO_ENABLED=1
 WORKDIR /src
 
-FROM base AS build
 ARG TARGETPLATFORM
 RUN --mount=type=cache,sharing=private,target=/var/cache/apt \
     --mount=type=cache,sharing=private,target=/var/lib/apt/lists \
@@ -26,10 +25,13 @@ goxx-go build -v -o /out/magnet -trimpath -ldflags "$LDFLAGS" .
 EOT
 
 FROM debian:stable-slim
-RUN apt-get update && apt-get install -y ca-certificates \
-    && apt-get clean \
+ENV TZ=Asia/Shanghai
+RUN set -eux; \
+    apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates tzdata \
+    && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /etc/magnet
-COPY --from=build /out/magnet /app/magnet
+COPY --from=builder /out/magnet /app/magnet
 WORKDIR /app
 VOLUME [ "/etc/magnet" ]
 ENTRYPOINT [ "/app/magnet" ]
