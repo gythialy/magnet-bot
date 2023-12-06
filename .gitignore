@@ -150,5 +150,7 @@ Temporary Items
 ### macOS Patch ###
 # iCloud generated files
 *.icloud
+*.db
+*.log
 
 # End of https://www.toptal.com/developers/gitignore/api/go,jetbrains+all,macos

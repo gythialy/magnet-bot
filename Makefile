@@ -2,8 +2,8 @@ NAME=magnet
 BINDIR=bin
 VERSION=$(shell git describe --tags || echo "unknown version")
 BUILDTIME=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-GOBUILD=CGO_ENABLED=0 go build -trimpath -ldflags '-X "github.com/gythialy/magnet/constant.Version=$(VERSION)" \
-		-X "github.com/gythialy/magnet/constant.BuildTime=$(BUILDTIME)" \
+GOBUILD=CGO_ENABLED=1 go build -trimpath -ldflags '-X "github.com/gythialy/magnet/pkg/constant.Version=$(VERSION)" \
+		-X "github.com/gythialy/magnet/pkg/constant.BuildTime=$(BUILDTIME)" \
 		-w -s -buildid='
 
 PLATFORM_LIST = \
@@ -137,7 +137,7 @@ lint:
 	GOOS=openbsd golangci-lint run ./...
 
 clean:
-	rm $(BINDIR)/*
+	rm -rf $(BINDIR)/*
 
 install:
 	cp -r $(BINDIR)/$(NAME) $(HOME)/bin/$(NAME)
