@@ -1,140 +1,60 @@
 package main
 
 import (
-	"context"
-	"errors"
-	"fmt"
-	"github.com/cavaliergopher/grab/v3"
-	"github.com/go-telegram/bot"
-	"github.com/go-telegram/bot/models"
-	"github.com/gythialy/magnet/constant"
-	"github.com/nmmh/magneturi/magneturi"
 	"log"
-	"net/url"
 	"os"
 	"os/signal"
-	"path"
-	"path/filepath"
-	"regexp"
-	"strings"
-	"time"
-)
+	"syscall"
 
-const (
-	BestUrlFile = "https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt"
-	BestFile    = "trackers_best.txt"
-	MAGNET      = "/magnet"
+	"github.com/go-co-op/gocron"
+	"github.com/go-telegram/bot"
+	"github.com/gythialy/magnet/pkg"
+	"github.com/gythialy/magnet/pkg/constant"
+	"github.com/gythialy/magnet/pkg/handler"
 )
-
-var SplitRegex = regexp.MustCompile("\r?\n")
 
 func main() {
 	log.Printf("magnet %s @ %s\n", constant.Version, constant.BuildTime)
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer cancel()
 
-	opts := []bot.Option{
-		bot.WithDefaultHandler(defaultHandler),
-	}
-
-	b, _ := bot.New(os.Getenv("TELEGRAM_BOT_TOKEN"), opts...)
-
-	b.RegisterHandler(bot.HandlerTypeMessageText, MAGNET, bot.MatchTypePrefix, magnetHandler)
-
-	b.Start(ctx)
-}
-
-func magnetHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	text := update.Message.Text
-	tmp := strings.TrimPrefix(text, MAGNET)
-	urls := SplitRegex.Split(tmp, -1)
-	server := fetchServer()
-	result := strings.Builder{}
-	for _, url := range urls {
-		u := strings.TrimSpace(url)
-		if u != "" {
-			uri, err := magneturi.Parse(u, true)
-			if err != nil {
-				log.Println(err)
-			}
-			filter, err := uri.Filter("xt", "dn", "tr")
-			if err != nil {
-				log.Println(err)
-				continue
-			}
-			result.WriteString(filter.String() + server + "\n")
-		}
-	}
-
-	if result.Len() == 0 {
-		result.WriteString("No links found")
-	}
-
-	b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: update.Message.Chat.ID,
-		Text:   result.String(),
-	})
-}
-
-func defaultHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: update.Message.Chat.ID,
-		Text:   "/magnet append tracker servers",
-	})
-}
-
-func fetchServer() string {
-	dir, _ := os.Executable()
-	f := filepath.Join(path.Dir(dir), BestFile)
-
-	log.Printf("file: %s", f)
-
-	if s, err := os.Stat(f); errors.Is(err, os.ErrNotExist) || s.ModTime().Add(time.Hour*24).Before(time.Now()) {
-		_ = os.Remove(f)
-		// create client
-		client := grab.NewClient()
-		req, _ := grab.NewRequest(f, BestUrlFile)
-
-		// start download
-		log.Printf("Downloading %v...\n", req.URL())
-		resp := client.Do(req)
-		log.Printf("%v\n", resp.HTTPResponse.Status)
-
-		// start UI loop
-		t := time.NewTicker(500 * time.Millisecond)
-		defer t.Stop()
-
-	Loop:
-		for {
-			select {
-			case <-t.C:
-				log.Printf("transferred %d / %d bytes (%.2f%%)\n",
-					resp.BytesComplete(), resp.Size(), 100*resp.Progress())
-
-			case <-resp.Done:
-				// download is complete
-				break Loop
-			}
-		}
-
-		// check for errors
-		if err := resp.Err(); err != nil {
-			log.Fatalf("Download failed: %v\n", err)
-		}
-
-		log.Printf("%s saved to %s \n", BestFile, resp.Filename)
-	}
-
-	data, err := os.ReadFile(f)
+	ctx, err := pkg.NewBotContext()
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("error: %v\n", err)
 	}
-	lines := SplitRegex.Split(string(data), -1)
-	sb := strings.Builder{}
-	for _, line := range lines {
-		if line != "" {
-			sb.WriteString(fmt.Sprintf("&tr=%s", url.QueryEscape(line)))
-		}
-	}
-	return sb.String()
+	configHandler := handler.NewCommandsHandler(ctx)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, handler.MAGNET, bot.MatchTypePrefix, handler.NewMagnetHandler(ctx).Handler)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, handler.ME, bot.MatchTypePrefix, handler.MeHandler)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, handler.AddKeyword, bot.MatchTypePrefix, configHandler.AddKeywordHandler)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, handler.DeleteKeyword, bot.MatchTypePrefix, configHandler.DeleteKeywordHandler)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, handler.ListKeyword, bot.MatchTypePrefix, configHandler.ListKeywordHandler)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, handler.AddTenderCode, bot.MatchTypePrefix, configHandler.AddTenderCodeHandler)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, handler.DeleteTenderCode, bot.MatchTypePrefix, configHandler.DeleteTenderCodeHandler)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, handler.ListTenderCode, bot.MatchTypePrefix, configHandler.ListTenderCodeHandler)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, handler.RETRY, bot.MatchTypePrefix, handler.NewManagerHandler(ctx).Retry)
+
+	job, _ := ctx.Scheduler.Every(1).Days().At("10:30").Name("fetch_info").Do(func() error {
+		ctx.Processor.Process()
+		return nil
+	})
+	job.RegisterEventListeners(
+		gocron.AfterJobRuns(func(jobName string) {
+			logger := ctx.Logger.Info()
+			logger.Msgf("afterJobRuns: %scheduler", jobName)
+		}),
+		gocron.BeforeJobRuns(func(jobName string) {
+			log.Printf("beforeJobRuns: %scheduler\n", jobName)
+		}),
+		gocron.WhenJobReturnsError(func(jobName string, err error) {
+			log.Printf("whenJobReturnsError: %scheduler, %v\n", jobName, err)
+		}),
+		gocron.WhenJobReturnsNoError(func(jobName string) {
+			log.Printf("whenJobReturnsNoError: %scheduler\n", jobName)
+		}),
+	)
+
+	ctx.Start()
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
+	<-signalChan
+
+	ctx.Stop()
 }
