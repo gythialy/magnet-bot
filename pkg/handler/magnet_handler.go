@@ -62,10 +62,12 @@ func (m *MagnetHandler) Handler(ctx context.Context, b *bot.Bot, update *models.
 		result.WriteString("No links found")
 	}
 
-	b.SendMessage(ctx, &bot.SendMessageParams{
+	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,
 		Text:   result.String(),
-	})
+	}); err != nil {
+		m.ctx.Logger.Error().Err(err)
+	}
 }
 
 func (m *MagnetHandler) fetchServer() string {
@@ -75,7 +77,9 @@ func (m *MagnetHandler) fetchServer() string {
 
 	if s, err := os.Stat(f); errors.Is(err, os.ErrNotExist) || s.ModTime().Add(time.Hour*24).Before(time.Now()) {
 		_ = os.Remove(f)
-		resty.New().EnableTrace().R().SetOutput(f).Get(BestUrlFile)
+		if _, err := resty.New().EnableTrace().R().SetOutput(f).Get(BestUrlFile); err != nil {
+			m.ctx.Logger.Error().Err(err)
+		}
 	}
 
 	data, err := os.ReadFile(f)

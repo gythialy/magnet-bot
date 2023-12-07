@@ -6,7 +6,6 @@ import (
 	"github.com/go-telegram/bot/models"
 	"github.com/gythialy/magnet/pkg"
 	"github.com/gythialy/magnet/pkg/entities"
-	"gorm.io/gorm"
 	"strings"
 )
 
@@ -21,7 +20,7 @@ const (
 )
 
 type CommandsHandler struct {
-	db            *gorm.DB
+	ctx           *pkg.BotContext
 	keywordDao    *entities.KeywordDao
 	tenderCodeDao *entities.TenderCodeDao
 }
@@ -29,7 +28,7 @@ type CommandsHandler struct {
 func NewCommandsHandler(ctx *pkg.BotContext) *CommandsHandler {
 	db := ctx.DB
 	return &CommandsHandler{
-		db:            db,
+		ctx:           ctx,
 		keywordDao:    entities.NewKeywordDao(db),
 		tenderCodeDao: entities.NewTenderCodeDao(db),
 	}
@@ -41,10 +40,12 @@ func (c *CommandsHandler) AddKeywordHandler(ctx context.Context, b *bot.Bot, upd
 	keywords := strings.Split(tmp, ",")
 	id := update.Message.Chat.ID
 	result := c.keywordDao.Add(keywords, id)
-	b.SendMessage(ctx, &bot.SendMessageParams{
+	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,
 		Text:   "Added: " + result,
-	})
+	}); err != nil {
+		c.ctx.Logger.Error().Err(err)
+	}
 }
 
 func (c *CommandsHandler) DeleteKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -54,19 +55,23 @@ func (c *CommandsHandler) DeleteKeywordHandler(ctx context.Context, b *bot.Bot, 
 	id := update.Message.Chat.ID
 	result := c.keywordDao.Delete(keywords, id)
 
-	b.SendMessage(ctx, &bot.SendMessageParams{
+	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,
 		Text:   "Deleted: " + result,
-	})
+	}); err != nil {
+		c.ctx.Logger.Error().Err(err)
+	}
 }
 
 func (c *CommandsHandler) ListKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	id := update.Message.Chat.ID
 	result := c.keywordDao.ListKeywords(id)
-	b.SendMessage(ctx, &bot.SendMessageParams{
+	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,
 		Text:   "All keywords: " + strings.Join(result, ", "),
-	})
+	}); err != nil {
+		c.ctx.Logger.Error().Err(err)
+	}
 }
 
 func (c *CommandsHandler) AddTenderCodeHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -75,10 +80,12 @@ func (c *CommandsHandler) AddTenderCodeHandler(ctx context.Context, b *bot.Bot, 
 	codes := strings.Split(tmp, ",")
 	id := update.Message.Chat.ID
 	result := c.tenderCodeDao.Add(codes, id)
-	b.SendMessage(ctx, &bot.SendMessageParams{
+	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,
 		Text:   "Added: " + result,
-	})
+	}); err != nil {
+		c.ctx.Logger.Error().Err(err)
+	}
 }
 
 func (c *CommandsHandler) DeleteTenderCodeHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -88,17 +95,21 @@ func (c *CommandsHandler) DeleteTenderCodeHandler(ctx context.Context, b *bot.Bo
 	id := update.Message.Chat.ID
 	result := c.tenderCodeDao.Delete(codes, id)
 
-	b.SendMessage(ctx, &bot.SendMessageParams{
+	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,
 		Text:   "Deleted: " + result,
-	})
+	}); err != nil {
+		c.ctx.Logger.Error().Err(err)
+	}
 }
 
 func (c *CommandsHandler) ListTenderCodeHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	id := update.Message.Chat.ID
 	result := c.tenderCodeDao.ListTenderCodes(id)
-	b.SendMessage(ctx, &bot.SendMessageParams{
+	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,
 		Text:   "All Codes: " + strings.Join(result, ", "),
-	})
+	}); err != nil {
+		c.ctx.Logger.Error().Err(err)
+	}
 }

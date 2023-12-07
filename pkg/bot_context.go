@@ -50,7 +50,10 @@ func NewBotContext() (*BotContext, error) {
 		return nil, err
 	}
 
-	db.AutoMigrate(&entities.Keyword{}, &entities.TenderCode{})
+	err = db.AutoMigrate(&entities.Keyword{}, &entities.TenderCode{})
+	if err != nil {
+		return nil, err
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 

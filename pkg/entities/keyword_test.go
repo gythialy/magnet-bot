@@ -1,11 +1,12 @@
 package entities
 
 import (
+	"os"
+	"testing"
+
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
-	"os"
-	"testing"
 )
 
 func TestNewKeywordDao(t *testing.T) {
@@ -20,7 +21,7 @@ func TestNewKeywordDao(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	db.AutoMigrate(&Keyword{})
+	_ = db.AutoMigrate(&Keyword{})
 	db.Debug()
 	keywords := []string{"test", "test2", "test3", "test4"}
 	id := int64(1111)

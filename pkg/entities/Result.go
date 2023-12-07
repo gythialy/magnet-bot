@@ -71,16 +71,6 @@ func (r *Results) Filter(keywords, tenderCodes []string) {
 	}
 }
 
-// search multiple keywords in string
-func (r *Results) search(title string, keywords []string) bool {
-	for _, keyword := range keywords {
-		if strings.Contains(title, keyword) {
-			return true
-		}
-	}
-	return false
-}
-
 func (r *Results) ToMarkdown() map[string]string {
 	result := make(map[string]string)
 

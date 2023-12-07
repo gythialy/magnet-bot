@@ -67,7 +67,9 @@ func (r *InfoProcessor) Process() {
 		config := r.config()
 		for _, data := range config {
 			data.Results = results
-			r.pool.Invoke(data)
+			if err := r.pool.Invoke(data); err != nil {
+				r.context.Logger.Error().Err(err)
+			}
 		}
 	}
 }
@@ -78,7 +80,9 @@ func (r *InfoProcessor) Get(id int64) {
 	if len(results) > 0 {
 		data := r.get(id)
 		data.Results = results
-		r.pool.Invoke(data)
+		if err := r.pool.Invoke(data); err != nil {
+			r.context.Logger.Error().Err(err)
+		}
 	}
 }
 

@@ -17,7 +17,7 @@ func TestNewTenderCodeDao(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	db.AutoMigrate(&TenderCode{})
+	_ = db.AutoMigrate(&TenderCode{})
 	db.Debug()
 	codes := []string{"test", "test2", "test3", "test4"}
 	id := int64(1111)
