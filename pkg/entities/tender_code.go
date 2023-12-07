@@ -1,8 +1,9 @@
 package entities
 
 import (
-	"gorm.io/gorm"
 	"strings"
+
+	"gorm.io/gorm"
 )
 
 type TenderCode struct {
@@ -50,6 +51,7 @@ func (t *TenderCodeDao) List(userId int64) []TenderCode {
 	}
 	return nil
 }
+
 func (t *TenderCodeDao) ListTenderCodes(userId int64) []string {
 	var result []string
 	r := t.List(userId)

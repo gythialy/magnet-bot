@@ -1,6 +1,11 @@
 package pkg
 
 import (
+	"os"
+	"path"
+	"strconv"
+	"time"
+
 	"github.com/go-co-op/gocron"
 	"github.com/go-telegram/bot"
 	"github.com/gythialy/magnet/pkg/entities"
@@ -8,10 +13,6 @@ import (
 	"golang.org/x/net/context"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"os"
-	"path"
-	"strconv"
-	"time"
 )
 
 const (
@@ -107,5 +108,4 @@ func id() int64 {
 			return 0
 		}
 	}
-
 }

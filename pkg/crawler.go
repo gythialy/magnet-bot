@@ -2,12 +2,13 @@ package pkg
 
 import (
 	"fmt"
-	md "github.com/JohannesKaufmann/html-to-markdown"
-	"github.com/go-resty/resty/v2"
-	m "github.com/gythialy/magnet/pkg/entities"
 	"strconv"
 	"strings"
 	"time"
+
+	md "github.com/JohannesKaufmann/html-to-markdown"
+	"github.com/go-resty/resty/v2"
+	m "github.com/gythialy/magnet/pkg/entities"
 )
 
 const (

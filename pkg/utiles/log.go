@@ -1,12 +1,13 @@
 package utiles
 
 import (
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
-	"gopkg.in/natefinch/lumberjack.v2"
 	"io"
 	"os"
 	"path"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // Config for logging
@@ -73,7 +74,7 @@ func Configure(config Config) *Logger {
 }
 
 func newRollingFile(config Config) io.Writer {
-	if err := os.MkdirAll(config.Directory, 0744); err != nil {
+	if err := os.MkdirAll(config.Directory, 0o744); err != nil {
 		log.Error().Err(err).Str("path", config.Directory).Msg("can't create log directory")
 		return nil
 	}

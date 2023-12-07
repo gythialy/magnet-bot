@@ -2,11 +2,12 @@ package entities
 
 import (
 	"fmt"
-	md "github.com/JohannesKaufmann/html-to-markdown"
 	"index/suffixarray"
 	"regexp"
 	"strings"
 	"testing"
+
+	md "github.com/JohannesKaufmann/html-to-markdown"
 )
 
 func TestMatch2(t *testing.T) {
@@ -21,11 +22,11 @@ func TestMatch2(t *testing.T) {
 }
 
 func TestResults_ToMarkdown(t *testing.T) {
-	//converter := md.NewConverter("", true, nil)
+	// converter := md.NewConverter("", true, nil)
 	content := "<strong>Important</strong>"
-	//content = regexp.MustCompile(`\r\n`).ReplaceAllString(content, "")
-	//content = strings.ReplaceAll(content, "\\r\\n", "")
-	//content = strings.ReplaceAll(content, "\\t", "")
+	// content = regexp.MustCompile(`\r\n`).ReplaceAllString(content, "")
+	// content = strings.ReplaceAll(content, "\\r\\n", "")
+	// content = strings.ReplaceAll(content, "\\t", "")
 	converter := md.NewConverter("", true, nil)
 	if s, err := converter.ConvertString(content); err == nil {
 		t.Log(s)

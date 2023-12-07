@@ -5,6 +5,7 @@ BUILDTIME=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 GOBUILD=CGO_ENABLED=1 go build -trimpath -ldflags '-X "github.com/gythialy/magnet/pkg/constant.Version=$(VERSION)" \
 		-X "github.com/gythialy/magnet/pkg/constant.BuildTime=$(BUILDTIME)" \
 		-w -s -buildid='
+GO_FMT_FILES := $(shell find . -type f -name "*.go" ! -name "generated.*")
 
 PLATFORM_LIST = \
 	darwin-amd64 \
@@ -141,3 +142,10 @@ clean:
 
 install:
 	cp -r $(BINDIR)/$(NAME) $(HOME)/bin/$(NAME)
+
+deps:
+	go install mvdan.cc/gofumpt@latest
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+fmt:
+	gofumpt -l -w $(GO_FMT_FILES)

@@ -4,11 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/go-resty/resty/v2"
-	"github.com/go-telegram/bot"
-	"github.com/go-telegram/bot/models"
-	"github.com/gythialy/magnet/pkg"
-	"github.com/nmmh/magneturi/magneturi"
 	"log"
 	"net/url"
 	"os"
@@ -16,6 +11,12 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/go-resty/resty/v2"
+	"github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
+	"github.com/gythialy/magnet/pkg"
+	"github.com/nmmh/magneturi/magneturi"
 )
 
 const (

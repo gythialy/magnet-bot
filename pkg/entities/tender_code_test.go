@@ -1,10 +1,11 @@
 package entities
 
 import (
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 	"os"
 	"testing"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestNewTenderCodeDao(t *testing.T) {

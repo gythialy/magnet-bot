@@ -2,11 +2,12 @@ package handler
 
 import (
 	"context"
+	"strings"
+
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"github.com/gythialy/magnet/pkg"
 	"github.com/gythialy/magnet/pkg/entities"
-	"strings"
 )
 
 const (

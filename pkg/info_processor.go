@@ -2,12 +2,13 @@ package pkg
 
 import (
 	"context"
+	"strings"
+	"time"
+
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"github.com/gythialy/magnet/pkg/entities"
 	"github.com/panjf2000/ants/v2"
-	"strings"
-	"time"
 )
 
 type InfoProcessor struct {
@@ -61,7 +62,7 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 }
 
 func (r *InfoProcessor) Process() {
-	//fetch info
+	// fetch info
 	results := r.crawler.Get()
 	if len(results) > 0 {
 		config := r.config()
@@ -75,7 +76,7 @@ func (r *InfoProcessor) Process() {
 }
 
 func (r *InfoProcessor) Get(id int64) {
-	//fetch info
+	// fetch info
 	results := r.crawler.Get()
 	if len(results) > 0 {
 		data := r.get(id)

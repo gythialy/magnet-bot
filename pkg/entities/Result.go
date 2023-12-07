@@ -2,11 +2,12 @@ package entities
 
 import (
 	"bytes"
-	"github.com/rs/zerolog/log"
 	"html/template"
 	"index/suffixarray"
 	"regexp"
 	"strings"
+
+	"github.com/rs/zerolog/log"
 )
 
 const (
