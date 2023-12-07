@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-telegram/bot/models"
+
 	"github.com/go-co-op/gocron"
 	"github.com/go-telegram/bot"
 	"github.com/gythialy/magnet/pkg/entities"
@@ -46,6 +48,50 @@ func NewBotContext() (*BotContext, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if _, err := telegramBot.SetMyCommands(context.Background(), &bot.SetMyCommandsParams{
+		Commands: []models.BotCommand{
+			{
+				Command:     "/me",
+				Description: "Get my user information",
+			},
+			{
+				Command:     "/magnet",
+				Description: "Append trackers to torrent",
+			},
+			{
+				Command:     "/add_keywords",
+				Description: "Add keywords",
+			},
+			{
+				Command:     "/delete_keywords",
+				Description: "Delete keywords",
+			},
+			{
+				Command:     "/list_keywords",
+				Description: "List keywords",
+			},
+			{
+				Command:     "/add_tender_codes",
+				Description: "Add tender codes",
+			},
+			{
+				Command:     "/delete_tender_codes",
+				Description: "Delete tender codes",
+			},
+			{
+				Command:     "/list_tender_codes",
+				Description: "List tender codes",
+			},
+			{
+				Command:     "/retry",
+				Description: "Retry failed task, only for the Bot master",
+			},
+		},
+	}); err != nil {
+		return nil, err
+	}
+
 	db, err := gorm.Open(sqlite.Open(path.Join(cfgPath, DatabaseFile)), &gorm.Config{})
 	if err != nil {
 		return nil, err
