@@ -1,8 +1,13 @@
 NAME=magnet
 BINDIR=bin
-VERSION=$(shell git describe --tags || echo "unknown version")
+TAG=$(shell git describe --tags $(shell git rev-list --tags --max-count=1))
+ifeq ($(TAG),)
+TAG := develop
+endif
+VERSION=$(TAG)-$(shell git rev-parse --short HEAD)
 BUILDTIME=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-GOBUILD=CGO_ENABLED=1 go build -trimpath -ldflags '-X "github.com/gythialy/magnet/pkg/constant.Version=$(VERSION)" \
+GO?=go
+GOBUILD=CGO_ENABLED=1 $(GO) build -trimpath -ldflags '-X "github.com/gythialy/magnet/pkg/constant.Version=$(VERSION)" \
 		-X "github.com/gythialy/magnet/pkg/constant.BuildTime=$(BUILDTIME)" \
 		-w -s -buildid='
 GO_FMT_FILES := $(shell find . -type f -name "*.go" ! -name "generated.*")
