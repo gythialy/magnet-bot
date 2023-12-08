@@ -4,7 +4,7 @@ go 1.21
 
 require (
 	github.com/JohannesKaufmann/html-to-markdown v1.4.2
-	github.com/go-co-op/gocron v1.36.0
+	github.com/go-co-op/gocron v1.36.1
 	github.com/go-resty/resty/v2 v2.10.0
 	github.com/go-telegram/bot v0.8.3
 	github.com/nmmh/magneturi v0.0.0-20180607142838-464c677b3fb5
