@@ -72,13 +72,13 @@ func (r *Results) Filter(keywords, tenderCodes []string) {
 	}
 }
 
-func (r *Results) ToMarkdown() map[string]string {
-	result := make(map[string]string)
+func (r *Results) ToMarkdown() map[string]Markdown {
+	result := make(map[string]Markdown)
 
 	for _, v := range r.TenderResults {
 		var buf bytes.Buffer
 		if err := TenderRender.Execute(&buf, v); err == nil {
-			result[v.Title] = buf.String()
+			result[v.Title] = Markdown{Content: buf.String(), Result: v}
 		} else {
 			log.Err(err)
 		}
@@ -87,11 +87,16 @@ func (r *Results) ToMarkdown() map[string]string {
 	for _, v := range r.KeywordResults {
 		var buf bytes.Buffer
 		if err := keywordRender.Execute(&buf, v); err == nil {
-			result[v.Title] = buf.String()
+			result[v.Title] = Markdown{Content: buf.String(), Result: v} // buf.String()
 		} else {
 			log.Err(err)
 		}
 	}
 
 	return result
+}
+
+type Markdown struct {
+	Content string
+	Result  *Result
 }
