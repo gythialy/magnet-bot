@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -29,10 +30,10 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 		for title, msg := range messages {
 			if _, err := ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
 				ChatID:    m.ID,
-				Text:      msg,
+				Text:      msg.Content,
 				ParseMode: models.ParseModeMarkdown,
 			}); err != nil {
-				failed = append(failed, title)
+				failed = append(failed, fmt.Sprintf("[%s](%s)  ", title, msg.Result.Pageurl))
 				ctx.Logger.Error().Err(err)
 			}
 			time.Sleep(50 * time.Millisecond)
