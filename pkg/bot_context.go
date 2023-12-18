@@ -87,6 +87,10 @@ func NewBotContext() (*BotContext, error) {
 				Command:     "/retry",
 				Description: "Retry failed task, only for the Bot master",
 			},
+			{
+				Command:     "/clean",
+				Description: "Clean the cache file, only for the Bot master",
+			},
 		},
 	}); err != nil {
 		return nil, err
@@ -97,7 +101,7 @@ func NewBotContext() (*BotContext, error) {
 		return nil, err
 	}
 
-	err = db.AutoMigrate(&entities.Keyword{}, &entities.TenderCode{})
+	err = db.AutoMigrate(&entities.Keyword{}, &entities.TenderCode{}, &entities.History{})
 	if err != nil {
 		return nil, err
 	}

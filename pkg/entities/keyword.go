@@ -23,8 +23,12 @@ func NewKeywordDao(db *gorm.DB) *KeywordDao {
 func (k *KeywordDao) Add(keywords []string, userId int64) string {
 	var result []string
 	for _, keyword := range keywords {
+		keyword = strings.TrimSpace(keyword)
+		if keyword == "" {
+			continue
+		}
 		e := Keyword{
-			Keyword: strings.TrimSpace(keyword),
+			Keyword: keyword,
 			UserId:  userId,
 		}
 		if tx := k.db.Where(&e); tx.Error == nil && tx.RowsAffected == 0 {
@@ -38,7 +42,11 @@ func (k *KeywordDao) Add(keywords []string, userId int64) string {
 func (k *KeywordDao) Delete(keywords []string, userId int64) string {
 	var result []string
 	for _, keyword := range keywords {
-		if err := k.db.Where("keyword = ? and user_id = ?", strings.TrimSpace(keyword), userId).Delete(&Keyword{}).Error; err == nil {
+		keyword = strings.TrimSpace(keyword)
+		if keyword == "" {
+			continue
+		}
+		if err := k.db.Where("keyword = ? and user_id = ?", keyword, userId).Delete(&Keyword{}).Error; err == nil {
 			result = append(result, keyword)
 		}
 	}

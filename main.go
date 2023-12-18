@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"github.com/go-co-op/gocron"
@@ -29,9 +30,17 @@ func main() {
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, handler.AddTenderCode, bot.MatchTypePrefix, configHandler.AddTenderCodeHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, handler.DeleteTenderCode, bot.MatchTypePrefix, configHandler.DeleteTenderCodeHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, handler.ListTenderCode, bot.MatchTypePrefix, configHandler.ListTenderCodeHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, handler.RETRY, bot.MatchTypePrefix, handler.NewManagerHandler(ctx).Retry)
-
-	job, _ := ctx.Scheduler.Every(1).Days().At("10:30").Name("fetch_info").Do(func() error {
+	managerHandler := handler.NewManagerHandler(ctx)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, handler.RETRY, bot.MatchTypePrefix, managerHandler.Retry)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, handler.CLEAN, bot.MatchTypePrefix, managerHandler.Clean)
+	scheduleInterval := 1
+	interval := os.Getenv("SCHEDULE_INTERVAL")
+	if interval != "" {
+		if i, err := strconv.Atoi(interval); err == nil {
+			scheduleInterval = i
+		}
+	}
+	job, _ := ctx.Scheduler.Every(scheduleInterval).Hours().Name("fetch_info").Do(func() error {
 		ctx.Processor.Process()
 		return nil
 	})

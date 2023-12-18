@@ -87,7 +87,7 @@ func (r *Results) ToMarkdown() map[string]Markdown {
 	for _, v := range r.KeywordResults {
 		var buf bytes.Buffer
 		if err := keywordRender.Execute(&buf, v); err == nil {
-			result[v.Title] = Markdown{Content: buf.String(), Result: v} // buf.String()
+			result[v.Title] = Markdown{Content: buf.String(), Result: v}
 		} else {
 			log.Err(err)
 		}

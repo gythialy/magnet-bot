@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gythialy/magnet/pkg/utiles"
+
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"github.com/gythialy/magnet/pkg/entities"
@@ -18,34 +20,58 @@ type InfoProcessor struct {
 	crawler       *Crawler
 	keywordDao    *entities.KeywordDao
 	tenderCodeDao *entities.TenderCodeDao
+	historyDao    *entities.HistoryDao
 }
 
 func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
+	historyDao := entities.NewHistoryDao(ctx.DB)
 	pool, err := ants.NewPoolWithFunc(10, func(i interface{}) {
 		m := i.(ConfigData)
 		results := entities.NewResults(m.Results)
 		results.Filter(m.Keywords, m.TenderCode)
 		messages := results.ToMarkdown()
 		failed := []string{"failed:"}
+		userId := m.ID
+		histories := historyDao.Cache(userId)
+		var tobeUpdated []entities.History
+		now := time.Now()
 		for title, msg := range messages {
+			// already processed, skip it
+			url := msg.Result.Pageurl
+			if _, ok := histories[url]; ok {
+				continue
+			}
 			if _, err := ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
-				ChatID:    m.ID,
+				ChatID:    userId,
 				Text:      msg.Content,
 				ParseMode: models.ParseModeMarkdown,
 			}); err != nil {
-				failed = append(failed, fmt.Sprintf("[%s](%s)  ", title, msg.Result.Pageurl))
+				failed = append(failed, fmt.Sprintf("[%s](%s)  ", utiles.Escape(title), url))
 				ctx.Logger.Error().Err(err)
 			}
+			tobeUpdated = append(tobeUpdated, entities.History{
+				UserId:    userId,
+				Url:       url,
+				UpdatedAt: now,
+			})
 			time.Sleep(50 * time.Millisecond)
 		}
 
 		if len(failed) > 1 {
 			if _, err := ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
-				ChatID:    m.ID,
+				ChatID:    userId,
 				Text:      strings.Join(failed, "\n"),
 				ParseMode: models.ParseModeMarkdown,
 			}); err != nil {
 				ctx.Logger.Error().Err(err)
+			}
+		}
+
+		if len(tobeUpdated) > 0 {
+			if err, rows := historyDao.Insert(tobeUpdated); err != nil {
+				ctx.Logger.Error().Err(err)
+			} else {
+				ctx.Logger.Info().Msgf("insert %d data", rows)
 			}
 		}
 	})
@@ -59,6 +85,7 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 		crawler:       NewCrawler(ctx),
 		keywordDao:    entities.NewKeywordDao(ctx.DB),
 		tenderCodeDao: entities.NewTenderCodeDao(ctx.DB),
+		historyDao:    historyDao,
 	}, nil
 }
 
