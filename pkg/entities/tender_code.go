@@ -22,8 +22,12 @@ func NewTenderCodeDao(db *gorm.DB) *TenderCodeDao {
 func (t *TenderCodeDao) Add(codes []string, userId int64) string {
 	var result []string
 	for _, code := range codes {
+		code = strings.TrimSpace(code)
+		if code == "" {
+			continue
+		}
 		e := TenderCode{
-			Code:   strings.TrimSpace(code),
+			Code:   code,
 			UserId: userId,
 		}
 		if tx := t.db.Where(&e); tx.Error == nil && tx.RowsAffected == 0 {
@@ -37,7 +41,11 @@ func (t *TenderCodeDao) Add(codes []string, userId int64) string {
 func (t *TenderCodeDao) Delete(codes []string, userId int64) string {
 	var result []string
 	for _, code := range codes {
-		if err := t.db.Where("code = ? and user_id = ?", strings.TrimSpace(code), userId).Delete(&TenderCode{}).Error; err == nil {
+		code = strings.TrimSpace(code)
+		if code == "" {
+			continue
+		}
+		if err := t.db.Where("code = ? and user_id = ?", code, userId).Delete(&TenderCode{}).Error; err == nil {
 			result = append(result, code)
 		}
 	}

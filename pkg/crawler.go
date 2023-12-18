@@ -3,8 +3,9 @@ package pkg
 import (
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
+
+	"github.com/gythialy/magnet/pkg/utiles"
 
 	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/go-resty/resty/v2"
@@ -69,8 +70,8 @@ func (c *Crawler) Get() []*m.Result {
 					result = append(result, &m.Result{
 						NoticeTime:     v.NoticeTime,
 						OpenTenderCode: v.OpenTenderCode,
-						Title:          c.escape(v.Title),
-						Content:        c.escape(content),
+						Title:          utiles.Escape(v.Title),
+						Content:        utiles.Escape(content),
 						Pageurl:        fmt.Sprintf("%s%s", c.ctx.ServerUrl, v.Pageurl),
 					})
 				}
@@ -93,31 +94,4 @@ func (c *Crawler) Get() []*m.Result {
 func (c *Crawler) format(time time.Time) string {
 	return fmt.Sprintf("%d-%d-%d%%20%d:%d:%d", time.Year(), time.Month(), time.Day(),
 		time.Hour(), time.Minute(), time.Second())
-}
-
-// In all other places characters '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!'
-// must be escaped with the preceding character '\'.
-// In all other places characters '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!'
-// must be escaped with the preceding character '\'.
-func (c *Crawler) escape(s string) string {
-	return strings.NewReplacer(
-		"*", "",
-		"#", "",
-		"_", "\\_",
-		"[", "\\[",
-		"]", "\\]",
-		"(", "\\(",
-		")", "\\)",
-		"~", "\\~",
-		"`", "\\`",
-		">", "\\>",
-		"+", "\\+",
-		"-", "\\-",
-		"=", "\\=",
-		"|", "\\|",
-		"{", "\\{",
-		"}", "\\}",
-		".", "\\.",
-		"!", "\\!",
-	).Replace(s)
 }
