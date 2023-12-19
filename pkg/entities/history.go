@@ -52,7 +52,7 @@ func (h *HistoryDao) List(userId int64) []History {
 func (h *HistoryDao) Insert(data []History) (error, int64) {
 	if tx := h.db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "user_id"}, {Name: "url"}},
-		DoUpdates: clause.AssignmentColumns([]string{"updated_at", "flag"}),
+		DoUpdates: clause.AssignmentColumns([]string{"updated_at"}),
 	}).Create(&data); tx.Error != nil {
 		return tx.Error, 0
 	} else {
