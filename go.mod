@@ -3,7 +3,7 @@ module github.com/gythialy/magnet
 go 1.21
 
 require (
-	github.com/JohannesKaufmann/html-to-markdown v1.4.2
+	github.com/JohannesKaufmann/html-to-markdown v1.5.0
 	github.com/go-co-op/gocron v1.37.0
 	github.com/go-resty/resty/v2 v2.10.0
 	github.com/go-telegram/bot v0.8.3
