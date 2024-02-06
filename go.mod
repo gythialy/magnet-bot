@@ -9,7 +9,7 @@ require (
 	github.com/go-telegram/bot v1.0.1
 	github.com/nmmh/magneturi v0.0.0-20180607142838-464c677b3fb5
 	github.com/panjf2000/ants/v2 v2.9.0
-	github.com/rs/zerolog v1.31.0
+	github.com/rs/zerolog v1.32.0
 	golang.org/x/net v0.20.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gorm.io/driver/sqlite v1.5.4
