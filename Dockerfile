@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM --platform=$BUILDPLATFORM crazymax/goxx:1.21 AS builder
+FROM --platform=$BUILDPLATFORM crazymax/goxx:1.22 AS builder
 ENV GO111MODULE=auto
 ENV CGO_ENABLED=1
 WORKDIR /src
