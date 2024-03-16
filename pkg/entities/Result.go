@@ -2,9 +2,10 @@ package entities
 
 import (
 	"bytes"
-	"github.com/rs/zerolog/log"
 	"html/template"
 	"strings"
+
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -53,7 +54,7 @@ func NewResults(data []*Result) *Results {
 }
 
 func (r *Results) Filter(keywords, tenderCodes []string) {
-	//patterns := regexp.MustCompile(strings.Join(keywords, "|"))
+	// patterns := regexp.MustCompile(strings.Join(keywords, "|"))
 	// convert tenderCodes to map
 	m := make(map[string]int)
 	for i, code := range tenderCodes {
