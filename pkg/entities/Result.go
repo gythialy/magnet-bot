@@ -2,19 +2,16 @@ package entities
 
 import (
 	"bytes"
-	"html/template"
-	"index/suffixarray"
-	"regexp"
-	"strings"
-
 	"github.com/rs/zerolog/log"
+	"html/template"
+	"strings"
 )
 
 const (
 	tenderTemplate = `【项目号】[{{.Title}}]({{.Pageurl}})  
 	{{.Content}}
 `
-	keywordTemplate = `【关键字】[{{.Title}}]({{.Pageurl}})   
+	keywordTemplate = `【关键字**{{.Keyword}}**】[{{.Title}}]({{.Pageurl}})   
 	{{.Content}}`
 )
 
@@ -38,6 +35,7 @@ type Result struct {
 	Title          string `json:"title,omitempty"`
 	Content        string `json:"content,omitempty"`
 	Pageurl        string `json:"pageurl,omitempty"`
+	Keyword        string `json:"keyword,omitempty"`
 }
 
 type Results struct {
@@ -55,7 +53,7 @@ func NewResults(data []*Result) *Results {
 }
 
 func (r *Results) Filter(keywords, tenderCodes []string) {
-	patterns := regexp.MustCompile(strings.Join(keywords, "|"))
+	//patterns := regexp.MustCompile(strings.Join(keywords, "|"))
 	// convert tenderCodes to map
 	m := make(map[string]int)
 	for i, code := range tenderCodes {
@@ -64,10 +62,18 @@ func (r *Results) Filter(keywords, tenderCodes []string) {
 	for _, v := range r.Data {
 		if _, ok := m[v.OpenTenderCode]; ok {
 			r.TenderResults = append(r.TenderResults, v)
+			break
 		}
-		index := suffixarray.New([]byte(v.Title))
-		if res := index.FindAllIndex(patterns, -1); len(res) > 0 {
-			r.KeywordResults = append(r.KeywordResults, v)
+		for _, keyword := range keywords {
+			var matched []string
+			k := strings.TrimSpace(keyword)
+			if strings.Contains(v.Title, k) {
+				matched = append(matched, k)
+			}
+			if len(matched) > 0 {
+				v.Keyword = strings.Join(matched, ", ")
+				r.KeywordResults = append(r.KeywordResults, v)
+			}
 		}
 	}
 }
