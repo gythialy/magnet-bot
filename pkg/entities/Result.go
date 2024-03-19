@@ -12,7 +12,7 @@ const (
 	tenderTemplate = `【项目号】[{{.Title}}]({{.Pageurl}})  
 	{{.Content}}
 `
-	keywordTemplate = `【关键字**{{.Keyword}}**】[{{.Title}}]({{.Pageurl}})   
+	keywordTemplate = `【关键字: {{.Keyword}}】[{{.Title}}]({{.Pageurl}})   
 	{{.Content}}`
 )
 
