@@ -8,7 +8,7 @@ require (
 	github.com/go-resty/resty/v2 v2.12.0
 	github.com/go-telegram/bot v1.1.7
 	github.com/nmmh/magneturi v0.0.0-20180607142838-464c677b3fb5
-	github.com/panjf2000/ants/v2 v2.9.0
+	github.com/panjf2000/ants/v2 v2.9.1
 	github.com/rs/zerolog v1.32.0
 	golang.org/x/net v0.22.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
