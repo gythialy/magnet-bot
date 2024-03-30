@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gythialy/magnet/pkg/constant"
+
 	"github.com/go-resty/resty/v2"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -38,7 +40,7 @@ func NewMagnetHandler(ctx *pkg.BotContext) *MagnetHandler {
 
 func (m *MagnetHandler) Handler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	text := update.Message.Text
-	tmp := strings.TrimPrefix(text, MAGNET)
+	tmp := strings.TrimPrefix(text, constant.Magnet)
 	urls := splitRegex.Split(tmp, -1)
 	server := m.fetchServer()
 	result := strings.Builder{}

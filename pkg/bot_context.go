@@ -1,11 +1,12 @@
 package pkg
 
 import (
-	"gorm.io/gorm/logger"
 	"os"
 	"path"
 	"strconv"
 	"time"
+
+	"gorm.io/gorm/logger"
 
 	"github.com/gythialy/magnet/pkg/constant"
 

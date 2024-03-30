@@ -41,9 +41,9 @@ func TestCrawler_Fetch(t *testing.T) {
 		ServerUrl: os.Getenv("ServerUrl"),
 	})
 
-	result := crawler.Fetch([]string{"中国"})
-
 	userId := int64(1111)
+	result := crawler.Fetch([]string{"中国"}, userId)
+
 	for idx, alarm := range result {
 		alarm.UserId = userId
 		fmt.Printf("%d: %s(%s),%s\n", idx, alarm.CreditName, alarm.CreditCode, alarm.EndDate)
