@@ -27,9 +27,8 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 	historyDao := entities.NewHistoryDao(ctx.DB)
 	alarmDao := entities.NewAlarmDao(ctx.DB)
 	pool, err := ants.NewPoolWithFunc(10, func(i interface{}) {
-		switch i.(type) {
+		switch m := i.(type) {
 		case ConfigData:
-			m := i.(ConfigData)
 			// process projects
 			messages := entities.NewProjects(m.Projects, m.ProjectKeyword).ToMarkdown()
 			failed := []string{"failed:"}
@@ -88,7 +87,7 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 				if _, err := ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
 					ChatID:    userId,
 					Text:      msg,
-					ParseMode: models.ParseModeMarkdown,
+					ParseMode: models.ParseModeHTML,
 				}); err != nil {
 					ctx.Logger.Error().Err(err)
 				}

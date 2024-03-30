@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	alarmTemplate = `{{.CreditName}}({{.CreditCode}}) 
+	alarmTemplate = `#{{.CreditName}} (#{{.CreditCode}}) 
 开始时间: {{ .StartDate.Format "2006-01-02" }} 
 {{if .EndDate }}结束时间: {{ .EndDate.Format "2006-01-02" }}{{ end }} 
 {{if .HandleDepartment }}处罚部门: {{ .HandleDepartment }}{{ end }} 
