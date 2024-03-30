@@ -1,10 +1,13 @@
 package pkg
 
 import (
+	"gorm.io/gorm/logger"
 	"os"
 	"path"
 	"strconv"
 	"time"
+
+	"github.com/gythialy/magnet/pkg/constant"
 
 	"github.com/go-telegram/bot/models"
 
@@ -52,43 +55,43 @@ func NewBotContext() (*BotContext, error) {
 	if _, err := telegramBot.SetMyCommands(context.Background(), &bot.SetMyCommandsParams{
 		Commands: []models.BotCommand{
 			{
-				Command:     "/me",
+				Command:     constant.Me,
 				Description: "Get my user information",
 			},
 			{
-				Command:     "/magnet",
+				Command:     constant.Magnet,
 				Description: "Append trackers to torrent",
 			},
 			{
-				Command:     "/add_keywords",
+				Command:     constant.AddKeyword,
 				Description: "Add keywords",
 			},
 			{
-				Command:     "/delete_keywords",
+				Command:     constant.DeleteKeyword,
 				Description: "Delete keywords",
 			},
 			{
-				Command:     "/list_keywords",
+				Command:     constant.ListKeyword,
 				Description: "List keywords",
 			},
 			{
-				Command:     "/add_tender_codes",
+				Command:     constant.AddAlarmKeyword,
 				Description: "Add tender codes",
 			},
 			{
-				Command:     "/delete_tender_codes",
-				Description: "Delete tender codes",
+				Command:     constant.DeleteAlarmKeyword,
+				Description: "Delete alarm keywords",
 			},
 			{
-				Command:     "/list_tender_codes",
-				Description: "List tender codes",
+				Command:     constant.ListAlarmKeyword,
+				Description: "List alarm keywords",
 			},
 			{
-				Command:     "/retry",
+				Command:     constant.Retry,
 				Description: "Retry failed task, only for the Bot master",
 			},
 			{
-				Command:     "/clean",
+				Command:     constant.Clean,
 				Description: "Clean the cache file, only for the Bot master",
 			},
 		},
@@ -96,12 +99,14 @@ func NewBotContext() (*BotContext, error) {
 		return nil, err
 	}
 
-	db, err := gorm.Open(sqlite.Open(path.Join(cfgPath, DatabaseFile)), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(path.Join(cfgPath, DatabaseFile)), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info),
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	err = db.AutoMigrate(&entities.Keyword{}, &entities.TenderCode{}, &entities.History{})
+	err = db.AutoMigrate(&entities.Keyword{}, &entities.History{}, &entities.Alarm{})
 	if err != nil {
 		return nil, err
 	}

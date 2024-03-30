@@ -1,8 +1,15 @@
 package pkg
 
 import (
+	"fmt"
 	"os"
+	"strings"
 	"testing"
+
+	"github.com/gythialy/magnet/pkg/entities"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func TestCrawler_Get(t *testing.T) {
@@ -10,6 +17,61 @@ func TestCrawler_Get(t *testing.T) {
 		ServerUrl: os.Getenv("ServerUrl"),
 	})
 
-	results := crawler.Get()
+	results := crawler.FetchProjects()
 	t.Log(len(results))
+}
+
+func TestCrawler_Fetch(t *testing.T) {
+	f := "./alarm.db"
+	defer func() {
+		_ = os.Remove(f)
+	}()
+	db, err := gorm.Open(sqlite.Open(f), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_ = db.AutoMigrate(&entities.Alarm{})
+	db.Debug()
+	dao := entities.NewAlarmDao(db)
+
+	crawler := NewCrawler(&BotContext{
+		ServerUrl: os.Getenv("ServerUrl"),
+	})
+
+	result := crawler.Fetch([]string{"中国"})
+
+	userId := int64(1111)
+	for idx, alarm := range result {
+		alarm.UserId = userId
+		fmt.Printf("%d: %s(%s),%s\n", idx, alarm.CreditName, alarm.CreditCode, alarm.EndDate)
+	}
+
+	if err, i := dao.Insert(result); err == nil {
+		t.Log(i)
+	} else {
+		t.Error(err)
+	}
+	if err, i := dao.Insert(result); err == nil {
+		t.Log(i)
+	} else {
+		t.Error(err)
+	}
+
+	fmt.Println(strings.Repeat("-", 20))
+
+	list := dao.List(userId)
+	for idx, alarm := range list {
+		fmt.Printf("%d: %s(%s),%s\n", idx, alarm.CreditName, alarm.CreditCode, alarm.EndDate)
+	}
+	fmt.Println(strings.Repeat("-", 20))
+
+	cache := dao.Cache(userId)
+	idx := 0
+	for _, alarm := range cache {
+		fmt.Printf("%d: %s(%s),%s\n", idx, alarm.CreditName, alarm.CreditCode, alarm.EndDate)
+		idx++
+	}
 }

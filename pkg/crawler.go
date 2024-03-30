@@ -34,12 +34,12 @@ func NewCrawler(ctx *BotContext) *Crawler {
 	}
 }
 
-func (c *Crawler) Get() []*m.Result {
+func (c *Crawler) FetchProjects() []*m.Project {
 	now := time.Now()
 	url := fmt.Sprintf("https://%s/freecms/rest/v1/notice/selectInfoMoreChannel.do?operationStartTime=%s&operationEndTime=%s", c.ctx.ServerUrl,
 		c.format(now.AddDate(0, 0, -1)), c.format(now))
 	idx := 1
-	result := make([]*m.Result, 0)
+	result := make([]*m.Project, 0)
 	params := map[string]string{
 		"siteId":  siteId,
 		"channel": channelId,
@@ -61,13 +61,13 @@ func (c *Crawler) Get() []*m.Result {
 		if resp, err := c.client.R().
 			SetHeader("Content-Type", ContextType).
 			SetHeader("User-Agent", UserAgent).
-			SetQueryParams(params).SetResult(&m.QueryResult{}).Get(url); err == nil {
-			r := resp.Result().(*m.QueryResult)
+			SetQueryParams(params).SetResult(&m.ProjectResult{}).Get(url); err == nil {
+			r := resp.Result().(*m.ProjectResult)
 			size := len(r.Data)
 			if size > 0 {
 				for _, v := range r.Data {
 					content, _ := c.converter.ConvertString(v.Content)
-					result = append(result, &m.Result{
+					result = append(result, &m.Project{
 						NoticeTime:     v.NoticeTime,
 						OpenTenderCode: v.OpenTenderCode,
 						Title:          utiles.Escape(v.Title),
@@ -91,7 +91,74 @@ func (c *Crawler) Get() []*m.Result {
 	return result
 }
 
+func (c *Crawler) fetch(keywords []string, type_ string) []*m.Alarm {
+	result := make([]*m.Alarm, 0)
+	for _, keyword := range keywords {
+		params := map[string]string{
+			"publishType": type_,
+			"creditName":  keyword,
+		}
+
+		url := fmt.Sprintf("https://%s/gateway/gpc-gpcms/rest/v2/punish/public?&pageNumber=1&pageSize=10&handleUnit=&startDate=&endDate=", c.ctx.ServerUrl)
+		if resp, err := c.client.R().
+			SetHeader("Content-Type", ContextType).
+			SetHeader("User-Agent", UserAgent).
+			SetQueryParams(params).
+			SetResult(&m.AlarmResult{}).Get(url); err == nil {
+			r := resp.Result().(*m.AlarmResult)
+			for _, row := range r.Data.Rows {
+				endDate := c.parseTime(row.EndDate)
+				if endDate.IsZero() || time.Now().Before(endDate) {
+					result = append(result, &m.Alarm{
+						CreditName:       row.CreditName,
+						CreditCode:       row.CreditCode,
+						StartDate:        c.parseTime(row.StartDate),
+						EndDate:          endDate,
+						DetailReason:     row.DetailReason,
+						HandleDepartment: row.HandleDepartment,
+						HandleUnit:       row.HandleUnit,
+						HandleResult:     row.HandleResult,
+					})
+				}
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return result
+}
+
+func (c *Crawler) Fetch(keywords []string, userId int64) []*m.Alarm {
+	result := make([]*m.Alarm, 0)
+	r1 := c.fetch(keywords, "breakFaith")
+	cache := make(map[string]interface{})
+	for _, alarm := range r1 {
+		if _, ok := cache[alarm.CreditCode]; !ok {
+			alarm.UserId = userId
+			cache[alarm.CreditCode] = alarm
+			result = append(result, alarm)
+		}
+	}
+	r2 := c.fetch(keywords, "suspend")
+	for _, alarm := range r2 {
+		if _, ok := cache[alarm.CreditCode]; !ok {
+			alarm.UserId = userId
+			cache[alarm.CreditCode] = alarm
+			result = append(result, alarm)
+		}
+	}
+	return result
+}
+
 func (c *Crawler) format(time time.Time) string {
 	return fmt.Sprintf("%d-%d-%d%%20%d:%d:%d", time.Year(), time.Month(), time.Day(),
 		time.Hour(), time.Minute(), time.Second())
+}
+
+func (c *Crawler) parseTime(date string) time.Time {
+	if date == "" {
+		return time.Time{}
+	}
+	t, _ := time.Parse(time.DateOnly, date)
+	return t
 }

@@ -6,10 +6,26 @@ import (
 	"gorm.io/gorm"
 )
 
+type KeywordType int
+
+const (
+	PROJECT KeywordType = iota
+	ALARM
+)
+
+func (k KeywordType) String() string {
+	names := [...]string{"PROJECT", "ALARM"}
+	if k < PROJECT || k > ALARM {
+		return "Unknown"
+	}
+	return names[k]
+}
+
 type Keyword struct {
 	gorm.Model
 	Keyword string
 	UserId  int64
+	Type    KeywordType
 }
 
 type KeywordDao struct {
@@ -20,7 +36,7 @@ func NewKeywordDao(db *gorm.DB) *KeywordDao {
 	return &KeywordDao{db: db}
 }
 
-func (k *KeywordDao) Add(keywords []string, userId int64) string {
+func (k *KeywordDao) Add(keywords []string, userId int64, t KeywordType) string {
 	var result []string
 	for _, keyword := range keywords {
 		keyword = strings.TrimSpace(keyword)
@@ -30,6 +46,7 @@ func (k *KeywordDao) Add(keywords []string, userId int64) string {
 		e := Keyword{
 			Keyword: keyword,
 			UserId:  userId,
+			Type:    t,
 		}
 		if tx := k.db.Where(&e); tx.Error == nil && tx.RowsAffected == 0 {
 			k.db.Create(&e)
@@ -39,30 +56,30 @@ func (k *KeywordDao) Add(keywords []string, userId int64) string {
 	return strings.Join(result, ", ")
 }
 
-func (k *KeywordDao) Delete(keywords []string, userId int64) string {
+func (k *KeywordDao) Delete(keywords []string, userId int64, t KeywordType) string {
 	var result []string
 	for _, keyword := range keywords {
 		keyword = strings.TrimSpace(keyword)
 		if keyword == "" {
 			continue
 		}
-		if err := k.db.Where("keyword = ? and user_id = ?", keyword, userId).Delete(&Keyword{}).Error; err == nil {
+		if err := k.db.Where("keyword = ? and user_id = ? and type = ?", keyword, userId, t).Delete(&Keyword{}).Error; err == nil {
 			result = append(result, keyword)
 		}
 	}
 	return strings.Join(result, ", ")
 }
 
-func (k *KeywordDao) List(userId int64) []Keyword {
+func (k *KeywordDao) List(userId int64, t KeywordType) []Keyword {
 	var result []Keyword
-	if err := k.db.Where("user_id = ?", userId).Find(&result).Error; err == nil {
+	if err := k.db.Where("user_id = ? and type = ?", userId, t).Find(&result).Error; err == nil {
 		return result
 	}
 	return nil
 }
 
-func (k *KeywordDao) ListKeywords(userId int64) []string {
-	result := k.List(userId)
+func (k *KeywordDao) ListKeywords(userId int64, t KeywordType) []string {
+	result := k.List(userId, t)
 	var r []string
 	m := make(map[string]bool)
 	for _, value := range result {

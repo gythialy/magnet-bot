@@ -22,7 +22,6 @@ import (
 const (
 	BestUrlFile = "https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt"
 	BestFile    = "trackers_best.txt"
-	MAGNET      = "/magnet"
 )
 
 var splitRegex = regexp.MustCompile("\r?\n")

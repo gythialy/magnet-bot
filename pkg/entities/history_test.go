@@ -18,7 +18,7 @@ func TestHistoryDao_Cache(t *testing.T) {
 		_ = os.Remove(f)
 	}()
 	db, err := gorm.Open(sqlite.Open(f), &gorm.Config{
-		Logger: logger.Recorder.New(),
+		Logger: logger.Default.LogMode(logger.Info),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -27,11 +27,11 @@ func TestHistoryDao_Cache(t *testing.T) {
 	_ = db.AutoMigrate(&History{})
 	db.Debug()
 	dao := NewHistoryDao(db)
-	var histories []History
+	var histories []*History
 	userId := int64(0)
 	now := time.Now()
 	for i := userId; i < 10; i++ {
-		histories = append(histories, History{
+		histories = append(histories, &History{
 			UserId:    userId,
 			Url:       fmt.Sprintf("https://test.com/content%d", i),
 			UpdatedAt: now,
@@ -48,7 +48,7 @@ func TestHistoryDao_Cache(t *testing.T) {
 	t.Log(utiles.ToString(data1))
 
 	date1 := now.AddDate(0, 0, -7)
-	if err, i := dao.Insert([]History{{
+	if err, i := dao.Insert([]*History{{
 		UserId:    userId,
 		Url:       fmt.Sprintf("https://test.com/content%d", 2),
 		UpdatedAt: date1,
