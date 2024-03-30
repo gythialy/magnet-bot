@@ -33,7 +33,7 @@ func TestResults_ToMarkdown(t *testing.T) {
 	} else {
 		t.Fatal(err)
 	}
-	r := []*Result{
+	r := []*Project{
 		{
 			OpenTenderCode: "2023-JQ01-W1313",
 			Title:          "某部仓储建设征求意见",
@@ -53,15 +53,13 @@ func TestResults_ToMarkdown(t *testing.T) {
 			Content:        "Arguments may evaluate to any type; if they are pointers the implementation automatically indirects to the base type when required. If an evaluation yields a function value, such as a function-valued field of a struct, the function is not invoked automatically, but it can be used as a truth value for an if action and the like. To invoke it, use the call function, defined below.",
 		},
 	}
-	results := NewResults(r)
-	results.KeywordResults = r
-	results.TenderResults = r
+	results := NewProjects(r, []string{})
 	s := results.ToMarkdown()
 	t.Log(len(s))
 }
 
 func TestResults_Filter(t *testing.T) {
-	r := []*Result{
+	r := []*Project{
 		{
 			OpenTenderCode: "W1313",
 			Title:          "某部仓储建设征求意见公告",
@@ -81,14 +79,11 @@ func TestResults_Filter(t *testing.T) {
 			Content:        "Arguments may evaluate to any type; if they are pointers the implementation automatically indirects to the base type when required. If an evaluation yields a function value, such as a function-valued field of a struct, the function is not invoked automatically, but it can be used as a truth value for an if action and the like. To invoke it, use the call function, defined below.",
 		},
 	}
-	results := NewResults(r)
+	results := NewProjects(r, []string{"信息"})
 
-	results.Filter([]string{"信息"}, []string{"W1313", "CODE11"})
-	for _, v := range results.TenderResults {
-		t.Log(v.OpenTenderCode, v.Title, v.Pageurl)
-	}
+	results.filter()
 
-	for _, v := range results.KeywordResults {
+	for _, v := range results.keywordProjects {
 		t.Log(v.OpenTenderCode, v.Title, v.Pageurl)
 	}
 }

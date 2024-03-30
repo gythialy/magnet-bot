@@ -9,13 +9,13 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-func TestNewKeywordDao(t *testing.T) {
+func TestNewAlarmKeywordDao(t *testing.T) {
 	f := "./keyword.db"
 	defer func() {
 		_ = os.Remove(f)
 	}()
 	db, err := gorm.Open(sqlite.Open(f), &gorm.Config{
-		Logger: logger.Recorder.New(),
+		Logger: logger.Default.LogMode(logger.Info),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -27,13 +27,15 @@ func TestNewKeywordDao(t *testing.T) {
 	id := int64(1111)
 
 	dao := NewKeywordDao(db)
-	dao.Add(keywords, id)
-	t.Log(dao.List(id))
+	dao.Add(keywords, id, PROJECT)
+	dao.Add(keywords, id, ALARM)
+	t.Log(dao.List(id, PROJECT))
+	t.Log(dao.List(id, ALARM))
 	t.Log(dao.Ids())
 
 	print(db, t)
 	keywords2 := []string{"test3", "test4"}
-	dao.Delete(keywords2, id)
-	t.Log(dao.List(id))
-	t.Log(dao.ListKeywords(id))
+	dao.Delete(keywords2, id, PROJECT)
+	t.Log(dao.List(id, PROJECT))
+	t.Log(dao.ListKeywords(id, PROJECT))
 }

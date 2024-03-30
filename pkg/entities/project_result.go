@@ -1,6 +1,6 @@
 package entities
 
-type QueryResult struct {
+type ProjectResult struct {
 	Msg   string `json:"msg"`
 	Total int    `json:"total"`
 	Code  string `json:"code"`

@@ -9,10 +9,6 @@ import (
 	"github.com/gythialy/magnet/pkg/utiles"
 )
 
-const (
-	ME = "/me"
-)
-
 func DefaultHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,

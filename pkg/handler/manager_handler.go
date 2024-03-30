@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/gythialy/magnet/pkg/entities"
 
@@ -11,20 +10,17 @@ import (
 	"github.com/gythialy/magnet/pkg"
 )
 
-const (
-	RETRY = "/retry"
-	CLEAN = "/clean"
-)
-
 type ManagerHandler struct {
 	ctx     *pkg.BotContext
 	history *entities.HistoryDao
+	alarm   *entities.AlarmDao
 }
 
 func NewManagerHandler(ctx *pkg.BotContext) *ManagerHandler {
 	return &ManagerHandler{
 		ctx:     ctx,
 		history: entities.NewHistoryDao(ctx.DB),
+		alarm:   entities.NewAlarmDao(ctx.DB),
 	}
 }
 
@@ -36,7 +32,7 @@ func (h *ManagerHandler) Retry(ctx context.Context, b *bot.Bot, update *models.U
 			ChatID: update.Message.Chat.ID,
 			Text:   "Processing, please waiting...",
 		}); err != nil {
-			slog.Error("%v", err)
+			h.ctx.Logger.Err(err)
 		}
 	}
 }
@@ -47,12 +43,16 @@ func (h *ManagerHandler) Clean(ctx context.Context, b *bot.Bot, update *models.U
 		msg := "done."
 		if err := h.history.Clean(); err != nil {
 			msg = err.Error()
+		} else {
+			if err := h.alarm.Clean(); err != nil {
+				msg = err.Error()
+			}
 		}
 		if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
 			Text:   msg,
 		}); err != nil {
-			slog.Error("%v", err)
+			h.ctx.Logger.Err(err)
 		}
 	}
 }
