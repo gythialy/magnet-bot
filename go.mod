@@ -6,7 +6,7 @@ require (
 	github.com/JohannesKaufmann/html-to-markdown v1.5.0
 	github.com/go-co-op/gocron v1.37.0
 	github.com/go-resty/resty/v2 v2.12.0
-	github.com/go-telegram/bot v1.1.7
+	github.com/go-telegram/bot v1.2.1
 	github.com/nmmh/magneturi v0.0.0-20180607142838-464c677b3fb5
 	github.com/panjf2000/ants/v2 v2.9.1
 	github.com/rs/zerolog v1.32.0
