@@ -48,7 +48,7 @@ func (r *Projects) filter() {
 		for _, keyword := range r.keywords {
 			var matched []string
 			k := strings.TrimSpace(keyword)
-			if strings.Contains(v.Title, k) {
+			if strings.Contains(v.Title, k) || strings.Contains(v.OpenTenderCode, k) {
 				matched = append(matched, k)
 			}
 			if len(matched) > 0 {
