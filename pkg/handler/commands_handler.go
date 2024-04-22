@@ -16,6 +16,7 @@ import (
 type CommandsHandler struct {
 	ctx        *pkg.BotContext
 	keywordDao *entities.KeywordDao
+	alarmDao   *entities.AlarmDao
 }
 
 func NewCommandsHandler(ctx *pkg.BotContext) *CommandsHandler {
@@ -23,6 +24,7 @@ func NewCommandsHandler(ctx *pkg.BotContext) *CommandsHandler {
 	return &CommandsHandler{
 		ctx:        ctx,
 		keywordDao: entities.NewKeywordDao(db),
+		alarmDao:   entities.NewAlarmDao(db),
 	}
 }
 
@@ -88,4 +90,28 @@ func (c *CommandsHandler) DeleteAlarmKeywordHandler(ctx context.Context, b *bot.
 
 func (c *CommandsHandler) ListAlarmKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	c.listKeywordHandler(ctx, b, update, entities.ALARM)
+}
+
+func (c *CommandsHandler) ListAlarmRecordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	id := update.Message.Chat.ID
+	alarms := c.alarmDao.Cache(id)
+	var result strings.Builder
+	if len(alarms) == 0 {
+		result.WriteString("can not find any records...")
+	} else {
+		idx := 1
+		for _, alarm := range alarms {
+			result.WriteString(fmt.Sprintf("%d. #%s, %s to %s \n", idx, alarm.CreditName,
+				alarm.StartDate.Format("2006-01-02"), alarm.EndDate.Format("2006-01-02")))
+			idx++
+		}
+	}
+
+	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID:    update.Message.Chat.ID,
+		Text:      result.String(),
+		ParseMode: models.ParseModeHTML,
+	}); err != nil {
+		c.ctx.Logger.Error().Err(err)
+	}
 }

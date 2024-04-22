@@ -11,4 +11,5 @@ const (
 	AddAlarmKeyword    = "/add_alarm_keywords"
 	DeleteAlarmKeyword = "/delete_alarm_keywords"
 	ListAlarmKeyword   = "/list_alarm_keywords"
+	ListAlarmRecords   = "/list_alarm_records"
 )

@@ -88,6 +88,10 @@ func NewBotContext() (*BotContext, error) {
 				Description: "List alarm keywords",
 			},
 			{
+				Command:     constant.ListAlarmRecords,
+				Description: "List all alarm records",
+			},
+			{
 				Command:     constant.Retry,
 				Description: "Retry failed task, only for the Bot master",
 			},

@@ -30,6 +30,7 @@ func main() {
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.AddAlarmKeyword, bot.MatchTypePrefix, configHandler.AddAlarmKeywordHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.DeleteAlarmKeyword, bot.MatchTypePrefix, configHandler.DeleteAlarmKeywordHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.ListAlarmKeyword, bot.MatchTypePrefix, configHandler.ListAlarmKeywordHandler)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.ListAlarmRecords, bot.MatchTypePrefix, configHandler.ListAlarmRecordHandler)
 	managerHandler := handler.NewManagerHandler(ctx)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Retry, bot.MatchTypePrefix, managerHandler.Retry)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Clean, bot.MatchTypePrefix, managerHandler.Clean)
