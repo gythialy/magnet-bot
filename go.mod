@@ -3,7 +3,7 @@ module github.com/gythialy/magnet
 go 1.22.2
 
 require (
-	github.com/JohannesKaufmann/html-to-markdown v1.5.0
+	github.com/JohannesKaufmann/html-to-markdown v1.6.0
 	github.com/go-co-op/gocron v1.37.0
 	github.com/go-resty/resty/v2 v2.13.1
 	github.com/go-telegram/bot v1.3.1
@@ -17,8 +17,8 @@ require (
 )
 
 require (
-	github.com/PuerkitoBio/goquery v1.8.1 // indirect
-	github.com/andybalholm/cascadia v1.3.1 // indirect
+	github.com/PuerkitoBio/goquery v1.9.2 // indirect
+	github.com/andybalholm/cascadia v1.3.2 // indirect
 	github.com/google/uuid v1.4.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
