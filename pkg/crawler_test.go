@@ -14,7 +14,7 @@ import (
 
 func TestCrawler_Get(t *testing.T) {
 	crawler := NewCrawler(&BotContext{
-		ServerUrl: os.Getenv("ServerUrl"),
+		ServerUrl: os.Getenv("SERVER_URL"),
 	})
 
 	results := crawler.FetchProjects()
@@ -38,7 +38,7 @@ func TestCrawler_Fetch(t *testing.T) {
 	dao := entities.NewAlarmDao(db)
 
 	crawler := NewCrawler(&BotContext{
-		ServerUrl: os.Getenv("ServerUrl"),
+		ServerUrl: os.Getenv("SERVER_URL"),
 	})
 
 	userId := int64(1111)
@@ -49,18 +49,20 @@ func TestCrawler_Fetch(t *testing.T) {
 		fmt.Printf("%d: %s(%s),%s\n", idx, alarm.CreditName, alarm.CreditCode, alarm.EndDate)
 	}
 
-	if err, i := dao.Insert(result); err == nil {
-		t.Log(i)
-	} else {
-		t.Error(err)
-	}
-	if err, i := dao.Insert(result); err == nil {
-		t.Log(i)
-	} else {
-		t.Error(err)
-	}
+	if len(result) > 0 {
+		if err, i := dao.Insert(result); err == nil {
+			t.Log(i)
+		} else {
+			t.Error(err)
+		}
+		if err, i := dao.Insert(result); err == nil {
+			t.Log(i)
+		} else {
+			t.Error(err)
+		}
 
-	fmt.Println(strings.Repeat("-", 20))
+		fmt.Println(strings.Repeat("-", 20))
+	}
 
 	list := dao.List(userId)
 	for idx, alarm := range list {
