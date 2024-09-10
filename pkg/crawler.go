@@ -70,6 +70,7 @@ func (c *Crawler) FetchProjects() []*m.Project {
 					result = append(result, &m.Project{
 						NoticeTime:     v.NoticeTime,
 						OpenTenderCode: v.OpenTenderCode,
+						ShortTitle:     v.Title,
 						Title:          utiles.Escape(v.Title),
 						Content:        utiles.Escape(content),
 						Pageurl:        fmt.Sprintf("%s%s", c.ctx.ServerUrl, v.Pageurl),

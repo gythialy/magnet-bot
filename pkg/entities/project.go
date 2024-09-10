@@ -23,6 +23,7 @@ type Project struct {
 	NoticeTime     string `json:"noticeTime,omitempty"`
 	OpenTenderCode string `json:"openTenderCode,omitempty"`
 	Title          string `json:"title,omitempty"`
+	ShortTitle     string `json:"-"`
 	Content        string `json:"content,omitempty"`
 	Pageurl        string `json:"pageurl,omitempty"`
 	Keyword        string `json:"keyword,omitempty"`
@@ -48,7 +49,7 @@ func (r *Projects) filter() {
 		for _, keyword := range r.keywords {
 			var matched []string
 			k := strings.TrimSpace(keyword)
-			if strings.Contains(v.Title, k) || strings.Contains(v.OpenTenderCode, k) {
+			if strings.Contains(v.ShortTitle, k) || v.OpenTenderCode == k {
 				matched = append(matched, k)
 			}
 			if len(matched) > 0 {
