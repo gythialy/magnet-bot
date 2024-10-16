@@ -14,7 +14,7 @@ func DefaultHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 		ChatID: update.Message.Chat.ID,
 		Text:   "/magnet append tracker servers",
 	}); err != nil {
-		slog.Error("%v", err)
+		slog.Error("Failed to send message", "error", err)
 	}
 }
 
@@ -26,6 +26,6 @@ func MeHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 		ChatID: update.Message.Chat.ID,
 		Text:   utiles.ToString(chat),
 	}); err != nil {
-		slog.Error("%v", err)
+		slog.Error("Failed to send message", "error", err)
 	}
 }

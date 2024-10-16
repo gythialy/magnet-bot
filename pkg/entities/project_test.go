@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gythialy/magnet/pkg/rule"
+
 	md "github.com/JohannesKaufmann/html-to-markdown"
 )
 
@@ -53,7 +55,7 @@ func TestResults_ToMarkdown(t *testing.T) {
 			Content:        "Arguments may evaluate to any type; if they are pointers the implementation automatically indirects to the base type when required. If an evaluation yields a function value, such as a function-valued field of a struct, the function is not invoked automatically, but it can be used as a truth value for an if action and the like. To invoke it, use the call function, defined below.",
 		},
 	}
-	results := NewProjects(r, []string{})
+	results := NewProjects(r, []*rule.ComplexRule{})
 	s := results.ToMarkdown()
 	t.Log(len(s))
 }
@@ -79,7 +81,7 @@ func TestResults_Filter(t *testing.T) {
 			Content:        "Arguments may evaluate to any type; if they are pointers the implementation automatically indirects to the base type when required. If an evaluation yields a function value, such as a function-valued field of a struct, the function is not invoked automatically, but it can be used as a truth value for an if action and the like. To invoke it, use the call function, defined below.",
 		},
 	}
-	results := NewProjects(r, []string{"信息"})
+	results := NewProjects(r, []*rule.ComplexRule{rule.NewComplexRule("信息")})
 
 	results.filter()
 
