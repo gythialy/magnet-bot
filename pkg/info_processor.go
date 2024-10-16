@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gythialy/magnet/pkg/rule"
+
 	"github.com/gythialy/magnet/pkg/utiles"
 
 	"github.com/go-telegram/bot"
@@ -30,7 +32,7 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 		switch m := i.(type) {
 		case ConfigData:
 			// process projects
-			messages := entities.NewProjects(m.Projects, m.ProjectKeyword).ToMarkdown()
+			messages := entities.NewProjects(m.Projects, m.ProjectRules).ToMarkdown()
 			failed := []string{"failed:"}
 			userId := m.UserId
 			histories := historyDao.Cache(userId)
@@ -161,17 +163,22 @@ func (r *InfoProcessor) config() map[int64]ConfigData {
 }
 
 func (r *InfoProcessor) get(id int64) ConfigData {
+	keywords := r.keywordDao.ListKeywords(id, entities.PROJECT)
+	rules := make([]*rule.ComplexRule, len(keywords))
+	for _, keyword := range keywords {
+		rules = append(rules, rule.NewComplexRule(keyword))
+	}
 	return ConfigData{
-		UserId:         id,
-		ProjectKeyword: r.keywordDao.ListKeywords(id, entities.PROJECT),
-		AlarmKeyword:   r.keywordDao.ListKeywords(id, entities.ALARM),
+		UserId:       id,
+		ProjectRules: rules,
+		AlarmKeyword: r.keywordDao.ListKeywords(id, entities.ALARM),
 	}
 }
 
 type ConfigData struct {
-	UserId         int64
-	ProjectKeyword []string
-	AlarmKeyword   []string
-	Projects       []*entities.Project
-	Alarms         []*entities.Alarm
+	UserId       int64
+	ProjectRules []*rule.ComplexRule
+	AlarmKeyword []string
+	Projects     []*entities.Project
+	Alarms       []*entities.Alarm
 }

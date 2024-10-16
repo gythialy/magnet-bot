@@ -5,6 +5,8 @@ import (
 	"html/template"
 	"strings"
 
+	"github.com/gythialy/magnet/pkg/rule"
+
 	"github.com/rs/zerolog/log"
 )
 
@@ -32,30 +34,28 @@ type Project struct {
 type Projects struct {
 	Projects        []*Project
 	keywordProjects []*Project
-	keywords        []string
+	rules           []*rule.ComplexRule
 }
 
-func NewProjects(projects []*Project, keywords []string) *Projects {
+func NewProjects(projects []*Project, rules []*rule.ComplexRule) *Projects {
 	return &Projects{
 		Projects:        projects,
-		keywords:        keywords,
+		rules:           rules,
 		keywordProjects: make([]*Project, 0),
 	}
 }
 
 func (r *Projects) filter() {
-	// patterns := regexp.MustCompile(strings.Join(keywords, "|"))
 	for _, v := range r.Projects {
-		for _, keyword := range r.keywords {
-			var matched []string
-			k := strings.TrimSpace(keyword)
-			if strings.Contains(v.ShortTitle, k) || v.OpenTenderCode == k {
-				matched = append(matched, k)
+		matched := make([]string, 0, len(r.rules))
+		for _, rule := range r.rules {
+			if rule.IsMatch(v.ShortTitle) || rule.IsMatch(v.OpenTenderCode) {
+				matched = append(matched, rule.ToString())
 			}
-			if len(matched) > 0 {
-				v.Keyword = strings.Join(matched, ", ")
-				r.keywordProjects = append(r.keywordProjects, v)
-			}
+		}
+		if len(matched) > 0 {
+			v.Keyword = strings.Join(matched, "| ")
+			r.keywordProjects = append(r.keywordProjects, v)
 		}
 	}
 }
