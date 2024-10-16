@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/gythialy/magnet/pkg/rule"
+
 	"github.com/gythialy/magnet/pkg/constant"
 
 	"github.com/go-telegram/bot"
@@ -34,9 +36,10 @@ func (c *CommandsHandler) addKeywordHandler(ctx context.Context, b *bot.Bot, upd
 	keywords := strings.Split(tmp, ",")
 	id := update.Message.Chat.ID
 	result := c.keywordDao.Add(keywords, id, t)
+	r := rule.NewComplexRule(result)
 	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,
-		Text:   fmt.Sprintf("%s: %s", prefix, result),
+		Text:   fmt.Sprintf("%s: %s to %s", prefix, result, r.ToString()),
 	}); err != nil {
 		c.ctx.Logger.Error().Err(err)
 	}
@@ -60,6 +63,13 @@ func (c *CommandsHandler) deleteKeywordHandler(ctx context.Context, b *bot.Bot, 
 func (c *CommandsHandler) listKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update, t entities.KeywordType) {
 	id := update.Message.Chat.ID
 	result := c.keywordDao.ListKeywords(id, t)
+	if t == entities.PROJECT {
+		for i, v := range result {
+			if cr := rule.NewComplexRule(v); cr != nil {
+				result[i] = fmt.Sprintf("%s to %s", v, cr.ToString())
+			}
+		}
+	}
 	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,
 		Text:   fmt.Sprintf("All %s keywords: %s", t.String(), strings.Join(result, ", ")),
