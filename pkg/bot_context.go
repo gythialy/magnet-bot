@@ -92,6 +92,10 @@ func NewBotContext() (*BotContext, error) {
 				Description: "List all alarm records",
 			},
 			{
+				Command:     constant.SearchHistory,
+				Description: "Search history data by title",
+			},
+			{
 				Command:     constant.Retry,
 				Description: "Retry failed task, only for the Bot master",
 			},

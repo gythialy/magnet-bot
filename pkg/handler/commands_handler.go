@@ -15,10 +15,13 @@ import (
 	"github.com/gythialy/magnet/pkg/entities"
 )
 
+const maxHistorySize = 20
+
 type CommandsHandler struct {
 	ctx        *pkg.BotContext
 	keywordDao *entities.KeywordDao
 	alarmDao   *entities.AlarmDao
+	historyDao *entities.HistoryDao
 }
 
 func NewCommandsHandler(ctx *pkg.BotContext) *CommandsHandler {
@@ -27,6 +30,7 @@ func NewCommandsHandler(ctx *pkg.BotContext) *CommandsHandler {
 		ctx:        ctx,
 		keywordDao: entities.NewKeywordDao(db),
 		alarmDao:   entities.NewAlarmDao(db),
+		historyDao: entities.NewHistoryDao(db),
 	}
 }
 
@@ -66,13 +70,13 @@ func (c *CommandsHandler) listKeywordHandler(ctx context.Context, b *bot.Bot, up
 	if t == entities.PROJECT {
 		for i, v := range result {
 			if cr := rule.NewComplexRule(v); cr != nil {
-				result[i] = fmt.Sprintf("%s to %s", v, cr.ToString())
+				result[i] = fmt.Sprintf("%s[%s]", v, cr.ToString())
 			}
 		}
 	}
 	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,
-		Text:   fmt.Sprintf("All %s keywords: %s", t.String(), strings.Join(result, ", ")),
+		Text:   fmt.Sprintf("All %s keywords:\n%s", t.String(), strings.Join(result, "\n ")),
 	}); err != nil {
 		c.ctx.Logger.Error().Err(err)
 	}
@@ -120,6 +124,49 @@ func (c *CommandsHandler) ListAlarmRecordHandler(ctx context.Context, b *bot.Bot
 	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:    update.Message.Chat.ID,
 		Text:      result.String(),
+		ParseMode: models.ParseModeHTML,
+	}); err != nil {
+		c.ctx.Logger.Error().Err(err)
+	}
+}
+
+func (c *CommandsHandler) SearchHistoryHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	text := update.Message.Text
+	query := strings.TrimSpace(strings.TrimPrefix(text, constant.SearchHistory))
+	id := update.Message.Chat.ID
+
+	if query == "" {
+		if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: id,
+			Text:   "Please provide a search term",
+		}); err != nil {
+			c.ctx.Logger.Error().Err(err)
+		}
+		return
+	}
+
+	results := c.historyDao.SearchByTitle(id, query)
+
+	var response strings.Builder
+	if len(results) == 0 {
+		response.WriteString("No matching history found.")
+	} else {
+		response.WriteString(fmt.Sprintf("Search results for '%s':\n\n", query))
+		for i, history := range results {
+			response.WriteString(fmt.Sprintf("%d. <a href=\"%s\">%s</a>\n", i+1, history.Url, history.Title))
+
+			if i >= maxHistorySize {
+				break
+			}
+		}
+		if len(results) > maxHistorySize {
+			response.WriteString(fmt.Sprintf("\n(Showing first %d results)", maxHistorySize))
+		}
+	}
+
+	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID:    id,
+		Text:      response.String(),
 		ParseMode: models.ParseModeHTML,
 	}); err != nil {
 		c.ctx.Logger.Error().Err(err)

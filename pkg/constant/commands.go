@@ -12,4 +12,5 @@ const (
 	DeleteAlarmKeyword = "/delete_alarm_keywords"
 	ListAlarmKeyword   = "/list_alarm_keywords"
 	ListAlarmRecords   = "/list_alarm_records"
+	SearchHistory      = "/search_history_title"
 )

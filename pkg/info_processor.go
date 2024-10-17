@@ -55,6 +55,7 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 				newHistories = append(newHistories, &entities.History{
 					UserId:    userId,
 					Url:       url,
+					Title:     msg.Project.ShortTitle,
 					UpdatedAt: now,
 				})
 				time.Sleep(50 * time.Millisecond)

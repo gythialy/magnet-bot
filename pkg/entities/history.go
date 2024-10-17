@@ -11,6 +11,7 @@ import (
 type History struct {
 	UserId    int64  `gorm:"primaryKey;autoIncrement:false"`
 	Url       string `gorm:"primaryKey;autoIncrement:false"`
+	Title     string
 	UpdatedAt time.Time
 }
 
@@ -58,4 +59,14 @@ func (h *HistoryDao) Insert(data []*History) (error, int64) {
 	} else {
 		return nil, tx.RowsAffected
 	}
+}
+
+func (h *HistoryDao) SearchByTitle(userId int64, title string) []History {
+	var result []History
+	if err := h.db.Where("user_id = ? AND title LIKE ?", userId, "%"+title+"%").
+		Order("updated_at DESC").
+		Find(&result).Error; err == nil {
+		return result
+	}
+	return nil
 }
