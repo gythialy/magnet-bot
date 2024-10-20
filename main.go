@@ -14,12 +14,14 @@ import (
 	"github.com/gythialy/magnet/pkg/handler"
 )
 
+const defaultScheduleInterval = 1
+
 func main() {
 	log.Printf("magnet %s @ %s\n", constant.Version, constant.BuildTime)
 
 	ctx, err := pkg.NewBotContext()
 	if err != nil {
-		log.Printf("error: %v\n", err)
+		log.Fatal(err)
 	}
 	commandsHandler := handler.NewCommandsHandler(ctx)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Magnet, bot.MatchTypePrefix, handler.NewMagnetHandler(ctx).Handler)
@@ -35,7 +37,8 @@ func main() {
 	managerHandler := handler.NewManagerHandler(ctx)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Retry, bot.MatchTypePrefix, managerHandler.Retry)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Clean, bot.MatchTypePrefix, managerHandler.Clean)
-	scheduleInterval := 1
+
+	scheduleInterval := defaultScheduleInterval
 	interval := os.Getenv("SCHEDULE_INTERVAL")
 	if interval != "" {
 		if i, err := strconv.Atoi(interval); err == nil {
@@ -46,19 +49,19 @@ func main() {
 		ctx.Processor.Process()
 		return nil
 	})
+	logger := ctx.Logger.Debug()
 	job.RegisterEventListeners(
 		gocron.AfterJobRuns(func(jobName string) {
-			logger := ctx.Logger.Info()
 			logger.Msgf("afterJobRuns: %scheduler", jobName)
 		}),
 		gocron.BeforeJobRuns(func(jobName string) {
-			log.Printf("beforeJobRuns: %scheduler\n", jobName)
+			logger.Msgf("beforeJobRuns: %scheduler\n", jobName)
 		}),
 		gocron.WhenJobReturnsError(func(jobName string, err error) {
-			log.Printf("whenJobReturnsError: %scheduler, %v\n", jobName, err)
+			logger.Msgf("whenJobReturnsError: %scheduler, %v\n", jobName, err)
 		}),
 		gocron.WhenJobReturnsNoError(func(jobName string) {
-			log.Printf("whenJobReturnsNoError: %scheduler\n", jobName)
+			logger.Msgf("whenJobReturnsNoError: %scheduler\n", jobName)
 		}),
 	)
 

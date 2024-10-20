@@ -2,8 +2,11 @@ package pkg
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"time"
+
+	"github.com/gythialy/magnet/pkg/constant"
 
 	"github.com/gythialy/magnet/pkg/utiles"
 
@@ -18,6 +21,7 @@ const (
 	siteId      = "404bb030-5be9-4070-85bd-c94b1473e8de"
 	channelId   = "c5bff13f-21ca-4dac-b158-cb40accd3035"
 	pageSize    = "20"
+	crawlDays   = 2
 )
 
 type Crawler struct {
@@ -29,17 +33,18 @@ type Crawler struct {
 func NewCrawler(ctx *BotContext) *Crawler {
 	return &Crawler{
 		ctx:       ctx,
-		client:    resty.New().EnableTrace(),
+		client:    resty.New().EnableTrace().SetDebug(true),
 		converter: md.NewConverter("", true, nil),
 	}
 }
 
-func (c *Crawler) FetchProjects() []*m.Project {
+func (c *Crawler) FetchProjects() []*Project {
 	now := time.Now()
+	days := c.crawlDays()
 	url := fmt.Sprintf("https://%s/freecms/rest/v1/notice/selectInfoMoreChannel.do?operationStartTime=%s&operationEndTime=%s", c.ctx.ServerUrl,
-		c.format(now.AddDate(0, 0, -1)), c.format(now))
+		c.format(now.AddDate(0, 0, -days)), c.format(now))
 	idx := 1
-	result := make([]*m.Project, 0)
+	result := make([]*Project, 0)
 	params := map[string]string{
 		"siteId":  siteId,
 		"channel": channelId,
@@ -67,7 +72,7 @@ func (c *Crawler) FetchProjects() []*m.Project {
 			if size > 0 {
 				for _, v := range r.Data {
 					content, _ := c.converter.ConvertString(v.Content)
-					result = append(result, &m.Project{
+					result = append(result, &Project{
 						NoticeTime:     v.NoticeTime,
 						OpenTenderCode: v.OpenTenderCode,
 						ShortTitle:     v.Title,
@@ -162,4 +167,14 @@ func (c *Crawler) parseTime(date string) time.Time {
 	}
 	t, _ := time.Parse(time.DateOnly, date)
 	return t
+}
+
+func (c *Crawler) crawlDays() int {
+	days := os.Getenv(constant.CrawlDays)
+	if days != "" {
+		if i, err := strconv.Atoi(days); err == nil {
+			return i
+		}
+	}
+	return crawlDays
 }

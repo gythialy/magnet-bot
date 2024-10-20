@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/rs/zerolog"
 	"gorm.io/gorm/logger"
 
 	"github.com/gythialy/magnet/pkg/constant"
@@ -21,14 +22,35 @@ import (
 	"gorm.io/gorm"
 )
 
-const (
-	TelegramBotToken = "TELEGRAM_BOT_TOKEN"
-	ConfigPath       = "CONFIG_PATH"
-	ManagerId        = "MANAGER_ID"
-	ServerURL        = "SERVER_URL"
-	DatabaseFile     = "bot.db"
-	logFile          = "bot.log"
-)
+type dbLogger struct {
+	*utiles.Logger
+}
+
+func (dl *dbLogger) LogMode(_ logger.LogLevel) logger.Interface {
+	return dl
+}
+
+func (dl *dbLogger) Info(_ context.Context, msg string, data ...interface{}) {
+	dl.Logger.Info().Msgf(msg, data...)
+}
+
+func (dl *dbLogger) Warn(_ context.Context, msg string, data ...interface{}) {
+	dl.Logger.Warn().Msgf(msg, data...)
+}
+
+func (dl *dbLogger) Error(_ context.Context, msg string, data ...interface{}) {
+	dl.Logger.Error().Msgf(msg, data...)
+}
+
+func (dl *dbLogger) Trace(_ context.Context, begin time.Time, fc func() (string, int64), err error) {
+	elapsed := time.Since(begin)
+	sql, rows := fc()
+	if err != nil {
+		dl.Logger.Error().Msgf("[%.3fms] [rows:%v] %s; %s", float64(elapsed.Nanoseconds())/1e6, rows, sql, err)
+	} else {
+		dl.Logger.Info().Msgf("[%.3fms] [rows:%v] %s", float64(elapsed.Nanoseconds())/1e6, rows, sql)
+	}
+}
 
 type BotContext struct {
 	ctx       context.Context
@@ -44,11 +66,11 @@ type BotContext struct {
 }
 
 func NewBotContext() (*BotContext, error) {
-	cfgPath := os.Getenv(ConfigPath)
+	cfgPath := os.Getenv(constant.ConfigPath)
 	if cfgPath == "" {
 		cfgPath, _ = os.Getwd()
 	}
-	telegramBot, err := bot.New(os.Getenv(TelegramBotToken), []bot.Option{}...)
+	telegramBot, err := bot.New(os.Getenv(constant.TelegramBotToken), []bot.Option{}...)
 	if err != nil {
 		return nil, err
 	}
@@ -108,8 +130,21 @@ func NewBotContext() (*BotContext, error) {
 		return nil, err
 	}
 
-	db, err := gorm.Open(sqlite.Open(path.Join(cfgPath, DatabaseFile)), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+	level := logLevel()
+	ctxLogger := utiles.Configure(utiles.Config{
+		ConsoleLoggingEnabled: true,
+		EncodeLogsAsJson:      false,
+		FileLoggingEnabled:    true,
+		Directory:             cfgPath,
+		Filename:              constant.LogFile,
+		MaxSize:               10,
+		MaxBackups:            10,
+		MaxAge:                7,
+		LogLevel:              level,
+	})
+
+	db, err := gorm.Open(sqlite.Open(path.Join(cfgPath, constant.DatabaseFile)), &gorm.Config{
+		Logger: &dbLogger{ctxLogger},
 	})
 	if err != nil {
 		return nil, err
@@ -129,18 +164,9 @@ func NewBotContext() (*BotContext, error) {
 		Bot:       telegramBot,
 		DB:        db,
 		ManagerId: id(),
-		ServerUrl: os.Getenv(ServerURL),
-		Logger: utiles.Configure(utiles.Config{
-			ConsoleLoggingEnabled: true,
-			EncodeLogsAsJson:      false,
-			FileLoggingEnabled:    true,
-			Directory:             cfgPath,
-			Filename:              logFile,
-			MaxSize:               10,
-			MaxBackups:            10,
-			MaxAge:                7,
-		}),
-		BaseDir: cfgPath,
+		ServerUrl: os.Getenv(constant.ServerURL),
+		Logger:    ctxLogger,
+		BaseDir:   cfgPath,
 	}
 	if botContext.Processor, err = NewInfoProcessor(botContext); err == nil {
 		return botContext, nil
@@ -162,7 +188,7 @@ func (ctx *BotContext) Stop() {
 }
 
 func id() int64 {
-	id := os.Getenv(ManagerId)
+	id := os.Getenv(constant.ManagerId)
 	if id == "" {
 		return 0
 	} else {
@@ -172,4 +198,14 @@ func id() int64 {
 			return 0
 		}
 	}
+}
+
+func logLevel() zerolog.Level {
+	logLevel := os.Getenv(constant.LogLevel)
+	if logLevel != "" {
+		if level, err := zerolog.ParseLevel(logLevel); err == nil {
+			return level
+		}
+	}
+	return zerolog.DebugLevel
 }

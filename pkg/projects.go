@@ -1,4 +1,4 @@
-package entities
+package pkg
 
 import (
 	"bytes"
@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/gythialy/magnet/pkg/rule"
-
 	"github.com/rs/zerolog/log"
 )
 
@@ -35,19 +34,22 @@ type Projects struct {
 	Projects        []*Project
 	keywordProjects []*Project
 	rules           []*rule.ComplexRule
+	ctx             *BotContext
 }
 
-func NewProjects(projects []*Project, rules []*rule.ComplexRule) *Projects {
+func NewProjects(ctx *BotContext, projects []*Project, rules []*rule.ComplexRule) *Projects {
 	return &Projects{
 		Projects:        projects,
 		rules:           rules,
 		keywordProjects: make([]*Project, 0),
+		ctx:             ctx,
 	}
 }
 
 func (r *Projects) filter() {
+	logger := r.ctx.Logger
 	for _, v := range r.Projects {
-		log.Debug().Msgf("process: %s", v.ShortTitle)
+		logger.Debug().Msgf("process: %s", v.ShortTitle)
 		matched := make([]string, 0, len(r.rules))
 		for _, cr := range r.rules {
 			if cr.IsMatch(v.ShortTitle) || cr.IsMatch(v.OpenTenderCode) {
@@ -57,7 +59,7 @@ func (r *Projects) filter() {
 		if len(matched) > 0 {
 			v.Keyword = strings.Join(matched, "| ")
 			r.keywordProjects = append(r.keywordProjects, v)
-			log.Debug().Msgf("matched: %s", v.Keyword)
+			logger.Debug().Msgf("matched: %s", v.Keyword)
 		}
 	}
 }

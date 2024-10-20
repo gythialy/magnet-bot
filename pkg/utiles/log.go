@@ -6,7 +6,6 @@ import (
 	"path"
 
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
@@ -29,34 +28,37 @@ type Config struct {
 	// MaxBackups the max number of rolled files to keep
 	MaxBackups int
 	// MaxAge the max age in days to keep a logfile
-	MaxAge int
+	MaxAge   int
+	LogLevel zerolog.Level
 }
 
 type Logger struct {
 	*zerolog.Logger
 }
 
-// Configure sets up the logging framework
-//
-// In production, the container logs will be collected and file logging should be disabled. However,
-// during development it's nicer to see logs as text and optionally write to a file when debugging
-// problems in the containerized pipeline
-//
-// The output log file will be located at /var/log/service-xyz/service-xyz.log and
-// will be rolled according to configuration set.
 func Configure(config Config) *Logger {
 	var writers []io.Writer
 
 	if config.ConsoleLoggingEnabled {
-		writers = append(writers, zerolog.ConsoleWriter{Out: os.Stderr})
+		if config.EncodeLogsAsJson {
+			writers = append(writers, os.Stderr)
+		} else {
+			writers = append(writers, zerolog.ConsoleWriter{Out: os.Stderr, NoColor: false})
+		}
 	}
-	if config.FileLoggingEnabled {
-		writers = append(writers, newRollingFile(config))
-	}
-	mw := io.MultiWriter(writers...)
 
-	zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	logger := zerolog.New(mw).With().Timestamp().Logger()
+	if config.FileLoggingEnabled {
+		fileWriter := newRollingFile(config)
+		if fileWriter != nil {
+			if config.EncodeLogsAsJson {
+				writers = append(writers, fileWriter)
+			} else {
+				writers = append(writers, zerolog.ConsoleWriter{Out: fileWriter, NoColor: true, TimeFormat: zerolog.TimeFormatUnix})
+			}
+		}
+	}
+
+	logger := zerolog.New(io.MultiWriter(writers...)).With().Timestamp().Logger().Level(config.LogLevel)
 
 	logger.Info().
 		Bool("fileLogging", config.FileLoggingEnabled).
@@ -68,14 +70,13 @@ func Configure(config Config) *Logger {
 		Int("maxAgeInDays", config.MaxAge).
 		Msg("logging configured")
 
-	return &Logger{
-		Logger: &logger,
-	}
+	return &Logger{Logger: &logger}
 }
 
 func newRollingFile(config Config) io.Writer {
 	if err := os.MkdirAll(config.Directory, 0o744); err != nil {
-		log.Error().Err(err).Str("path", config.Directory).Msg("can't create log directory")
+		errorLogger := zerolog.New(os.Stderr).With().Timestamp().Logger()
+		errorLogger.Error().Err(err).Str("path", config.Directory).Msg("can't create log directory")
 		return nil
 	}
 
