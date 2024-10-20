@@ -31,9 +31,15 @@ type Crawler struct {
 }
 
 func NewCrawler(ctx *BotContext) *Crawler {
+	client := resty.New().EnableTrace()
+	if _, exists := os.LookupEnv(constant.RestyTrace); exists {
+		client.SetDebug(true)
+	} else {
+		client.SetDebug(false)
+	}
 	return &Crawler{
 		ctx:       ctx,
-		client:    resty.New().EnableTrace().SetDebug(true),
+		client:    client,
 		converter: md.NewConverter("", true, nil),
 	}
 }

@@ -9,4 +9,5 @@ const (
 	LogFile          = "bot.log"
 	LogLevel         = "LOG_LEVEL"
 	CrawlDays        = "CRAWL_DAYS"
+	RestyTrace       = "RESTY_TRACE"
 )

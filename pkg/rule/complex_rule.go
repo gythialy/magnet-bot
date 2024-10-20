@@ -56,6 +56,7 @@ func (cr *ComplexRule) UnmarshalJSON(data []byte) error {
 // the data. If any of them are not, it returns false. If both checks pass, it
 // returns true.
 func (cr *ComplexRule) IsMatch(data string) bool {
+	data = normalizeString(data)
 	for term := range cr.ExcludeTerms {
 		if strings.Contains(data, term) {
 			return false
@@ -123,7 +124,7 @@ func NewComplexRule(r string) *ComplexRule {
 	// Split the input string, but keep quoted parts together
 	terms := splitPreservingQuotes(r)
 	for _, term := range terms {
-		term = strings.TrimSpace(term)
+		term = normalizeString(term)
 		if term == "" {
 			continue
 		}
@@ -162,4 +163,18 @@ func splitPreservingQuotes(s string) []string {
 	}
 
 	return result
+}
+
+// normalizeString removes all types of spaces from a string
+// converts Chinese brackets to English brackets
+func normalizeString(s string) string {
+	tmp := strings.ReplaceAll(s, "（", "(")
+	tmp = strings.ReplaceAll(tmp, "）", ")")
+	tmp = strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1 // Drop the space
+		}
+		return r
+	}, tmp)
+	return tmp
 }

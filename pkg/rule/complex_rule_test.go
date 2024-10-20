@@ -319,3 +319,96 @@ func TestComplexRule_ToString(t *testing.T) {
 		})
 	}
 }
+
+func Test_NormalizeString(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "Remove spaces",
+			input:    "Hello World",
+			expected: "HelloWorld",
+		},
+		{
+			name:     "Remove various types of spaces",
+			input:    "Hello World\t\n\r\v\f",
+			expected: "HelloWorld",
+		},
+		{
+			name:     "Convert Chinese brackets to English",
+			input:    "（Hello）World",
+			expected: "(Hello)World",
+		},
+		{
+			name:     "Mixed spaces and brackets",
+			input:    " Hello （World） ",
+			expected: "Hello(World)",
+		},
+		{
+			name:     "No changes needed",
+			input:    "HelloWorld",
+			expected: "HelloWorld",
+		},
+		{
+			name:     "Empty string",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "Only spaces",
+			input:    "   \t\n\r  ",
+			expected: "",
+		},
+		{
+			name:     "Unicode spaces",
+			input:    "Hello\u2000World\u2001",
+			expected: "HelloWorld",
+		},
+		{
+			name:     "Mixed brackets",
+			input:    "（Hello) (World）",
+			expected: "(Hello)(World)",
+		},
+		{
+			name:     "Chinese characters",
+			input:    "你好世界",
+			expected: "你好世界",
+		},
+		{
+			name:     "Chinese characters with spaces",
+			input:    "你好 世界",
+			expected: "你好世界",
+		},
+		{
+			name:     "Chinese characters with brackets",
+			input:    "（你好）世界",
+			expected: "(你好)世界",
+		},
+		{
+			name:     "Mixed Chinese and English",
+			input:    "Hello 你好 World 世界",
+			expected: "Hello你好World世界",
+		},
+		{
+			name:     "Chinese punctuation",
+			input:    "你好，世界！",
+			expected: "你好，世界！",
+		},
+		{
+			name:     "Complex mixed case",
+			input:    "（Hello 你好）World 世界 ",
+			expected: "(Hello你好)World世界",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := normalizeString(tt.input)
+			if result != tt.expected {
+				t.Errorf("cleanTitle(%q) = %q, want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
