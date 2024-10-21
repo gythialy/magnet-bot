@@ -43,7 +43,7 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 				// already processed, skip it
 				url := msg.Project.Pageurl
 				shortTitle := msg.Project.ShortTitle
-				if historyDao.IsUrlExist(userId, url) {
+				if historyDao.IsUrlExist(userId, url) && !m.IsForced {
 					ctx.Logger.Debug().Msgf("%s already processed", shortTitle)
 					continue
 				}
@@ -133,6 +133,7 @@ func (r *InfoProcessor) Process() {
 		data.Projects = projects
 		// fetch alarm data by userId
 		data.Alarms = r.crawler.Fetch(data.AlarmKeyword, data.UserId)
+		data.IsForced = false
 		if err := r.pool.Invoke(data); err != nil {
 			r.context.Logger.Error().Err(err)
 		}
@@ -145,6 +146,7 @@ func (r *InfoProcessor) Get(id int64) {
 	if len(results) > 0 {
 		data := r.get(id)
 		data.Projects = results
+		data.IsForced = true
 		if err := r.pool.Invoke(data); err != nil {
 			r.context.Logger.Error().Err(err)
 		}
@@ -189,4 +191,5 @@ type ConfigData struct {
 	AlarmKeyword []string
 	Projects     []*Project
 	Alarms       []*entities.Alarm
+	IsForced     bool
 }
