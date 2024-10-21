@@ -49,7 +49,7 @@ func NewProjects(ctx *BotContext, projects []*Project, rules []*rule.ComplexRule
 func (r *Projects) filter() {
 	logger := r.ctx.Logger
 	for _, v := range r.Projects {
-		logger.Debug().Msgf("process: %s", v.ShortTitle)
+		logger.Debug().Msgf("process: %s, %s@%s", v.ShortTitle, v.OpenTenderCode, v.NoticeTime)
 		matched := make([]string, 0, len(r.rules))
 		for _, cr := range r.rules {
 			if cr.IsMatch(v.ShortTitle) || cr.IsMatch(v.OpenTenderCode) {
@@ -59,7 +59,7 @@ func (r *Projects) filter() {
 		if len(matched) > 0 {
 			v.Keyword = strings.Join(matched, "| ")
 			r.keywordProjects = append(r.keywordProjects, v)
-			logger.Debug().Msgf("matched: %s", v.Keyword)
+			logger.Debug().Msgf("matched by (%s)", v.Keyword)
 		}
 	}
 }
