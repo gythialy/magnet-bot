@@ -53,11 +53,11 @@ func (r *Projects) filter() {
 		matched := make([]string, 0, len(r.rules))
 		for _, cr := range r.rules {
 			if cr.IsMatch(v.ShortTitle) || cr.IsMatch(v.OpenTenderCode) {
-				matched = append(matched, cr.ToString())
+				matched = append(matched, cr.Original())
 			}
 		}
 		if len(matched) > 0 {
-			v.Keyword = strings.Join(matched, "| ")
+			v.Keyword = strings.Join(matched, "|")
 			r.keywordProjects = append(r.keywordProjects, v)
 			logger.Debug().Msgf("matched by (%s)", v.Keyword)
 		}

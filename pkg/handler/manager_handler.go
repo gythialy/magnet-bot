@@ -25,11 +25,11 @@ func NewManagerHandler(ctx *pkg.BotContext) *ManagerHandler {
 }
 
 func (h *ManagerHandler) Retry(ctx context.Context, b *bot.Bot, update *models.Update) {
-	id := update.Message.Chat.ID
-	if id == h.ctx.ManagerId {
+	userId := update.Message.Chat.ID
+	if userId == h.ctx.ManagerId {
 		// Send initial processing message
 		sentMsg, err := b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID: update.Message.Chat.ID,
+			ChatID: userId,
 			Text:   "Processing, please wait...",
 		})
 		if err != nil {
@@ -38,11 +38,11 @@ func (h *ManagerHandler) Retry(ctx context.Context, b *bot.Bot, update *models.U
 		}
 
 		go func() {
-			h.ctx.Processor.Get(id)
+			h.ctx.Processor.Get(userId)
 
 			// Edit the message when processing is done
 			if _, err := b.EditMessageText(ctx, &bot.EditMessageTextParams{
-				ChatID:    update.Message.Chat.ID,
+				ChatID:    userId,
 				MessageID: sentMsg.ID,
 				Text:      "Processing completed.",
 			}); err != nil {

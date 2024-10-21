@@ -12,6 +12,7 @@ import (
 type ComplexRule struct {
 	IncludeTerms map[string]struct{}
 	ExcludeTerms map[string]struct{}
+	original     string
 }
 
 // Use sync.Pool to reuse slices during marshaling and unmarshaling
@@ -98,6 +99,10 @@ func (cr *ComplexRule) ToString() string {
 	return strings.Join(parts, " ")
 }
 
+func (cr *ComplexRule) Original() string {
+	return cr.original
+}
+
 func keysToSlice(m map[string]struct{}) *[]string {
 	slice := slicePool.Get().(*[]string)
 	*slice = (*slice)[:0] // Reset the slice length
@@ -119,6 +124,7 @@ func NewComplexRule(r string) *ComplexRule {
 	rule := &ComplexRule{
 		IncludeTerms: make(map[string]struct{}),
 		ExcludeTerms: make(map[string]struct{}),
+		original:     r,
 	}
 
 	// Split the input string, but keep quoted parts together
