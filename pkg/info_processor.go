@@ -6,15 +6,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gythialy/magnet/pkg/rule"
-
 	"github.com/gythialy/magnet/pkg/utiles"
+
+	"github.com/gythialy/magnet/pkg/rule"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"github.com/gythialy/magnet/pkg/entities"
 	"github.com/panjf2000/ants/v2"
 )
+
+const poolSize = 10
 
 type InfoProcessor struct {
 	context    *BotContext
@@ -28,20 +30,21 @@ type InfoProcessor struct {
 func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 	historyDao := entities.NewHistoryDao(ctx.DB)
 	alarmDao := entities.NewAlarmDao(ctx.DB)
-	pool, err := ants.NewPoolWithFunc(10, func(i interface{}) {
+	if pool, err := ants.NewPoolWithFunc(poolSize, func(i interface{}) {
 		switch m := i.(type) {
 		case ConfigData:
 			// process projects
 			messages := NewProjects(ctx, m.Projects, m.ProjectRules).ToMarkdown()
 			failed := []string{"failed:"}
 			userId := m.UserId
-			histories := historyDao.Cache(userId)
 			var newHistories []*entities.History
 			now := time.Now()
 			for title, msg := range messages {
 				// already processed, skip it
 				url := msg.Project.Pageurl
-				if _, ok := histories[url]; ok {
+				shortTitle := msg.Project.ShortTitle
+				if historyDao.IsUrlExist(userId, url) {
+					ctx.Logger.Debug().Msgf("%s already processed", shortTitle)
 					continue
 				}
 				if _, err := ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
@@ -51,13 +54,15 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 				}); err != nil {
 					failed = append(failed, fmt.Sprintf("[%s](%s)  ", utiles.Escape(title), url))
 					ctx.Logger.Error().Err(err)
+				} else {
+					ctx.Logger.Info().Msgf("notify: %s[%s]", title, msg.Project.OpenTenderCode)
+					newHistories = append(newHistories, &entities.History{
+						UserId:    userId,
+						Url:       url,
+						Title:     shortTitle,
+						UpdatedAt: now,
+					})
 				}
-				newHistories = append(newHistories, &entities.History{
-					UserId:    userId,
-					Url:       url,
-					Title:     msg.Project.ShortTitle,
-					UpdatedAt: now,
-				})
 				time.Sleep(50 * time.Millisecond)
 			}
 
@@ -93,9 +98,9 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 					ParseMode: models.ParseModeHTML,
 				}); err != nil {
 					ctx.Logger.Error().Err(err)
+				} else {
+					newAlarms = append(newAlarms, alarm)
 				}
-
-				newAlarms = append(newAlarms, alarm)
 			}
 
 			if len(newAlarms) > 0 {
@@ -106,19 +111,18 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 				}
 			}
 		}
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
+	} else {
+		return &InfoProcessor{
+			context:    ctx,
+			pool:       pool,
+			crawler:    NewCrawler(ctx),
+			keywordDao: entities.NewKeywordDao(ctx.DB),
+			historyDao: historyDao,
+			alarmDao:   alarmDao,
+		}, nil
 	}
-
-	return &InfoProcessor{
-		context:    ctx,
-		pool:       pool,
-		crawler:    NewCrawler(ctx),
-		keywordDao: entities.NewKeywordDao(ctx.DB),
-		historyDao: historyDao,
-		alarmDao:   alarmDao,
-	}, nil
 }
 
 func (r *InfoProcessor) Process() {

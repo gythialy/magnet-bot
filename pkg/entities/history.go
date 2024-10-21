@@ -31,16 +31,16 @@ func (h *HistoryDao) Clean() error {
 	return nil
 }
 
-func (h *HistoryDao) Cache(userId int64) map[string]History {
-	result := make(map[string]History)
-	var tmp []History
-	if err := h.db.Where("user_id = ? and updated_at > ?", userId, time.Now().Add(-24*time.Hour)).Find(&tmp).Error; err == nil {
-		for _, history := range tmp {
-			result[history.Url] = history
-		}
-	}
-	return result
-}
+//func (h *HistoryDao) Cache(userId int64) map[string]History {
+//	result := make(map[string]History)
+//	var tmp []History
+//	if err := h.db.Where("user_id = ? and updated_at > ?", userId, time.Now().Add(-24*time.Hour)).Find(&tmp).Error; err == nil {
+//		for _, history := range tmp {
+//			result[history.Url] = history
+//		}
+//	}
+//	return result
+//}
 
 func (h *HistoryDao) List(userId int64) []History {
 	var result []History
@@ -48,6 +48,19 @@ func (h *HistoryDao) List(userId int64) []History {
 		return result
 	}
 	return nil
+}
+
+// IsUrlExist checks if the given URL exists in the history table for the given user.
+//
+// This function returns true if the URL exists, false otherwise.
+func (h *HistoryDao) IsUrlExist(userId int64, url string) bool {
+	var count int64
+	if err := h.db.Model(&History{}).
+		Where("user_id = ? AND url = ?", userId, url).
+		Count(&count).Error; err != nil {
+		return false
+	}
+	return count > 0
 }
 
 func (h *HistoryDao) Insert(data []*History) (error, int64) {

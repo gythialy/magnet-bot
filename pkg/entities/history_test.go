@@ -33,54 +33,54 @@ func setupTestDB(t *testing.T) (*gorm.DB, *HistoryDao, func()) {
 	return db, dao, cleanup
 }
 
-func TestHistoryDao_Cache(t *testing.T) {
-	_, dao, cleanup := setupTestDB(t)
-	defer cleanup()
-
-	var histories []*History
-	userId := int64(0)
-	now := time.Now()
-	for i := userId; i < 10; i++ {
-		histories = append(histories, &History{
-			UserId:    userId,
-			Url:       fmt.Sprintf("https://test.com/content%d", i),
-			UpdatedAt: now,
-		})
-	}
-
-	if err, i := dao.Insert(histories); err != nil {
-		t.Fatal(err)
-	} else {
-		t.Logf("insert %d rows", i)
-	}
-
-	data1 := dao.List(userId)
-	t.Log(utiles.ToString(data1))
-
-	date1 := now.AddDate(0, 0, -7)
-	if err, i := dao.Insert([]*History{{
-		UserId:    userId,
-		Url:       fmt.Sprintf("https://test.com/content%d", 2),
-		UpdatedAt: date1,
-	}, {
-		UserId:    userId,
-		Url:       fmt.Sprintf("https://test.com/content%d", 4),
-		UpdatedAt: date1,
-	}}); err != nil {
-		t.Fatal(err)
-	} else {
-		t.Logf("insert %d rows", i)
-	}
-	data2 := dao.List(userId)
-	t.Log(utiles.ToString(data2))
-
-	if err := dao.Clean(); err != nil {
-		t.Fatal(err)
-	}
-
-	data3 := dao.List(userId)
-	t.Log(utiles.ToString(data3))
-}
+//func TestHistoryDao_Cache(t *testing.T) {
+//	_, dao, cleanup := setupTestDB(t)
+//	defer cleanup()
+//
+//	var histories []*History
+//	userId := int64(0)
+//	now := time.Now()
+//	for i := userId; i < 10; i++ {
+//		histories = append(histories, &History{
+//			UserId:    userId,
+//			Url:       fmt.Sprintf("https://test.com/content%d", i),
+//			UpdatedAt: now,
+//		})
+//	}
+//
+//	if err, i := dao.Insert(histories); err != nil {
+//		t.Fatal(err)
+//	} else {
+//		t.Logf("insert %d rows", i)
+//	}
+//
+//	data1 := dao.List(userId)
+//	t.Log(utiles.ToString(data1))
+//
+//	date1 := now.AddDate(0, 0, -7)
+//	if err, i := dao.Insert([]*History{{
+//		UserId:    userId,
+//		Url:       fmt.Sprintf("https://test.com/content%d", 2),
+//		UpdatedAt: date1,
+//	}, {
+//		UserId:    userId,
+//		Url:       fmt.Sprintf("https://test.com/content%d", 4),
+//		UpdatedAt: date1,
+//	}}); err != nil {
+//		t.Fatal(err)
+//	} else {
+//		t.Logf("insert %d rows", i)
+//	}
+//	data2 := dao.List(userId)
+//	t.Log(utiles.ToString(data2))
+//
+//	if err := dao.Clean(); err != nil {
+//		t.Fatal(err)
+//	}
+//
+//	data3 := dao.List(userId)
+//	t.Log(utiles.ToString(data3))
+//}
 
 func TestHistoryDao_SearchByTitle(t *testing.T) {
 	_, dao, cleanup := setupTestDB(t)
@@ -133,6 +133,65 @@ func TestHistoryDao_SearchByTitle(t *testing.T) {
 			}
 
 			t.Logf("Search results for '%s': %s", tc.searchTitle, utiles.ToString(results))
+		})
+	}
+}
+
+func TestHistoryDao_IsUrlExist(t *testing.T) {
+	_, dao, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// Test data
+	userId := int64(1)
+	existingUrl := "https://example.com"
+	nonExistingUrl := "https://nonexistent.com"
+
+	// Insert a test record
+	testHistory := &History{
+		UserId:    userId,
+		Url:       existingUrl,
+		Title:     "Example Website",
+		UpdatedAt: time.Now(),
+	}
+	err, _ := dao.Insert([]*History{testHistory})
+	if err != nil {
+		t.Fatalf("Failed to insert test data: %v", err)
+	}
+
+	// Test cases
+	tests := []struct {
+		name     string
+		userId   int64
+		url      string
+		expected bool
+	}{
+		{
+			name:     "Existing URL",
+			userId:   userId,
+			url:      existingUrl,
+			expected: true,
+		},
+		{
+			name:     "Non-existing URL",
+			userId:   userId,
+			url:      nonExistingUrl,
+			expected: false,
+		},
+		{
+			name:     "Existing URL but different user",
+			userId:   userId + 1,
+			url:      existingUrl,
+			expected: false,
+		},
+	}
+
+	// Run test cases
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := dao.IsUrlExist(tt.userId, tt.url)
+			if result != tt.expected {
+				t.Errorf("IsUrlExist(%d, %s) = %v, want %v", tt.userId, tt.url, result, tt.expected)
+			}
 		})
 	}
 }

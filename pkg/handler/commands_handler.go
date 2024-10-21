@@ -76,7 +76,7 @@ func (c *CommandsHandler) listKeywordHandler(ctx context.Context, b *bot.Bot, up
 	}
 	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,
-		Text:   fmt.Sprintf("All %s keywords:\n%s", t.String(), strings.Join(result, "\n ")),
+		Text:   fmt.Sprintf("All %s keywords:\n%s", t.String(), strings.Join(result, "\n")),
 	}); err != nil {
 		c.ctx.Logger.Error().Err(err)
 	}
