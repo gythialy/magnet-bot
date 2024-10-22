@@ -15,7 +15,10 @@ import (
 	"github.com/gythialy/magnet/pkg/entities"
 )
 
-const maxHistorySize = 20
+const (
+	maxHistorySize      = 20
+	maxAlarmsPerMessage = 20
+)
 
 type CommandsHandler struct {
 	ctx        *pkg.BotContext
@@ -45,7 +48,7 @@ func (c *CommandsHandler) addKeywordHandler(ctx context.Context, b *bot.Bot, upd
 		ChatID: update.Message.Chat.ID,
 		Text:   fmt.Sprintf("%s: %s to %s", prefix, result, r.ToString()),
 	}); err != nil {
-		c.ctx.Logger.Error().Err(err)
+		c.ctx.Logger.Error().Msg(err.Error())
 	}
 }
 
@@ -109,24 +112,55 @@ func (c *CommandsHandler) ListAlarmKeywordHandler(ctx context.Context, b *bot.Bo
 func (c *CommandsHandler) ListAlarmRecordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	id := update.Message.Chat.ID
 	alarms := c.alarmDao.Cache(id)
-	var result strings.Builder
+
 	if len(alarms) == 0 {
-		result.WriteString("can not find any records...")
-	} else {
-		idx := 1
-		for _, alarm := range alarms {
-			result.WriteString(fmt.Sprintf("%d. #%s, %s to %s \n", idx, alarm.CreditName,
+		if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: id,
+			Text:   "Can not find any records...",
+		}); err != nil {
+			c.ctx.Logger.Error().Msg(err.Error())
+		}
+		return
+	}
+
+	totalMessages := (len(alarms) + maxAlarmsPerMessage - 1) / maxAlarmsPerMessage
+
+	// Convert map to a slice of alarms for easier iteration
+	alarmSlice := make([]entities.Alarm, 0, len(alarms))
+	for _, alarm := range alarms {
+		alarmSlice = append(alarmSlice, alarm)
+	}
+
+	for i := 0; i < totalMessages; i++ {
+		start := i * maxAlarmsPerMessage
+		end := (i + 1) * maxAlarmsPerMessage
+		if end > len(alarmSlice) {
+			end = len(alarmSlice)
+		}
+
+		var result strings.Builder
+		for idx := start; idx < end; idx++ {
+			alarm := alarmSlice[idx]
+			result.WriteString(fmt.Sprintf("%d. %s, %s to %s\n", idx+1, alarm.CreditName,
 				alarm.StartDate.Format("2006-01-02"), alarm.EndDate.Format("2006-01-02")))
-			idx++
+		}
+
+		if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:    id,
+			Text:      result.String(),
+			ParseMode: models.ParseModeHTML,
+		}); err != nil {
+			c.ctx.Logger.Error().Msg(err.Error())
 		}
 	}
 
-	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID:    update.Message.Chat.ID,
-		Text:      result.String(),
-		ParseMode: models.ParseModeHTML,
-	}); err != nil {
-		c.ctx.Logger.Error().Err(err)
+	if totalMessages > 1 {
+		if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: id,
+			Text:   fmt.Sprintf("Total %d records displayed in %d messages.", len(alarms), totalMessages),
+		}); err != nil {
+			c.ctx.Logger.Error().Msg(err.Error())
+		}
 	}
 }
 
@@ -140,35 +174,61 @@ func (c *CommandsHandler) SearchHistoryHandler(ctx context.Context, b *bot.Bot, 
 			ChatID: id,
 			Text:   "Please provide a search term",
 		}); err != nil {
-			c.ctx.Logger.Error().Err(err)
+			c.ctx.Logger.Error().Msg(err.Error())
 		}
 		return
 	}
 
 	results := c.historyDao.SearchByTitle(id, query)
 
-	var response strings.Builder
 	if len(results) == 0 {
-		response.WriteString("No matching history found.")
-	} else {
-		response.WriteString(fmt.Sprintf("Search results for '%s':\n\n", query))
-		for i, history := range results {
-			response.WriteString(fmt.Sprintf("%d. <a href=\"%s\">%s</a>\n", i+1, history.Url, history.Title))
-
-			if i >= maxHistorySize {
-				break
-			}
+		if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: id,
+			Text:   "No matching history found.",
+		}); err != nil {
+			c.ctx.Logger.Error().Msg(err.Error())
 		}
-		if len(results) > maxHistorySize {
-			response.WriteString(fmt.Sprintf("\n(Showing first %d results)", maxHistorySize))
+		return
+	}
+
+	// Send initial message
+	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID: id,
+		Text:   fmt.Sprintf("Search results for '%s':", query),
+	}); err != nil {
+		c.ctx.Logger.Error().Msg(err.Error())
+		return
+	}
+
+	// Send results in batches
+	batchSize := maxHistorySize
+	for i := 0; i < len(results); i += batchSize {
+		end := i + batchSize
+		if end > len(results) {
+			end = len(results)
+		}
+
+		var response strings.Builder
+		for j, history := range results[i:end] {
+			response.WriteString(fmt.Sprintf("%d. <a href=\"%s\">%s</a>\n", i+j+1, history.Url, history.Title))
+		}
+
+		if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:    id,
+			Text:      response.String(),
+			ParseMode: models.ParseModeHTML,
+		}); err != nil {
+			c.ctx.Logger.Error().Msg(err.Error())
 		}
 	}
 
-	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID:    id,
-		Text:      response.String(),
-		ParseMode: models.ParseModeHTML,
-	}); err != nil {
-		c.ctx.Logger.Error().Err(err)
+	// Send summary message if there are more results than maxHistorySize
+	if len(results) > maxHistorySize {
+		if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: id,
+			Text:   fmt.Sprintf("Displayed all %d results.", len(results)),
+		}); err != nil {
+			c.ctx.Logger.Error().Msg(err.Error())
+		}
 	}
 }

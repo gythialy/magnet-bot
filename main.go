@@ -55,13 +55,13 @@ func main() {
 			logger.Msgf("afterJobRuns: %scheduler", jobName)
 		}),
 		gocron.BeforeJobRuns(func(jobName string) {
-			logger.Msgf("beforeJobRuns: %scheduler\n", jobName)
+			logger.Msgf("beforeJobRuns: %scheduler", jobName)
 		}),
 		gocron.WhenJobReturnsError(func(jobName string, err error) {
-			logger.Msgf("whenJobReturnsError: %scheduler, %v\n", jobName, err)
+			logger.Msgf("whenJobReturnsError: %scheduler, %v", jobName, err)
 		}),
 		gocron.WhenJobReturnsNoError(func(jobName string) {
-			logger.Msgf("whenJobReturnsNoError: %scheduler\n", jobName)
+			logger.Msgf("whenJobReturnsNoError: %scheduler", jobName)
 		}),
 	)
 
