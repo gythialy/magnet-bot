@@ -9,24 +9,13 @@ import (
 )
 
 const (
-	keywordTemplate = `<b>【关键字: {{.Keyword}}】</b><a href="{{.Pageurl}}">{{.Title}}</a>
-{{.Content}}`
+	keywordTemplate = `<b>【关键字: {{.Keyword}}】</b><a href="{{.Pageurl}}">{{.Title}}</a> @ {{.NoticeTime}}
+{{.Content | cleanContent}} `
 )
 
 var keywordRender = template.Must(template.New("keyword_template").Funcs(template.FuncMap{
-	"removeEmptyLines": removeEmptyLines,
+	"cleanContent": cleanContent,
 }).Parse(keywordTemplate))
-
-func removeEmptyLines(s string) string {
-	lines := strings.Split(s, "\n")
-	var nonEmptyLines []string
-	for _, line := range lines {
-		if strings.TrimSpace(line) != "" {
-			nonEmptyLines = append(nonEmptyLines, line)
-		}
-	}
-	return strings.Join(nonEmptyLines, "\n")
-}
 
 type Project struct {
 	NoticeTime     string `json:"noticeTime,omitempty"`
@@ -72,21 +61,54 @@ func (r *Projects) filter() {
 	}
 }
 
-func (r *Projects) ToMarkdown() map[string]TelegramMessage {
+func (r *Projects) ToMessage() map[string]TelegramMessage {
 	r.filter()
 	result := make(map[string]TelegramMessage)
 
 	for _, project := range r.keywordProjects {
 		var buf bytes.Buffer
+		// Remove '**' from the content
+		project.Content = strings.ReplaceAll(project.Content, "**", "")
+
 		if err := keywordRender.Execute(&buf, project); err == nil {
-			c := buf.String()
-			result[project.Title] = TelegramMessage{Content: c, Project: project}
+			result[project.Title] = TelegramMessage{Content: buf.String(), Project: project}
 		} else {
 			r.ctx.Logger.Error().Msg(err.Error())
 		}
 	}
 
 	return result
+}
+
+func cleanContent(content string) string {
+	lines := strings.Split(content, "\n")
+	var merged []string
+	inMergeBlock := false
+	var currentBlock strings.Builder
+
+	for _, line := range lines {
+		trimmedLine := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmedLine, "(一)申领时间") {
+			inMergeBlock = true
+			currentBlock.WriteString(trimmedLine)
+		} else if inMergeBlock && strings.HasPrefix(trimmedLine, "(二)") {
+			merged = append(merged, strings.TrimRight(currentBlock.String(), " "))
+			merged = append(merged, "") // Add an empty line before (二)
+			merged = append(merged, line)
+			inMergeBlock = false
+			currentBlock.Reset()
+		} else if inMergeBlock {
+			currentBlock.WriteString(" " + trimmedLine)
+		} else {
+			merged = append(merged, line)
+		}
+	}
+
+	if inMergeBlock {
+		merged = append(merged, strings.TrimRight(currentBlock.String(), " "))
+	}
+
+	return strings.Join(merged, "\n")
 }
 
 type TelegramMessage struct {

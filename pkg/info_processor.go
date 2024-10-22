@@ -32,7 +32,7 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 		switch m := i.(type) {
 		case ConfigData:
 			// process projects
-			messages := NewProjects(ctx, m.Projects, m.ProjectRules).ToMarkdown()
+			messages := NewProjects(ctx, m.Projects, m.ProjectRules).ToMessage()
 			failed := []string{"failed:"}
 			userId := m.UserId
 			var newHistories []*entities.History
