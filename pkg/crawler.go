@@ -78,7 +78,6 @@ func (c *Crawler) FetchProjects() []*Project {
 			if size > 0 {
 				for _, v := range r.Data {
 					content, _ := c.converter.ConvertString(v.Content)
-
 					result = append(result, &Project{
 						NoticeTime:     v.NoticeTime,
 						OpenTenderCode: v.OpenTenderCode,
