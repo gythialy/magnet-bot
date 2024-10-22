@@ -6,19 +6,27 @@ import (
 	"strings"
 
 	"github.com/gythialy/magnet/pkg/rule"
-	"github.com/rs/zerolog/log"
 )
 
 const (
-	keywordTemplate = `【关键字: {{.Keyword}}】[{{.Title}}]({{.Pageurl}})   
-	{{.Content}}`
+	keywordTemplate = `<b>【关键字: {{.Keyword}}】</b><a href="{{.Pageurl}}">{{.Title}}</a>
+{{.Content}}`
 )
 
 var keywordRender = template.Must(template.New("keyword_template").Funcs(template.FuncMap{
-	"html": func(s string) string {
-		return s
-	},
+	"removeEmptyLines": removeEmptyLines,
 }).Parse(keywordTemplate))
+
+func removeEmptyLines(s string) string {
+	lines := strings.Split(s, "\n")
+	var nonEmptyLines []string
+	for _, line := range lines {
+		if strings.TrimSpace(line) != "" {
+			nonEmptyLines = append(nonEmptyLines, line)
+		}
+	}
+	return strings.Join(nonEmptyLines, "\n")
+}
 
 type Project struct {
 	NoticeTime     string `json:"noticeTime,omitempty"`
@@ -53,34 +61,35 @@ func (r *Projects) filter() {
 		matched := make([]string, 0, len(r.rules))
 		for _, cr := range r.rules {
 			if cr.IsMatch(v.ShortTitle) || cr.IsMatch(v.OpenTenderCode) {
-				matched = append(matched, cr.Original())
+				matched = append(matched, cr.ToString())
 			}
 		}
 		if len(matched) > 0 {
-			v.Keyword = strings.Join(matched, "|")
+			v.Keyword = strings.Join(matched, "| ")
 			r.keywordProjects = append(r.keywordProjects, v)
 			logger.Debug().Msgf("matched by (%s)", v.Keyword)
 		}
 	}
 }
 
-func (r *Projects) ToMarkdown() map[string]Markdown {
+func (r *Projects) ToMarkdown() map[string]TelegramMessage {
 	r.filter()
-	result := make(map[string]Markdown)
+	result := make(map[string]TelegramMessage)
 
 	for _, project := range r.keywordProjects {
 		var buf bytes.Buffer
 		if err := keywordRender.Execute(&buf, project); err == nil {
-			result[project.Title] = Markdown{Content: buf.String(), Project: project}
+			c := buf.String()
+			result[project.Title] = TelegramMessage{Content: c, Project: project}
 		} else {
-			log.Err(err)
+			r.ctx.Logger.Error().Msg(err.Error())
 		}
 	}
 
 	return result
 }
 
-type Markdown struct {
+type TelegramMessage struct {
 	Content string
 	Project *Project
 }

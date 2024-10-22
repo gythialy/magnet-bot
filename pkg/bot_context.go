@@ -16,14 +16,14 @@ import (
 	"github.com/go-co-op/gocron"
 	"github.com/go-telegram/bot"
 	"github.com/gythialy/magnet/pkg/entities"
-	"github.com/gythialy/magnet/pkg/utiles"
+	"github.com/gythialy/magnet/pkg/utils"
 	"golang.org/x/net/context"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
 type dbLogger struct {
-	*utiles.Logger
+	*utils.Logger
 }
 
 func (dl *dbLogger) LogMode(_ logger.LogLevel) logger.Interface {
@@ -61,7 +61,7 @@ type BotContext struct {
 	ManagerId int64
 	ServerUrl string
 	Processor *InfoProcessor
-	Logger    *utiles.Logger
+	Logger    *utils.Logger
 	BaseDir   string
 }
 
@@ -131,7 +131,7 @@ func NewBotContext() (*BotContext, error) {
 	}
 
 	level := logLevel()
-	ctxLogger := utiles.Configure(utiles.Config{
+	ctxLogger := utils.Configure(utils.Config{
 		ConsoleLoggingEnabled: true,
 		EncodeLogsAsJson:      false,
 		FileLoggingEnabled:    true,

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gythialy/magnet/pkg/utiles"
+	"github.com/gythialy/magnet/pkg/utils"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -55,7 +55,7 @@ func setupTestDB(t *testing.T) (*gorm.DB, *HistoryDao, func()) {
 //	}
 //
 //	data1 := dao.List(userId)
-//	t.Log(utiles.ToString(data1))
+//	t.Log(utils.ToString(data1))
 //
 //	date1 := now.AddDate(0, 0, -7)
 //	if err, i := dao.Insert([]*History{{
@@ -72,14 +72,14 @@ func setupTestDB(t *testing.T) (*gorm.DB, *HistoryDao, func()) {
 //		t.Logf("insert %d rows", i)
 //	}
 //	data2 := dao.List(userId)
-//	t.Log(utiles.ToString(data2))
+//	t.Log(utils.ToString(data2))
 //
 //	if err := dao.Clean(); err != nil {
 //		t.Fatal(err)
 //	}
 //
 //	data3 := dao.List(userId)
-//	t.Log(utiles.ToString(data3))
+//	t.Log(utils.ToString(data3))
 //}
 
 func TestHistoryDao_SearchByTitle(t *testing.T) {
@@ -132,7 +132,7 @@ func TestHistoryDao_SearchByTitle(t *testing.T) {
 				}
 			}
 
-			t.Logf("Search results for '%s': %s", tc.searchTitle, utiles.ToString(results))
+			t.Logf("Search results for '%s': %s", tc.searchTitle, utils.ToString(results))
 		})
 	}
 }

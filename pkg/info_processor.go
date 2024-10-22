@@ -6,8 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gythialy/magnet/pkg/utiles"
-
 	"github.com/gythialy/magnet/pkg/rule"
 
 	"github.com/go-telegram/bot"
@@ -50,12 +48,12 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 				if _, err := ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
 					ChatID:    userId,
 					Text:      msg.Content,
-					ParseMode: models.ParseModeMarkdown,
+					ParseMode: models.ParseModeHTML,
 				}); err != nil {
-					failed = append(failed, fmt.Sprintf("[%s](%s)  ", utiles.Escape(title), url))
-					ctx.Logger.Error().Err(err)
+					failed = append(failed, fmt.Sprintf("<a href=\"%s\">%s</a>", url, title))
+					ctx.Logger.Error().Msg(err.Error())
 				} else {
-					ctx.Logger.Info().Msgf("notify: %s[%s]", title, msg.Project.OpenTenderCode)
+					ctx.Logger.Info().Msgf("notify: %s[%s]", msg.Project.ShortTitle, msg.Project.OpenTenderCode)
 					newHistories = append(newHistories, &entities.History{
 						UserId:    userId,
 						Url:       url,
@@ -70,15 +68,15 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 				if _, err := ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
 					ChatID:    userId,
 					Text:      strings.Join(failed, "\n"),
-					ParseMode: models.ParseModeMarkdown,
+					ParseMode: models.ParseModeHTML,
 				}); err != nil {
-					ctx.Logger.Error().Err(err)
+					ctx.Logger.Error().Msg(err.Error())
 				}
 			}
 
 			if len(newHistories) > 0 {
 				if err, rows := historyDao.Insert(newHistories); err != nil {
-					ctx.Logger.Error().Err(err)
+					ctx.Logger.Error().Msg(err.Error())
 				} else {
 					ctx.Logger.Info().Msgf("insert %d projects", rows)
 				}
@@ -97,7 +95,7 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 					Text:      msg,
 					ParseMode: models.ParseModeHTML,
 				}); err != nil {
-					ctx.Logger.Error().Err(err)
+					ctx.Logger.Error().Msg(err.Error())
 				} else {
 					newAlarms = append(newAlarms, alarm)
 				}
@@ -105,7 +103,7 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 
 			if len(newAlarms) > 0 {
 				if err, rows := alarmDao.Insert(newAlarms); err != nil {
-					ctx.Logger.Error().Err(err)
+					ctx.Logger.Error().Msg(err.Error())
 				} else {
 					ctx.Logger.Info().Msgf("insert %d alarms", rows)
 				}
@@ -135,7 +133,7 @@ func (r *InfoProcessor) Process() {
 		data.Alarms = r.crawler.Fetch(data.AlarmKeyword, data.UserId)
 		data.IsForced = false
 		if err := r.pool.Invoke(data); err != nil {
-			r.context.Logger.Error().Err(err)
+			r.context.Logger.Error().Msg(err.Error())
 		}
 	}
 }
@@ -148,7 +146,7 @@ func (r *InfoProcessor) Get(id int64) {
 		data.Projects = results
 		data.IsForced = true
 		if err := r.pool.Invoke(data); err != nil {
-			r.context.Logger.Error().Err(err)
+			r.context.Logger.Error().Msg(err.Error())
 		}
 	}
 }

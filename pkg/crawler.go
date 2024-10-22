@@ -8,8 +8,6 @@ import (
 
 	"github.com/gythialy/magnet/pkg/constant"
 
-	"github.com/gythialy/magnet/pkg/utiles"
-
 	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/go-resty/resty/v2"
 	m "github.com/gythialy/magnet/pkg/entities"
@@ -38,9 +36,11 @@ func NewCrawler(ctx *BotContext) *Crawler {
 		client.SetDebug(false)
 	}
 	return &Crawler{
-		ctx:       ctx,
-		client:    client,
-		converter: md.NewConverter("", true, nil),
+		ctx:    ctx,
+		client: client,
+		converter: md.NewConverter("", true, &md.Options{
+			EscapeMode: "disabled",
+		}),
 	}
 }
 
@@ -78,12 +78,13 @@ func (c *Crawler) FetchProjects() []*Project {
 			if size > 0 {
 				for _, v := range r.Data {
 					content, _ := c.converter.ConvertString(v.Content)
+
 					result = append(result, &Project{
 						NoticeTime:     v.NoticeTime,
 						OpenTenderCode: v.OpenTenderCode,
 						ShortTitle:     v.Title,
-						Title:          utiles.Escape(v.Title),
-						Content:        utiles.Escape(content),
+						Title:          v.Title,
+						Content:        content,
 						Pageurl:        fmt.Sprintf("%s%s", c.ctx.ServerUrl, v.Pageurl),
 					})
 				}
@@ -92,6 +93,7 @@ func (c *Crawler) FetchProjects() []*Project {
 				break
 			}
 		} else {
+			logger.Err(err).Msgf("fetch %s failed", url)
 			break
 		}
 

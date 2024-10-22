@@ -1,4 +1,4 @@
-package utiles
+package utils
 
 import (
 	"encoding/json"
@@ -13,12 +13,12 @@ func ToString(data interface{}) string {
 	return string(b)
 }
 
-// Escape
+// EscapeMarkdown
 // In all other places characters '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!'
 // must be escaped with the preceding character '\'.
 // In all other places characters '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!'
 // must be escaped with the preceding character '\'.
-func Escape(s string) string {
+func EscapeMarkdown(s string) string {
 	return strings.NewReplacer(
 		"*", "",
 		"#", "",
@@ -27,6 +27,8 @@ func Escape(s string) string {
 		"]", "\\]",
 		"(", "\\(",
 		")", "\\)",
+		"（", "\\(",
+		"）", "\\)",
 		"~", "\\~",
 		"`", "\\`",
 		">", "\\>",
