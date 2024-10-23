@@ -1,6 +1,11 @@
 package pkg
 
 import (
+	"bytes"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path"
 	"strconv"
@@ -52,17 +57,44 @@ func (dl *dbLogger) Trace(_ context.Context, begin time.Time, fc func() (string,
 	}
 }
 
+type PDFServiceConfig struct {
+	WebhookServer     string
+	WebhookServerPort int
+	PDFServiceURL     string
+}
+
+func (c *PDFServiceConfig) Init() *PDFServiceConfig {
+	if u := os.Getenv(constant.PDFServerUrl); u != "" {
+		c.PDFServiceURL = u
+	}
+	if u := os.Getenv(constant.WebhookServerURL); u != "" {
+		c.WebhookServer = u
+	}
+
+	if v := os.Getenv(constant.WebhookServerPort); v != "" {
+		c.WebhookServerPort, _ = strconv.Atoi(v)
+	}
+	return c
+}
+
+func (c *PDFServiceConfig) WebhookURL() string {
+	return fmt.Sprintf("%s:%d", c.WebhookServer, c.WebhookServerPort)
+}
+
 type BotContext struct {
-	ctx       context.Context
-	cancel    context.CancelFunc
-	Bot       *bot.Bot
-	DB        *gorm.DB
-	Scheduler *gocron.Scheduler
-	ManagerId int64
-	ServerUrl string
-	Processor *InfoProcessor
-	Logger    *utils.Logger
-	BaseDir   string
+	ctx              context.Context
+	cancel           context.CancelFunc
+	Bot              *bot.Bot
+	DB               *gorm.DB
+	Store            *Store
+	Scheduler        *gocron.Scheduler
+	ManagerId        int64
+	MessageServerUrl string
+	Processor        *InfoProcessor
+	Logger           *utils.Logger
+	BaseDir          string
+	PDFServiceConfig *PDFServiceConfig
+	shutdownWebhook  func()
 }
 
 func NewBotContext() (*BotContext, error) {
@@ -118,6 +150,10 @@ func NewBotContext() (*BotContext, error) {
 				Description: "Search history data by title",
 			},
 			{
+				Command:     constant.ConvertPDF,
+				Description: "Convert URL to PDF",
+			},
+			{
 				Command:     constant.Retry,
 				Description: "Retry failed task, only for the Bot master",
 			},
@@ -157,16 +193,19 @@ func NewBotContext() (*BotContext, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
+	pdfServiceConfig := &PDFServiceConfig{}
 	botContext := &BotContext{
-		ctx:       ctx,
-		cancel:    cancel,
-		Scheduler: gocron.NewScheduler(time.FixedZone("CST", 8*60*60)),
-		Bot:       telegramBot,
-		DB:        db,
-		ManagerId: id(),
-		ServerUrl: os.Getenv(constant.ServerURL),
-		Logger:    ctxLogger,
-		BaseDir:   cfgPath,
+		ctx:              ctx,
+		cancel:           cancel,
+		Scheduler:        gocron.NewScheduler(time.FixedZone("CST", 8*60*60)),
+		Bot:              telegramBot,
+		DB:               db,
+		Store:            NewStore(),
+		ManagerId:        id(),
+		MessageServerUrl: os.Getenv(constant.ServerURL),
+		PDFServiceConfig: pdfServiceConfig.Init(),
+		Logger:           ctxLogger,
+		BaseDir:          cfgPath,
 	}
 	if botContext.Processor, err = NewInfoProcessor(botContext); err == nil {
 		return botContext, nil
@@ -177,6 +216,7 @@ func NewBotContext() (*BotContext, error) {
 
 func (ctx *BotContext) Start() {
 	ctx.Scheduler.StartAsync()
+	ctx.startWebhookServer()
 	go ctx.Bot.Start(ctx.ctx)
 }
 
@@ -185,6 +225,60 @@ func (ctx *BotContext) Stop() {
 	ctx.Processor.Release()
 	ctx.Scheduler.Stop()
 	ctx.Scheduler.StopBlockingChan()
+	ctx.shutdownWebhook()
+}
+
+func (ctx *BotContext) startWebhookServer() {
+	server := &http.Server{Addr: fmt.Sprintf(":%d", ctx.PDFServiceConfig.WebhookServerPort)}
+
+	http.HandleFunc(constant.PDFEndPoint, func(w http.ResponseWriter, r *http.Request) {
+		requestID := r.URL.Path[len(constant.PDFEndPoint):]
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			ctx.Logger.Error().Msg(err.Error())
+			http.Error(w, "Failed to read body", http.StatusInternalServerError)
+			return
+		}
+
+		if ri, found := ctx.Store.Get(requestID); !found {
+			ctx.Logger.Error().Msg("Chat ID not found for request")
+			http.Error(w, "Chat ID not found", http.StatusInternalServerError)
+		} else {
+			req := ri.(entities.RequestInfo)
+			go ctx.sendPDFToUser(req, body)
+
+			w.WriteHeader(http.StatusOK)
+		}
+	})
+
+	go func() {
+		if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			ctx.Logger.Error().Err(err).Msg("Webhook server error")
+		}
+	}()
+
+	ctx.shutdownWebhook = func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			ctx.Logger.Error().Err(err).Msg("Webhook server shutdown error")
+		}
+	}
+}
+
+func (ctx *BotContext) sendPDFToUser(req entities.RequestInfo, pdfData []byte) {
+	if _, err := ctx.Bot.SendDocument(context.Background(), &bot.SendDocumentParams{
+		ChatID: req.ChatId,
+		Document: &models.InputFileUpload{
+			Filename: req.FileName,
+			Data:     bytes.NewReader(pdfData),
+		},
+		Caption: req.Message,
+	}); err != nil {
+		ctx.Logger.Error().Msg(err.Error())
+	}
 }
 
 func id() int64 {

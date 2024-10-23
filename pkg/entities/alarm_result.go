@@ -96,12 +96,21 @@ func (a *AlarmDao) Cache(userId int64) map[string]Alarm {
 	return result
 }
 
-func (a *AlarmDao) List(userId int64) []Alarm {
+func (a *AlarmDao) List(userId int64, page, pageSize int) ([]Alarm, int64) {
 	var result []Alarm
-	if err := a.db.Where("user_id = ?", userId).Find(&result).Error; err == nil {
-		return result
+	var total int64
+
+	offset := (page - 1) * pageSize
+
+	if err := a.db.Model(&Alarm{}).Where("user_id = ?", userId).Count(&total).Error; err != nil {
+		return nil, 0
 	}
-	return nil
+
+	if err := a.db.Where("user_id = ?", userId).Offset(offset).Limit(pageSize).Find(&result).Error; err != nil {
+		return nil, 0
+	}
+
+	return result, total
 }
 
 func (a *AlarmDao) Insert(data []*Alarm) (error, int64) {
