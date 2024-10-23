@@ -50,15 +50,10 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 				}
 
 				if chunks, total := splitMessage(msg.Content); total > 0 {
-					for i, chunk := range chunks {
-						fullMessage := chunk
-						if total > 1 {
-							header := fmt.Sprintf("Long Message (%d/%d)\n\n", i+1, total)
-							fullMessage = header + chunk
-						}
+					for _, chunk := range chunks {
 						if _, err := ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
 							ChatID:    userId,
-							Text:      fullMessage,
+							Text:      chunk,
 							ParseMode: models.ParseModeHTML,
 						}); err != nil {
 							failed = append(failed, fmt.Sprintf("<a href=\"%s\">%s</a>", url, title))
