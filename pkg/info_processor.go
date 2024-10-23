@@ -51,8 +51,11 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 
 				if chunks, total := splitMessage(msg.Content); total > 0 {
 					for i, chunk := range chunks {
-						header := fmt.Sprintf("Long Message (%d/%d)\n\n", i+1, total)
-						fullMessage := header + chunk
+						fullMessage := chunk
+						if total > 1 {
+							header := fmt.Sprintf("Long Message (%d/%d)\n\n", i+1, total)
+							fullMessage = header + chunk
+						}
 						if _, err := ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
 							ChatID:    userId,
 							Text:      fullMessage,
