@@ -243,10 +243,32 @@ func (ctx *BotContext) startWebhookServer() {
 
 		if ri, found := ctx.Store.Get(requestID); !found {
 			ctx.Logger.Error().Msg("Chat ID not found for request")
-			http.Error(w, "Chat ID not found", http.StatusInternalServerError)
+			http.Error(w, "Chat ID not found", http.StatusNotFound)
 		} else {
 			req := ri.(entities.RequestInfo)
-			go ctx.sendPDFToUser(req, body)
+			go func(req entities.RequestInfo, pdfData []byte) {
+				// Edit the processing message
+				_, err := ctx.Bot.EditMessageText(context.Background(), &bot.EditMessageTextParams{
+					ChatID:    req.ChatId,
+					MessageID: req.MessageId,
+					Text:      "PDF conversion completed. Sending file...",
+				})
+				if err != nil {
+					ctx.Logger.Error().Msgf("Failed to edit message: %v", err)
+				}
+
+				// Send the PDF file
+				if _, err := ctx.Bot.SendDocument(context.Background(), &bot.SendDocumentParams{
+					ChatID: req.ChatId,
+					Document: &models.InputFileUpload{
+						Filename: req.FileName,
+						Data:     bytes.NewReader(pdfData),
+					},
+					Caption: req.Message,
+				}); err != nil {
+					ctx.Logger.Error().Msg(err.Error())
+				}
+			}(req, body)
 
 			w.WriteHeader(http.StatusOK)
 		}
@@ -265,19 +287,6 @@ func (ctx *BotContext) startWebhookServer() {
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			ctx.Logger.Error().Err(err).Msg("Webhook server shutdown error")
 		}
-	}
-}
-
-func (ctx *BotContext) sendPDFToUser(req entities.RequestInfo, pdfData []byte) {
-	if _, err := ctx.Bot.SendDocument(context.Background(), &bot.SendDocumentParams{
-		ChatID: req.ChatId,
-		Document: &models.InputFileUpload{
-			Filename: req.FileName,
-			Data:     bytes.NewReader(pdfData),
-		},
-		Caption: req.Message,
-	}); err != nil {
-		ctx.Logger.Error().Msg(err.Error())
 	}
 }
 
