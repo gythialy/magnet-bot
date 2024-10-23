@@ -3,6 +3,7 @@ package pkg
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -21,6 +22,8 @@ const (
 	pageSize    = "20"
 	crawlDays   = 2
 )
+
+var excessEmptyLinesRegex = regexp.MustCompile(`\n\s*\n`)
 
 type Crawler struct {
 	ctx       *BotContext
@@ -78,6 +81,7 @@ func (c *Crawler) FetchProjects() []*Project {
 			if size > 0 {
 				for _, v := range r.Data {
 					content, _ := c.converter.ConvertString(v.Content)
+					content = excessEmptyLinesRegex.ReplaceAllString(content, "\n")
 					result = append(result, &Project{
 						NoticeTime:     v.NoticeTime,
 						OpenTenderCode: v.OpenTenderCode,

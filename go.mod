@@ -4,9 +4,11 @@ go 1.22.2
 
 require (
 	github.com/JohannesKaufmann/html-to-markdown v1.6.0
+	github.com/PuerkitoBio/goquery v1.9.2
 	github.com/go-co-op/gocron v1.37.0
 	github.com/go-resty/resty/v2 v2.15.3
 	github.com/go-telegram/bot v1.9.1
+	github.com/google/uuid v1.4.0
 	github.com/nmmh/magneturi v0.0.0-20180607142838-464c677b3fb5
 	github.com/panjf2000/ants/v2 v2.10.0
 	github.com/rs/zerolog v1.33.0
@@ -17,9 +19,7 @@ require (
 )
 
 require (
-	github.com/PuerkitoBio/goquery v1.9.2 // indirect
 	github.com/andybalholm/cascadia v1.3.2 // indirect
-	github.com/google/uuid v1.4.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
