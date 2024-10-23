@@ -47,7 +47,7 @@ func NewCrawler(ctx *BotContext) *Crawler {
 func (c *Crawler) FetchProjects() []*Project {
 	now := time.Now()
 	days := c.crawlDays()
-	url := fmt.Sprintf("https://%s/freecms/rest/v1/notice/selectInfoMoreChannel.do?operationStartTime=%s&operationEndTime=%s", c.ctx.ServerUrl,
+	url := fmt.Sprintf("https://%s/freecms/rest/v1/notice/selectInfoMoreChannel.do?operationStartTime=%s&operationEndTime=%s", c.ctx.MessageServerUrl,
 		c.format(now.AddDate(0, 0, -days)), c.format(now))
 	idx := 1
 	result := make([]*Project, 0)
@@ -84,7 +84,7 @@ func (c *Crawler) FetchProjects() []*Project {
 						ShortTitle:     v.Title,
 						Title:          v.Title,
 						Content:        content,
-						Pageurl:        fmt.Sprintf("%s%s", c.ctx.ServerUrl, v.Pageurl),
+						Pageurl:        fmt.Sprintf("%s%s", c.ctx.MessageServerUrl, v.Pageurl),
 					})
 				}
 				idx++
@@ -112,7 +112,7 @@ func (c *Crawler) fetch(keywords []string, type_ string) []*m.Alarm {
 			"creditName":  keyword,
 		}
 
-		url := fmt.Sprintf("https://%s/gateway/gpc-gpcms/rest/v2/punish/public?&pageNumber=1&pageSize=10&handleUnit=&startDate=&endDate=", c.ctx.ServerUrl)
+		url := fmt.Sprintf("https://%s/gateway/gpc-gpcms/rest/v2/punish/public?&pageNumber=1&pageSize=10&handleUnit=&startDate=&endDate=", c.ctx.MessageServerUrl)
 		if resp, err := c.client.R().
 			SetHeader("Content-Type", ContextType).
 			SetHeader("User-Agent", UserAgent).

@@ -121,7 +121,11 @@ func TestHistoryDao_SearchByTitle(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("Search for '%s'", tc.searchTitle), func(t *testing.T) {
-			results := dao.SearchByTitle(userId, tc.searchTitle)
+			results, total := dao.SearchByTitle(userId, tc.searchTitle, 1, 10) // page 1, 10 items per page
+			if int(total) != tc.expectedLen {
+				t.Errorf("Expected %d total results, got %d for search title '%s'", tc.expectedLen, total, tc.searchTitle)
+			}
+
 			if len(results) != tc.expectedLen {
 				t.Errorf("Expected %d results, got %d for search title '%s'", tc.expectedLen, len(results), tc.searchTitle)
 			}
@@ -135,6 +139,28 @@ func TestHistoryDao_SearchByTitle(t *testing.T) {
 			t.Logf("Search results for '%s': %s", tc.searchTitle, utils.ToString(results))
 		})
 	}
+
+	// Test pagination
+	t.Run("Test pagination", func(t *testing.T) {
+		pageSize := 2
+		results1, total := dao.SearchByTitle(userId, "Test", 1, pageSize)
+		if int(total) != 4 {
+			t.Errorf("Expected 4 total results, got %d", total)
+		}
+		if len(results1) != pageSize {
+			t.Errorf("Expected %d results on first page, got %d", pageSize, len(results1))
+		}
+
+		results2, _ := dao.SearchByTitle(userId, "Test", 2, pageSize)
+		if len(results2) != pageSize {
+			t.Errorf("Expected %d results on second page, got %d", pageSize, len(results2))
+		}
+
+		// Check that results are different on each page
+		if results1[0].Url == results2[0].Url || results1[1].Url == results2[1].Url {
+			t.Errorf("Expected different results on different pages")
+		}
+	})
 }
 
 func TestHistoryDao_IsUrlExist(t *testing.T) {

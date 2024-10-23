@@ -14,7 +14,10 @@ import (
 	"github.com/panjf2000/ants/v2"
 )
 
-const poolSize = 10
+const (
+	poolSize         = 10
+	maxMessageLength = 3900
+)
 
 type InfoProcessor struct {
 	context    *BotContext
@@ -45,23 +48,32 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 					ctx.Logger.Debug().Msgf("%s already processed", shortTitle)
 					continue
 				}
-				if _, err := ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
-					ChatID:    userId,
-					Text:      msg.Content,
-					ParseMode: models.ParseModeHTML,
-				}); err != nil {
-					failed = append(failed, fmt.Sprintf("<a href=\"%s\">%s</a>", url, title))
-					ctx.Logger.Error().Msg(err.Error())
-				} else {
-					ctx.Logger.Info().Msgf("notify: %s[%s]", msg.Project.ShortTitle, msg.Project.OpenTenderCode)
+
+				if chunks, total := splitMessage(msg.Content); total > 0 {
+					for i, chunk := range chunks {
+						header := fmt.Sprintf("Long Message (%d/%d)\n\n", i+1, total)
+						fullMessage := header + chunk
+						if _, err := ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
+							ChatID:    userId,
+							Text:      fullMessage,
+							ParseMode: models.ParseModeHTML,
+						}); err != nil {
+							failed = append(failed, fmt.Sprintf("<a href=\"%s\">%s</a>", url, title))
+							ctx.Logger.Error().Msg(err.Error())
+						} else {
+							ctx.Logger.Info().Msgf("notify: %s[%s]", msg.Project.ShortTitle, msg.Project.OpenTenderCode)
+						}
+						time.Sleep(50 * time.Millisecond)
+					}
 					newHistories = append(newHistories, &entities.History{
 						UserId:    userId,
 						Url:       url,
 						Title:     shortTitle,
 						UpdatedAt: now,
 					})
+				} else {
+					ctx.Logger.Warn().Msgf("Empty message for %s", shortTitle)
 				}
-				time.Sleep(50 * time.Millisecond)
 			}
 
 			if len(failed) > 1 {
@@ -181,6 +193,26 @@ func (r *InfoProcessor) get(id int64) ConfigData {
 		ProjectRules: rules,
 		AlarmKeyword: r.keywordDao.ListKeywords(id, entities.ALARM),
 	}
+}
+
+func splitMessage(message string) ([]string, int) {
+	var chunks []string
+	for len(message) > 0 {
+		if len(message) <= maxMessageLength {
+			chunks = append(chunks, message)
+			break
+		}
+
+		chunk := message[:maxMessageLength]
+		lastNewline := strings.LastIndex(chunk, "\n")
+		if lastNewline > 0 {
+			chunk = chunk[:lastNewline]
+		}
+
+		chunks = append(chunks, chunk)
+		message = message[len(chunk):]
+	}
+	return chunks, len(chunks)
 }
 
 type ConfigData struct {

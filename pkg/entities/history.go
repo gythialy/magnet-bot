@@ -74,12 +74,22 @@ func (h *HistoryDao) Insert(data []*History) (error, int64) {
 	}
 }
 
-func (h *HistoryDao) SearchByTitle(userId int64, title string) []History {
+func (h *HistoryDao) SearchByTitle(userId int64, title string, page, pageSize int) ([]History, int64) {
 	var result []History
-	if err := h.db.Where("user_id = ? AND title LIKE ?", userId, "%"+title+"%").
-		Order("updated_at DESC").
-		Find(&result).Error; err == nil {
-		return result
+	var total int64
+
+	query := h.db.Where("user_id = ? AND title LIKE ?", userId, "%"+title+"%")
+
+	// Get total count
+	query.Model(&History{}).Count(&total)
+
+	// Get paginated results
+	if err := query.Order("updated_at DESC").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
+		Find(&result).Error; err != nil {
+		return nil, 0
 	}
-	return nil
+
+	return result, total
 }

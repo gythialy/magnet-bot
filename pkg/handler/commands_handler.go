@@ -1,10 +1,22 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"net/url"
+	"path"
+	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
+	"github.com/PuerkitoBio/goquery"
+
+	"github.com/google/uuid"
 	"github.com/gythialy/magnet/pkg/rule"
 
 	"github.com/gythialy/magnet/pkg/constant"
@@ -16,8 +28,10 @@ import (
 )
 
 const (
-	maxHistorySize      = 20
-	maxAlarmsPerMessage = 20
+	historyPageSize  = 20
+	alarmPageSize    = 5
+	defaultMessageId = 0
+	fileExtension    = ".pdf"
 )
 
 type CommandsHandler struct {
@@ -111,57 +125,55 @@ func (c *CommandsHandler) ListAlarmKeywordHandler(ctx context.Context, b *bot.Bo
 
 func (c *CommandsHandler) ListAlarmRecordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	id := update.Message.Chat.ID
-	alarms := c.alarmDao.Cache(id)
 
-	if len(alarms) == 0 {
-		if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID: id,
-			Text:   "Can not find any records...",
-		}); err != nil {
-			c.ctx.Logger.Error().Msg(err.Error())
-		}
+	c.sendPaginatedAlarms(ctx, b, update, id, 1, defaultMessageId)
+}
+
+func (c *CommandsHandler) sendPaginatedAlarms(ctx context.Context, b *bot.Bot, update *models.Update,
+	userId int64, page, messageId int,
+) {
+	pageSize := alarmPageSize
+	alarms, total := c.alarmDao.List(userId, page, pageSize)
+
+	if total == 0 {
+		text := "No alarm records found."
+		c.sendOrEditMessage(ctx, b, userId, messageId, text, nil)
 		return
 	}
 
-	totalMessages := (len(alarms) + maxAlarmsPerMessage - 1) / maxAlarmsPerMessage
+	totalPages := (int(total) + pageSize - 1) / pageSize
 
-	// Convert map to a slice of alarms for easier iteration
-	alarmSlice := make([]entities.Alarm, 0, len(alarms))
-	for _, alarm := range alarms {
-		alarmSlice = append(alarmSlice, alarm)
+	var response strings.Builder
+	for i, alarm := range alarms {
+		response.WriteString(fmt.Sprintf("%d. %s\n", (page-1)*pageSize+i+1, alarm.ToMarkdown()))
+		response.WriteString("\n")
 	}
 
-	for i := 0; i < totalMessages; i++ {
-		start := i * maxAlarmsPerMessage
-		end := (i + 1) * maxAlarmsPerMessage
-		if end > len(alarmSlice) {
-			end = len(alarmSlice)
-		}
-
-		var result strings.Builder
-		for idx := start; idx < end; idx++ {
-			alarm := alarmSlice[idx]
-			result.WriteString(fmt.Sprintf("%d. %s, %s to %s\n", idx+1, alarm.CreditName,
-				alarm.StartDate.Format("2006-01-02"), alarm.EndDate.Format("2006-01-02")))
-		}
-
-		if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID:    id,
-			Text:      result.String(),
-			ParseMode: models.ParseModeHTML,
-		}); err != nil {
-			c.ctx.Logger.Error().Msg(err.Error())
-		}
+	var keyboard [][]models.InlineKeyboardButton
+	var row []models.InlineKeyboardButton
+	if page > 1 {
+		row = append(row, models.InlineKeyboardButton{
+			Text:         fmt.Sprintf("« Previous (%d)", page-1),
+			CallbackData: fmt.Sprintf("%s:%d", constant.Alarm, page-1),
+		})
 	}
 
-	if totalMessages > 1 {
-		if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID: id,
-			Text:   fmt.Sprintf("Total %d records displayed in %d messages.", len(alarms), totalMessages),
-		}); err != nil {
-			c.ctx.Logger.Error().Msg(err.Error())
-		}
+	if page < totalPages {
+		row = append(row, models.InlineKeyboardButton{
+			Text:         fmt.Sprintf("Next (%d) »", page+1),
+			CallbackData: fmt.Sprintf("%s:%d", constant.Alarm, page+1),
+		})
 	}
+
+	if len(row) > 0 {
+		keyboard = append(keyboard, row)
+	}
+
+	replyMarkup := models.InlineKeyboardMarkup{
+		InlineKeyboard: keyboard,
+	}
+
+	c.sendOrEditMessage(ctx, b, userId, messageId, response.String(), &replyMarkup)
 }
 
 func (c *CommandsHandler) SearchHistoryHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -179,56 +191,261 @@ func (c *CommandsHandler) SearchHistoryHandler(ctx context.Context, b *bot.Bot, 
 		return
 	}
 
-	results := c.historyDao.SearchByTitle(id, query)
+	// Get first page of results
+	c.paginatedSearchResult(ctx, b, update, query, 1, defaultMessageId)
+}
 
-	if len(results) == 0 {
-		if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID: id,
-			Text:   "No matching history found.",
-		}); err != nil {
-			c.ctx.Logger.Error().Msg(err.Error())
-		}
+func (c *CommandsHandler) paginatedSearchResult(ctx context.Context, b *bot.Bot, update *models.Update,
+	query string, page, messageId int,
+) {
+	id := update.Message.Chat.ID
+	results, total := c.historyDao.SearchByTitle(id, query, page, historyPageSize)
+
+	if total == 0 {
+		text := "No matching history found."
+		c.sendOrEditMessage(ctx, b, id, messageId, text, nil)
 		return
 	}
 
-	// Send initial message
-	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: id,
-		Text:   fmt.Sprintf("Search results for '%s':", query),
-	}); err != nil {
+	totalPages := (int(total) + historyPageSize - 1) / historyPageSize
+
+	var response strings.Builder
+	for i, history := range results {
+		response.WriteString(fmt.Sprintf("%d. <a href=\"%s\">%s</a>\n", (page-1)*historyPageSize+i+1, history.Url, history.Title))
+	}
+
+	var keyboard [][]models.InlineKeyboardButton
+	var row []models.InlineKeyboardButton
+
+	if page > 1 {
+		row = append(row, models.InlineKeyboardButton{
+			Text:         fmt.Sprintf("« Previous (%d)", page-1),
+			CallbackData: fmt.Sprintf("%s:%d:%s", constant.Search, page-1, query),
+		})
+	}
+
+	if page < totalPages {
+		row = append(row, models.InlineKeyboardButton{
+			Text:         fmt.Sprintf("Next (%d) »", page+1),
+			CallbackData: fmt.Sprintf("%s:%d:%s", constant.Search, page+1, query),
+		})
+	}
+
+	if len(row) > 0 {
+		keyboard = append(keyboard, row)
+	}
+
+	replyMarkup := models.InlineKeyboardMarkup{
+		InlineKeyboard: keyboard,
+	}
+
+	c.sendOrEditMessage(ctx, b, id, messageId, response.String(), &replyMarkup)
+}
+
+func (c *CommandsHandler) HandleCallbackQuery(ctx context.Context, b *bot.Bot, update *models.Update) {
+	data := update.CallbackQuery.Data
+	parts := strings.Split(data, ":")
+	if len(parts) < 1 {
+		return
+	}
+
+	queryType := parts[0]
+	page, err := strconv.Atoi(parts[1])
+	if err != nil {
 		c.ctx.Logger.Error().Msg(err.Error())
 		return
 	}
 
-	// Send results in batches
-	batchSize := maxHistorySize
-	for i := 0; i < len(results); i += batchSize {
-		end := i + batchSize
-		if end > len(results) {
-			end = len(results)
-		}
+	messageId := update.CallbackQuery.Message.Message.ID
+	switch queryType {
+	case constant.Search:
+		query := parts[2]
+		c.paginatedSearchResult(ctx, b, &models.Update{
+			Message: update.CallbackQuery.Message.Message,
+		}, query, page, messageId)
+	case constant.Alarm:
+		c.sendPaginatedAlarms(ctx, b, &models.Update{
+			Message: update.CallbackQuery.Message.Message,
+		}, update.CallbackQuery.From.ID, page, messageId)
+	}
 
-		var response strings.Builder
-		for j, history := range results[i:end] {
-			response.WriteString(fmt.Sprintf("%d. <a href=\"%s\">%s</a>\n", i+j+1, history.Url, history.Title))
-		}
+	// Answer the callback query to remove the loading indicator
+	if _, err := b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
+		CallbackQueryID: update.CallbackQuery.ID,
+	}); err != nil {
+		c.ctx.Logger.Error().Msg(err.Error())
+	}
+}
 
+func (c *CommandsHandler) ConvertURLToPDFHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	text := update.Message.Text
+	message := strings.TrimSpace(strings.TrimPrefix(text, constant.ConvertPDF))
+	userId := update.Message.Chat.ID
+
+	if message == "" {
+		c.sendErrorMessage(ctx, b, update, "Please provide a URL to convert")
+		return
+	}
+
+	parsedURL, err := url.Parse(message)
+	if err != nil {
+		c.sendErrorMessage(ctx, b, update, "Invalid URL format")
+		return
+	}
+
+	// Check if the domain matches BotContext.MessageServerUrl
+	if parsedURL.Host != c.ctx.MessageServerUrl {
+		c.sendErrorMessage(ctx, b, update, "URL domain is not allowed")
+		return
+	}
+
+	// Generate a unique identifier for this request
+	requestId := uuid.New().String()
+	fileName := requestId + fileExtension
+	if f, err := c.extractFileName(parsedURL); err == nil {
+		fileName = f
+	} else {
+		c.ctx.Logger.Error().Msg(err.Error())
+	}
+
+	c.ctx.Logger.Debug().Msgf("convert url to file %s", fileName)
+
+	// Store the chat ID and file name associated with this request
+	c.ctx.Store.Set(requestId, entities.RequestInfo{
+		ChatId:    userId,
+		MessageId: update.Message.ID,
+		Message:   message,
+		FileName:  fileName,
+	}, 10*time.Minute)
+
+	// Call Gotenberg service
+	go c.pdfService(message, requestId)
+}
+
+func (c *CommandsHandler) extractFileName(u *url.URL) (string, error) {
+	urlPath := u.Path
+	urlFileName := path.Base(urlPath)
+	if urlFileName == "/" {
+		urlFileName = ""
+	} else {
+		urlFileName = strings.TrimSuffix(urlFileName, ".html")
+	}
+
+	// Fetch the page to get the title
+	resp, err := http.Get(u.String())
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	var fileName string
+	title := strings.TrimSpace(doc.Find("h1.info-title").Text())
+	title = regexp.MustCompile(`[\n\t]+`).ReplaceAllString(title, "")
+	title = regexp.MustCompile(`\s+`).ReplaceAllString(title, "")
+	re := regexp.MustCompile(`[（(]([^）)]+)[）)]`)
+
+	if title != "" {
+		matches := re.FindStringSubmatch(title)
+		if len(matches) > 1 {
+			// Use the extracted code as the filename
+			fileName = matches[1] + fileExtension
+		} else {
+			// If no code found, use the full cleaned title
+			fileName = title + fileExtension
+		}
+	} else {
+		// If title not found, use the URL filename
+		fileName = urlFileName + fileExtension
+	}
+	return fileName, nil
+}
+
+func (c *CommandsHandler) pdfService(u string, requestID string) {
+	webhookURL := fmt.Sprintf("%s%s%s", c.ctx.PDFServiceConfig.WebhookURL(), constant.PDFEndPoint, requestID)
+
+	// Create a new form data
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	// Add the URL field
+	_ = writer.WriteField("url", u)
+
+	// Close the multipart writer
+	err := writer.Close()
+	if err != nil {
+		c.ctx.Logger.Error().Msg(err.Error())
+		return
+	}
+
+	// Create the request
+	req, err := http.NewRequest("POST",
+		fmt.Sprintf("%s/forms/chromium/convert/url", c.ctx.PDFServiceConfig.PDFServiceURL), body)
+	if err != nil {
+		c.ctx.Logger.Error().Msg(err.Error())
+		return
+	}
+
+	// Set headers
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Gotenberg-Webhook-Url", webhookURL)
+	req.Header.Set("Gotenberg-Webhook-Error-Url", webhookURL)
+	req.Header.Set("Gotenberg-Webhook-Method", "POST")
+
+	// Send the request
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.ctx.Logger.Error().Msg(err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		c.ctx.Logger.Error().Msgf("Gotenberg service returned status: %d", resp.StatusCode)
+		// You might want to read and log the response body for more details
+		body, _ := io.ReadAll(resp.Body)
+		c.ctx.Logger.Error().Msgf("Response body: %s", string(body))
+	}
+}
+
+func (c *CommandsHandler) sendOrEditMessage(ctx context.Context, b *bot.Bot, chatID int64, messageID int, text string, replyMarkup *models.InlineKeyboardMarkup) {
+	if messageID == 0 {
 		if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID:    id,
-			Text:      response.String(),
-			ParseMode: models.ParseModeHTML,
+			ChatID:      chatID,
+			Text:        text,
+			ParseMode:   models.ParseModeHTML,
+			ReplyMarkup: replyMarkup,
+		}); err != nil {
+			c.ctx.Logger.Error().Msg(err.Error())
+		}
+	} else {
+		if _, err := b.EditMessageText(ctx, &bot.EditMessageTextParams{
+			ChatID:      chatID,
+			MessageID:   messageID,
+			Text:        text,
+			ParseMode:   models.ParseModeHTML,
+			ReplyMarkup: replyMarkup,
 		}); err != nil {
 			c.ctx.Logger.Error().Msg(err.Error())
 		}
 	}
+}
 
-	// Send summary message if there are more results than maxHistorySize
-	if len(results) > maxHistorySize {
-		if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID: id,
-			Text:   fmt.Sprintf("Displayed all %d results.", len(results)),
-		}); err != nil {
-			c.ctx.Logger.Error().Msg(err.Error())
-		}
+func (c *CommandsHandler) sendErrorMessage(ctx context.Context, b *bot.Bot, update *models.Update, errorMsg string) {
+	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID: update.Message.Chat.ID,
+		Text:   "Error: " + errorMsg,
+		ReplyParameters: &models.ReplyParameters{
+			MessageID: update.Message.ID,
+		},
+	}); err != nil {
+		c.ctx.Logger.Error().Msg(err.Error())
 	}
 }

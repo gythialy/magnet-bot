@@ -44,8 +44,8 @@ func (m *MagnetHandler) Handler(ctx context.Context, b *bot.Bot, update *models.
 	urls := splitRegex.Split(tmp, -1)
 	server := m.fetchServer()
 	result := strings.Builder{}
-	for _, url := range urls {
-		u := strings.TrimSpace(url)
+	for _, u := range urls {
+		u := strings.TrimSpace(u)
 		if u != "" {
 			uri, err := magneturi.Parse(u, true)
 			if err != nil {
@@ -53,7 +53,7 @@ func (m *MagnetHandler) Handler(ctx context.Context, b *bot.Bot, update *models.
 			}
 			filter, err := uri.Filter("xt", "dn", "tr")
 			if err != nil {
-				log.Println(err)
+				m.ctx.Logger.Error().Msg(err.Error())
 				continue
 			}
 			result.WriteString(filter.String() + server + "\n")
@@ -68,7 +68,7 @@ func (m *MagnetHandler) Handler(ctx context.Context, b *bot.Bot, update *models.
 		ChatID: update.Message.Chat.ID,
 		Text:   result.String(),
 	}); err != nil {
-		m.ctx.Logger.Error().Err(err)
+		m.ctx.Logger.Error().Msg(err.Error())
 	}
 }
 
@@ -80,7 +80,7 @@ func (m *MagnetHandler) fetchServer() string {
 	if s, err := os.Stat(f); errors.Is(err, os.ErrNotExist) || s.ModTime().Add(time.Hour*24).Before(time.Now()) {
 		_ = os.Remove(f)
 		if _, err := resty.New().EnableTrace().R().SetOutput(f).Get(BestUrlFile); err != nil {
-			m.ctx.Logger.Error().Err(err)
+			m.ctx.Logger.Error().Msg(err.Error())
 		}
 	}
 
