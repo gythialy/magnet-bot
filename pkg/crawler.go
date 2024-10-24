@@ -3,13 +3,13 @@ package pkg
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"strconv"
 	"time"
 
+	"github.com/gythialy/magnet/pkg/utils"
+
 	"github.com/gythialy/magnet/pkg/constant"
 
-	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/go-resty/resty/v2"
 	m "github.com/gythialy/magnet/pkg/entities"
 )
@@ -23,12 +23,9 @@ const (
 	crawlDays   = 2
 )
 
-var excessEmptyLinesRegex = regexp.MustCompile(`\n\s*\n`)
-
 type Crawler struct {
-	ctx       *BotContext
-	client    *resty.Client
-	converter *md.Converter
+	ctx    *BotContext
+	client *resty.Client
 }
 
 func NewCrawler(ctx *BotContext) *Crawler {
@@ -41,9 +38,6 @@ func NewCrawler(ctx *BotContext) *Crawler {
 	return &Crawler{
 		ctx:    ctx,
 		client: client,
-		converter: md.NewConverter("", true, &md.Options{
-			EscapeMode: "disabled",
-		}),
 	}
 }
 
@@ -80,8 +74,7 @@ func (c *Crawler) FetchProjects() []*Project {
 			size := len(r.Data)
 			if size > 0 {
 				for _, v := range r.Data {
-					content, _ := c.converter.ConvertString(v.Content)
-					content = excessEmptyLinesRegex.ReplaceAllString(content, "\n")
+					content := utils.CleanContent(v.Content)
 					result = append(result, &Project{
 						NoticeTime:     v.NoticeTime,
 						OpenTenderCode: v.OpenTenderCode,
