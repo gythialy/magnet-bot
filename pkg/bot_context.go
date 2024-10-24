@@ -247,14 +247,13 @@ func (ctx *BotContext) startWebhookServer() {
 		} else {
 			req := ri.(entities.RequestInfo)
 			go func(req entities.RequestInfo, pdfData []byte) {
-				// Edit the processing message
-				_, err := ctx.Bot.EditMessageText(context.Background(), &bot.EditMessageTextParams{
+				// delete the processing message
+				_, err := ctx.Bot.DeleteMessage(context.Background(), &bot.DeleteMessageParams{
 					ChatID:    req.ChatId,
 					MessageID: req.MessageId,
-					Text:      "PDF conversion completed. Sending file...",
 				})
 				if err != nil {
-					ctx.Logger.Error().Msgf("Failed to edit message: %v", err)
+					ctx.Logger.Error().Msgf("Failed to delete message: %v", err)
 				}
 
 				// Send the PDF file

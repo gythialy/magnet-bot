@@ -299,16 +299,6 @@ func (c *CommandsHandler) ConvertURLToPDFHandler(ctx context.Context, b *bot.Bot
 		return
 	}
 
-	// Send processing message
-	processingMsg, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: userId,
-		Text:   "Converting URL to PDF. Please wait...",
-	})
-	if err != nil {
-		c.ctx.Logger.Error().Msg(err.Error())
-		return
-	}
-
 	// Generate a unique identifier for this request
 	requestId := uuid.New().String()
 	fileName := requestId + fileExtension
@@ -318,7 +308,15 @@ func (c *CommandsHandler) ConvertURLToPDFHandler(ctx context.Context, b *bot.Bot
 		c.ctx.Logger.Error().Msg(err.Error())
 	}
 
-	c.ctx.Logger.Debug().Msgf("convert url to file %s", fileName)
+	// Send processing message
+	processingMsg, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID: userId,
+		Text:   fmt.Sprintf("Converting URL to PDF(%s). Please wait...⌛", fileName),
+	})
+	if err != nil {
+		c.ctx.Logger.Error().Msg(err.Error())
+		return
+	}
 
 	// Store the chat ID and file name associated with this request
 	c.ctx.Store.Set(requestId, entities.RequestInfo{
