@@ -3,7 +3,7 @@ module github.com/gythialy/magnet
 go 1.23.2
 
 require (
-	github.com/PuerkitoBio/goquery v1.9.2
+	github.com/PuerkitoBio/goquery v1.10.0
 	github.com/go-co-op/gocron v1.37.0
 	github.com/go-resty/resty/v2 v2.15.3
 	github.com/go-telegram/bot v1.9.1
