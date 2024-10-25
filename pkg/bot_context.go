@@ -18,12 +18,12 @@ import (
 
 	"github.com/go-telegram/bot/models"
 
+	"github.com/glebarez/sqlite"
 	"github.com/go-co-op/gocron"
 	"github.com/go-telegram/bot"
 	"github.com/gythialy/magnet/pkg/entities"
 	"github.com/gythialy/magnet/pkg/utils"
 	"golang.org/x/net/context"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 

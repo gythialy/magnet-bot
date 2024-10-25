@@ -7,7 +7,7 @@ endif
 VERSION=$(TAG)-$(shell git rev-parse --short HEAD)
 BUILDTIME=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 GO?=go
-GOBUILD=CGO_ENABLED=1 $(GO) build -trimpath -ldflags '-linkmode external -extldflags "-static" \
+GOBUILD=CGO_ENABLED=0 $(GO) build -trimpath -ldflags ' \
 		-X "github.com/gythialy/magnet/pkg/constant.Version=$(VERSION)" \
 		-X "github.com/gythialy/magnet/pkg/constant.BuildTime=$(BUILDTIME)" \
 		-w -s -buildid='
