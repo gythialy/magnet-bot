@@ -7,7 +7,8 @@ endif
 VERSION=$(TAG)-$(shell git rev-parse --short HEAD)
 BUILDTIME=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 GO?=go
-GOBUILD=CGO_ENABLED=1 $(GO) build -trimpath -ldflags '-X "github.com/gythialy/magnet/pkg/constant.Version=$(VERSION)" \
+GOBUILD=CGO_ENABLED=1 $(GO) build -trimpath -ldflags '-linkmode external -extldflags "-static" \
+		-X "github.com/gythialy/magnet/pkg/constant.Version=$(VERSION)" \
 		-X "github.com/gythialy/magnet/pkg/constant.BuildTime=$(BUILDTIME)" \
 		-w -s -buildid='
 GO_FMT_FILES := $(shell find . -type f -name "*.go" ! -name "generated.*")
@@ -132,7 +133,7 @@ all-arch: $(PLATFORM_LIST) $(WINDOWS_ARCH_LIST)
 
 releases: $(gz_releases) $(zip_releases)
 
-build: 
+build:
 	$(GOBUILD) -o $(BINDIR)/$(NAME)
 
 lint:

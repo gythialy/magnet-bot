@@ -17,34 +17,21 @@ RUN goxx-apt-get install -y --no-install-recommends \
     g++ \
     pkg-config \
     ca-certificates \
-    tzdata \
     && rm -rf /var/lib/apt/lists/* \
     && goxx-go env \
-    && make BINDIR=/out GO=goxx-go clean build
+    && make BINDIR=/out GO=goxx-go clean build \
+    && mkdir -p /etc/magnet
 
 # Final stage
-FROM ubuntu:oracular
+FROM gcr.io/distroless/base-debian12:nonroot
 WORKDIR /app
 
-# Set environment variables
+COPY --from=builder --chown=nonroot:nonroot /out/magnet /app/magnet
+COPY --from=builder /etc/ssl/certs /etc/ssl/certs
+COPY --from=builder --chown=nonroot:nonroot /etc/magnet /etc/magnet
+
 ENV TZ=Asia/Shanghai
 
-# Create required directories
-RUN mkdir -p /etc/magnet
+VOLUME ["/etc/magnet"]
 
-# Copy binary and system files from builder
-COPY --from=builder /out/magnet /app/magnet
-COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
-COPY --from=builder /etc/ssl/certs /etc/ssl/certs
-
-# Configure timezone with validation
-RUN if [ -f "/usr/share/zoneinfo/$TZ" ]; then \
-    ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone; \
-    else \
-    echo "Invalid timezone $TZ, using default Asia/Shanghai"; \
-    ln -snf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && echo "Asia/Shanghai" > /etc/timezone; \
-    fi
-
-# Configure volume and entrypoint
-VOLUME [ "/etc/magnet" ]
-ENTRYPOINT [ "/app/magnet" ]
+ENTRYPOINT ["/app/magnet"]
