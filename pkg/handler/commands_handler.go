@@ -14,17 +14,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gythialy/magnet/pkg"
+
 	"github.com/PuerkitoBio/goquery"
 
 	"github.com/google/uuid"
+	"github.com/gythialy/magnet/pkg/entities"
 	"github.com/gythialy/magnet/pkg/rule"
 
 	"github.com/gythialy/magnet/pkg/constant"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
-	"github.com/gythialy/magnet/pkg"
-	"github.com/gythialy/magnet/pkg/entities"
 )
 
 const (
@@ -57,10 +58,9 @@ func (c *CommandsHandler) addKeywordHandler(ctx context.Context, b *bot.Bot, upd
 	keywords := strings.Split(tmp, ",")
 	id := update.Message.Chat.ID
 	result := c.keywordDao.Add(keywords, id, t)
-	r := rule.NewComplexRule(result)
 	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,
-		Text:   fmt.Sprintf("%s: %s to %s", prefix, result, r.ToString()),
+		Text:   fmt.Sprintf("%s: %s", prefix, result),
 	}); err != nil {
 		c.ctx.Logger.Error().Msg(err.Error())
 	}
@@ -83,11 +83,12 @@ func (c *CommandsHandler) deleteKeywordHandler(ctx context.Context, b *bot.Bot, 
 
 func (c *CommandsHandler) listKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update, t entities.KeywordType) {
 	id := update.Message.Chat.ID
-	result := c.keywordDao.ListKeywords(id, t)
+	rules := c.keywordDao.List(id, t)
+	result := make([]string, len(rules))
 	if t == entities.PROJECT {
-		for i, v := range result {
-			if cr := rule.NewComplexRule(v); cr != nil {
-				result[i] = fmt.Sprintf("%s[%s]", v, cr.ToString())
+		for i, v := range rules {
+			if cr := rule.NewComplexRule(&v); cr != nil {
+				result[i] = fmt.Sprintf("%s[%s]", v.Keyword, cr.ToString())
 			}
 		}
 	}
@@ -453,6 +454,51 @@ func (c *CommandsHandler) sendErrorMessage(ctx context.Context, b *bot.Bot, upda
 		ReplyParameters: &models.ReplyParameters{
 			MessageID: update.Message.ID,
 		},
+	}); err != nil {
+		c.ctx.Logger.Error().Msg(err.Error())
+	}
+}
+
+func (c *CommandsHandler) StaticHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	userId := update.Message.Chat.ID
+
+	// Get counter
+	alarmCount := c.keywordDao.Count(userId, entities.ALARM)
+	keywordCount := c.keywordDao.Count(userId, entities.PROJECT)
+	historyCount := c.historyDao.Count(userId)
+
+	// Get keyword stats
+	keywords := c.keywordDao.List(userId, entities.PROJECT)
+	var keywordStats strings.Builder
+	if len(keywords) > 0 {
+		keywordStats.WriteString(fmt.Sprintf("\n\n<b>Keyword Match Counts: %d</b>", keywordCount))
+		for _, kw := range keywords {
+			if cr := rule.NewComplexRule(&kw); cr != nil {
+				keywordStats.WriteString(fmt.Sprintf("\n- %s [%s]: %d", kw.Keyword, cr.ToString(), kw.Counter))
+			} else {
+				keywordStats.WriteString(fmt.Sprintf("\n- %s: %d", kw.Keyword, kw.Counter))
+			}
+		}
+	}
+
+	responseText := fmt.Sprintf(`<b>About Magnet Bot</b>
+Version: %s
+Build Time: %s
+
+<b>Statistics:</b>
+- History Records: %d
+- Alarm Keywords: %d%s
+`,
+		constant.Version,
+		constant.BuildTime,
+		historyCount,
+		alarmCount,
+		keywordStats.String())
+
+	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID:    update.Message.Chat.ID,
+		Text:      responseText,
+		ParseMode: models.ParseModeHTML,
 	}); err != nil {
 		c.ctx.Logger.Error().Msg(err.Error())
 	}

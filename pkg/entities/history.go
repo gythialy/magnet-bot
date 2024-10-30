@@ -93,3 +93,9 @@ func (h *HistoryDao) SearchByTitle(userId int64, title string, page, pageSize in
 
 	return result, total
 }
+
+func (h *HistoryDao) Count(userId int64) int64 {
+	var count int64
+	h.db.Model(&History{}).Where("user_id = ?", userId).Count(&count)
+	return count
+}

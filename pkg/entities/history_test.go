@@ -222,6 +222,33 @@ func TestHistoryDao_IsUrlExist(t *testing.T) {
 	}
 }
 
+func TestHistoryDao_CountHistory(t *testing.T) {
+	_, dao, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	userId := int64(1)
+	now := time.Now()
+
+	// Insert test data
+	testData := []*History{
+		{UserId: userId, Url: "https://test.com/1", Title: "Test Title 1", UpdatedAt: now},
+		{UserId: userId, Url: "https://test.com/2", Title: "Another Test", UpdatedAt: now},
+		{UserId: userId, Url: "https://test.com/3", Title: "Something Else", UpdatedAt: now},
+	}
+
+	if err, count := dao.Insert(testData); err != nil {
+		t.Fatalf("Failed to insert test data: %v", err)
+	} else {
+		t.Logf("Inserted %d rows", count)
+	}
+
+	expectedCount := int64(3)
+	actualCount := dao.Count(userId)
+	if actualCount != expectedCount {
+		t.Errorf("Expected %d history records, got %d", expectedCount, actualCount)
+	}
+}
+
 func containsInsensitive(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }

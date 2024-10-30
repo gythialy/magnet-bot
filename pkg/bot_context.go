@@ -150,6 +150,10 @@ func NewBotContext() (*BotContext, error) {
 				Description: "Search history data by title",
 			},
 			{
+				Command:     constant.Static,
+				Description: "Show static information data",
+			},
+			{
 				Command:     constant.ConvertPDF,
 				Description: "Convert URL to PDF",
 			},
