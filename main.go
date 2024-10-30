@@ -35,6 +35,7 @@ func main() {
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.ListAlarmRecords, bot.MatchTypePrefix, commandsHandler.ListAlarmRecordHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.SearchHistory, bot.MatchTypePrefix, commandsHandler.SearchHistoryHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.ConvertPDF, bot.MatchTypePrefix, commandsHandler.ConvertURLToPDFHandler)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Static, bot.MatchTypePrefix, commandsHandler.StaticHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeCallbackQueryData, constant.Search+":", bot.MatchTypePrefix, commandsHandler.HandleCallbackQuery)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeCallbackQueryData, constant.Alarm+":", bot.MatchTypePrefix, commandsHandler.HandleCallbackQuery)
 	managerHandler := handler.NewManagerHandler(ctx)

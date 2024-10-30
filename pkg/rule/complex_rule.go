@@ -7,12 +7,14 @@ import (
 	"strings"
 	"sync"
 	"unicode"
+
+	"github.com/gythialy/magnet/pkg/entities"
 )
 
 type ComplexRule struct {
 	IncludeTerms map[string]struct{}
 	ExcludeTerms map[string]struct{}
-	original     string
+	Rule         *entities.Keyword
 }
 
 // Use sync.Pool to reuse slices during marshaling and unmarshaling
@@ -99,10 +101,6 @@ func (cr *ComplexRule) ToString() string {
 	return strings.Join(parts, " ")
 }
 
-func (cr *ComplexRule) Original() string {
-	return cr.original
-}
-
 func keysToSlice(m map[string]struct{}) *[]string {
 	slice := slicePool.Get().(*[]string)
 	*slice = (*slice)[:0] // Reset the slice length
@@ -120,15 +118,15 @@ func sliceToMap(s *[]string) map[string]struct{} {
 	return m
 }
 
-func NewComplexRule(r string) *ComplexRule {
+func NewComplexRule(k *entities.Keyword) *ComplexRule {
 	rule := &ComplexRule{
 		IncludeTerms: make(map[string]struct{}),
 		ExcludeTerms: make(map[string]struct{}),
-		original:     r,
+		Rule:         k,
 	}
 
 	// Split the input string, but keep quoted parts together
-	terms := splitPreservingQuotes(r)
+	terms := splitPreservingQuotes(rule.Rule.Keyword)
 	for _, term := range terms {
 		term = normalizeString(term)
 		if term == "" {

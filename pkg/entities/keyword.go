@@ -26,6 +26,7 @@ type Keyword struct {
 	Keyword string
 	UserId  int64
 	Type    KeywordType
+	Counter int `gorm:"default:0"`
 }
 
 type KeywordDao struct {
@@ -97,4 +98,22 @@ func (k *KeywordDao) Ids() []int64 {
 		return ids
 	}
 	return nil
+}
+
+// UpdateCounter  increment counter
+func (k *KeywordDao) UpdateCounter(id uint, counter int64) error {
+	if err := k.db.Model(&Keyword{}).
+		Where("id = ?", id).
+		Update("counter", gorm.Expr("counter + ?", counter)).Error; err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Count Add method to get keyword stats
+func (k *KeywordDao) Count(userId int64, t KeywordType) int64 {
+	var count int64
+	k.db.Model(&Keyword{}).Where("user_id = ? AND type = ?", userId, t).Count(&count)
+	return count
 }

@@ -40,6 +40,9 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 			userId := m.UserId
 			var newHistories []*entities.History
 			now := time.Now()
+			limiter := time.NewTicker(500 * time.Millisecond)
+			defer limiter.Stop()
+
 			for title, msg := range messages {
 				// already processed, skip it
 				url := msg.Project.Pageurl
@@ -50,7 +53,9 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 				}
 
 				if chunks, total := splitMessage(msg.Content); total > 0 {
-					for _, chunk := range chunks {
+					for idx, chunk := range chunks {
+						<-limiter.C
+
 						if _, err := ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
 							ChatID:    userId,
 							Text:      chunk,
@@ -59,9 +64,9 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 							failed = append(failed, fmt.Sprintf("<a href=\"%s\">%s</a>", url, title))
 							ctx.Logger.Error().Msg(err.Error())
 						} else {
-							ctx.Logger.Info().Msgf("notify: %s[%s]", msg.Project.ShortTitle, msg.Project.OpenTenderCode)
+							ctx.Logger.Info().Msgf("notify: %s[%s]-%d", msg.Project.ShortTitle,
+								msg.Project.OpenTenderCode, idx)
 						}
-						time.Sleep(50 * time.Millisecond)
 					}
 					newHistories = append(newHistories, &entities.History{
 						UserId:    userId,
@@ -148,11 +153,11 @@ func (r *InfoProcessor) Process() {
 	}
 }
 
-func (r *InfoProcessor) Get(id int64) {
+func (r *InfoProcessor) Get(userId int64) {
 	// fetch info
 	results := r.crawler.FetchProjects()
 	if len(results) > 0 {
-		data := r.get(id)
+		data := r.get(userId)
 		data.Projects = results
 		data.IsForced = true
 		if err := r.pool.Invoke(data); err != nil {
@@ -178,12 +183,12 @@ func (r *InfoProcessor) config() map[int64]ConfigData {
 }
 
 func (r *InfoProcessor) get(id int64) ConfigData {
-	keywords := r.keywordDao.ListKeywords(id, entities.PROJECT)
+	keywords := r.keywordDao.List(id, entities.PROJECT)
 	var rules []*rule.ComplexRule
 	for _, keyword := range keywords {
-		rule := rule.NewComplexRule(keyword)
-		if rule != nil {
-			rules = append(rules, rule)
+		r := rule.NewComplexRule(&keyword)
+		if r != nil {
+			rules = append(rules, r)
 		}
 	}
 	return ConfigData{
