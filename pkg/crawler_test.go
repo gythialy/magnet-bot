@@ -6,8 +6,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gythialy/magnet/pkg/dal"
+	"github.com/gythialy/magnet/pkg/model"
+
 	"github.com/glebarez/sqlite"
-	"github.com/gythialy/magnet/pkg/entities"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -33,9 +35,9 @@ func TestCrawler_Fetch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_ = db.AutoMigrate(&entities.Alarm{})
+	_ = db.AutoMigrate(&model.Alarm{})
 	db.Debug()
-	dao := entities.NewAlarmDao(db)
+	dal.SetDefault(db)
 
 	crawler := NewCrawler(&BotContext{
 		MessageServerUrl: os.Getenv("SERVER_URL"),
@@ -45,18 +47,17 @@ func TestCrawler_Fetch(t *testing.T) {
 	result := crawler.Fetch([]string{"中国"}, userId)
 
 	for idx, alarm := range result {
-		alarm.UserId = userId
+		alarm.UserID = userId
 		fmt.Printf("%d: %s(%s),%s\n", idx, alarm.CreditName, alarm.CreditCode, alarm.EndDate)
 	}
 
+	dao := dal.Alarm
 	if len(result) > 0 {
-		if err, i := dao.Insert(result); err == nil {
-			t.Log(i)
+		if err := dao.Insert(result); err == nil {
 		} else {
 			t.Error(err)
 		}
-		if err, i := dao.Insert(result); err == nil {
-			t.Log(i)
+		if err := dao.Insert(result); err == nil {
 		} else {
 			t.Error(err)
 		}

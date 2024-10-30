@@ -11,6 +11,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/gythialy/magnet/pkg/dal"
+	"github.com/gythialy/magnet/pkg/model"
+
 	"github.com/rs/zerolog"
 	"gorm.io/gorm/logger"
 
@@ -21,7 +24,6 @@ import (
 	"github.com/glebarez/sqlite"
 	"github.com/go-co-op/gocron"
 	"github.com/go-telegram/bot"
-	"github.com/gythialy/magnet/pkg/entities"
 	"github.com/gythialy/magnet/pkg/utils"
 	"golang.org/x/net/context"
 	"gorm.io/gorm"
@@ -85,7 +87,6 @@ type BotContext struct {
 	ctx              context.Context
 	cancel           context.CancelFunc
 	Bot              *bot.Bot
-	DB               *gorm.DB
 	Store            *Store
 	Scheduler        *gocron.Scheduler
 	ManagerId        int64
@@ -126,20 +127,12 @@ func NewBotContext() (*BotContext, error) {
 				Description: "Delete keywords",
 			},
 			{
-				Command:     constant.ListKeyword,
-				Description: "List keywords",
-			},
-			{
 				Command:     constant.AddAlarmKeyword,
 				Description: "Add tender codes",
 			},
 			{
 				Command:     constant.DeleteAlarmKeyword,
 				Description: "Delete alarm keywords",
-			},
-			{
-				Command:     constant.ListAlarmKeyword,
-				Description: "List alarm keywords",
 			},
 			{
 				Command:     constant.ListAlarmRecords,
@@ -190,10 +183,11 @@ func NewBotContext() (*BotContext, error) {
 		return nil, err
 	}
 
-	err = db.AutoMigrate(&entities.Keyword{}, &entities.History{}, &entities.Alarm{})
+	err = db.AutoMigrate(&model.Keyword{}, &model.History{}, &model.Alarm{})
 	if err != nil {
 		return nil, err
 	}
+	dal.SetDefault(db)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -203,7 +197,6 @@ func NewBotContext() (*BotContext, error) {
 		cancel:           cancel,
 		Scheduler:        gocron.NewScheduler(time.FixedZone("CST", 8*60*60)),
 		Bot:              telegramBot,
-		DB:               db,
 		Store:            NewStore(),
 		ManagerId:        id(),
 		MessageServerUrl: os.Getenv(constant.ServerURL),
@@ -249,8 +242,8 @@ func (ctx *BotContext) startWebhookServer() {
 			ctx.Logger.Error().Msg("Chat ID not found for request")
 			http.Error(w, "Chat ID not found", http.StatusNotFound)
 		} else {
-			req := ri.(entities.RequestInfo)
-			go func(req entities.RequestInfo, pdfData []byte) {
+			req := ri.(model.RequestInfo)
+			go func(req model.RequestInfo, pdfData []byte) {
 				// delete the processing message
 				_, err := ctx.Bot.DeleteMessage(context.Background(), &bot.DeleteMessageParams{
 					ChatID:    req.ChatId,

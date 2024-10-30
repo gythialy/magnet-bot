@@ -1,4 +1,4 @@
-package entities
+package dal
 
 import (
 	"fmt"
@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"github.com/glebarez/sqlite"
+	"github.com/gythialy/magnet/pkg/model"
 	"github.com/gythialy/magnet/pkg/utils"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
 
-func setupTestDB(t *testing.T) (*gorm.DB, *HistoryDao, func()) {
+func setupTestDB(t *testing.T) func() {
 	f := "./history.db"
 	db, err := gorm.Open(sqlite.Open(f), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
@@ -22,15 +23,16 @@ func setupTestDB(t *testing.T) (*gorm.DB, *HistoryDao, func()) {
 		t.Fatal(err)
 	}
 
-	_ = db.AutoMigrate(&History{})
+	_ = db.AutoMigrate(&model.History{})
 	db.Debug()
-	dao := NewHistoryDao(db)
+
+	SetDefault(db)
 
 	cleanup := func() {
 		_ = os.Remove(f)
 	}
 
-	return db, dao, cleanup
+	return cleanup
 }
 
 //func TestHistoryDao_Cache(t *testing.T) {
@@ -83,26 +85,24 @@ func setupTestDB(t *testing.T) (*gorm.DB, *HistoryDao, func()) {
 //}
 
 func TestHistoryDao_SearchByTitle(t *testing.T) {
-	_, dao, cleanup := setupTestDB(t)
+	cleanup := setupTestDB(t)
 	defer cleanup()
 
 	userId := int64(1)
 	now := time.Now()
 
 	// Insert test data
-	testData := []*History{
-		{UserId: userId, Url: "https://test.com/1", Title: "Test Title 1", UpdatedAt: now},
-		{UserId: userId, Url: "https://test.com/2", Title: "Another Test", UpdatedAt: now},
-		{UserId: userId, Url: "https://test.com/3", Title: "Something Else", UpdatedAt: now},
-		{UserId: userId, Url: "https://test.com/4", Title: "Final Test Title", UpdatedAt: now},
-		{UserId: userId, Url: "https://test.com/5", Title: "中文测试标题", UpdatedAt: now},
-		{UserId: userId, Url: "https://test.com/6", Title: "Another 中文 Test", UpdatedAt: now},
+	testData := []*model.History{
+		{UserID: userId, URL: "https://test.com/1", Title: "Test Title 1", UpdatedAt: now},
+		{UserID: userId, URL: "https://test.com/2", Title: "Another Test", UpdatedAt: now},
+		{UserID: userId, URL: "https://test.com/3", Title: "Something Else", UpdatedAt: now},
+		{UserID: userId, URL: "https://test.com/4", Title: "Final Test Title", UpdatedAt: now},
+		{UserID: userId, URL: "https://test.com/5", Title: "中文测试标题", UpdatedAt: now},
+		{UserID: userId, URL: "https://test.com/6", Title: "Another 中文 Test", UpdatedAt: now},
 	}
 
-	if err, count := dao.Insert(testData); err != nil {
+	if err := History.Insert(testData); err != nil {
 		t.Fatalf("Failed to insert test data: %v", err)
-	} else {
-		t.Logf("Inserted %d rows", count)
 	}
 
 	// Test cases
@@ -121,7 +121,7 @@ func TestHistoryDao_SearchByTitle(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("Search for '%s'", tc.searchTitle), func(t *testing.T) {
-			results, total := dao.SearchByTitle(userId, tc.searchTitle, 1, 10) // page 1, 10 items per page
+			results, total := History.SearchByTitle(userId, tc.searchTitle, 1, 10) // page 1, 10 items per page
 			if int(total) != tc.expectedLen {
 				t.Errorf("Expected %d total results, got %d for search title '%s'", tc.expectedLen, total, tc.searchTitle)
 			}
@@ -143,7 +143,7 @@ func TestHistoryDao_SearchByTitle(t *testing.T) {
 	// Test pagination
 	t.Run("Test pagination", func(t *testing.T) {
 		pageSize := 2
-		results1, total := dao.SearchByTitle(userId, "Test", 1, pageSize)
+		results1, total := History.SearchByTitle(userId, "Test", 1, pageSize)
 		if int(total) != 4 {
 			t.Errorf("Expected 4 total results, got %d", total)
 		}
@@ -151,20 +151,20 @@ func TestHistoryDao_SearchByTitle(t *testing.T) {
 			t.Errorf("Expected %d results on first page, got %d", pageSize, len(results1))
 		}
 
-		results2, _ := dao.SearchByTitle(userId, "Test", 2, pageSize)
+		results2, _ := History.SearchByTitle(userId, "Test", 2, pageSize)
 		if len(results2) != pageSize {
 			t.Errorf("Expected %d results on second page, got %d", pageSize, len(results2))
 		}
 
 		// Check that results are different on each page
-		if results1[0].Url == results2[0].Url || results1[1].Url == results2[1].Url {
+		if results1[0].URL == results2[0].URL || results1[1].URL == results2[1].URL {
 			t.Errorf("Expected different results on different pages")
 		}
 	})
 }
 
 func TestHistoryDao_IsUrlExist(t *testing.T) {
-	_, dao, cleanup := setupTestDB(t)
+	cleanup := setupTestDB(t)
 	defer cleanup()
 
 	// Test data
@@ -173,13 +173,14 @@ func TestHistoryDao_IsUrlExist(t *testing.T) {
 	nonExistingUrl := "https://nonexistent.com"
 
 	// Insert a test record
-	testHistory := &History{
-		UserId:    userId,
-		Url:       existingUrl,
+	now := time.Now()
+	testHistory := &model.History{
+		UserID:    userId,
+		URL:       existingUrl,
 		Title:     "Example Website",
-		UpdatedAt: time.Now(),
+		UpdatedAt: now,
 	}
-	err, _ := dao.Insert([]*History{testHistory})
+	err := History.Insert([]*model.History{testHistory})
 	if err != nil {
 		t.Fatalf("Failed to insert test data: %v", err)
 	}
@@ -214,7 +215,7 @@ func TestHistoryDao_IsUrlExist(t *testing.T) {
 	// Run test cases
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := dao.IsUrlExist(tt.userId, tt.url)
+			result := History.IsUrlExist(tt.userId, tt.url)
 			if result != tt.expected {
 				t.Errorf("IsUrlExist(%d, %s) = %v, want %v", tt.userId, tt.url, result, tt.expected)
 			}
@@ -223,27 +224,25 @@ func TestHistoryDao_IsUrlExist(t *testing.T) {
 }
 
 func TestHistoryDao_CountHistory(t *testing.T) {
-	_, dao, cleanup := setupTestDB(t)
+	cleanup := setupTestDB(t)
 	defer cleanup()
 
 	userId := int64(1)
 	now := time.Now()
 
 	// Insert test data
-	testData := []*History{
-		{UserId: userId, Url: "https://test.com/1", Title: "Test Title 1", UpdatedAt: now},
-		{UserId: userId, Url: "https://test.com/2", Title: "Another Test", UpdatedAt: now},
-		{UserId: userId, Url: "https://test.com/3", Title: "Something Else", UpdatedAt: now},
+	testData := []*model.History{
+		{UserID: userId, URL: "https://test.com/1", Title: "Test Title 1", UpdatedAt: now},
+		{UserID: userId, URL: "https://test.com/2", Title: "Another Test", UpdatedAt: now},
+		{UserID: userId, URL: "https://test.com/3", Title: "Something Else", UpdatedAt: now},
 	}
 
-	if err, count := dao.Insert(testData); err != nil {
+	if err := History.Insert(testData); err != nil {
 		t.Fatalf("Failed to insert test data: %v", err)
-	} else {
-		t.Logf("Inserted %d rows", count)
 	}
 
 	expectedCount := int64(3)
-	actualCount := dao.Count(userId)
+	actualCount := History.CountByUserId(userId)
 	if actualCount != expectedCount {
 		t.Errorf("Expected %d history records, got %d", expectedCount, actualCount)
 	}

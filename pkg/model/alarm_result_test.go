@@ -1,4 +1,4 @@
-package entities
+package model
 
 import (
 	"encoding/json"
@@ -22,6 +22,6 @@ func TestAlarm_ToMarkdown(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	markdown := a.ToMarkdown()
+	markdown, _ := a.ToMarkdown()
 	fmt.Println(markdown)
 }

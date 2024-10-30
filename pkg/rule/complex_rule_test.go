@@ -3,7 +3,7 @@ package rule
 import (
 	"testing"
 
-	"github.com/gythialy/magnet/pkg/entities"
+	"github.com/gythialy/magnet/pkg/model"
 )
 
 func TestComplexRule_Match(t *testing.T) {
@@ -142,7 +142,7 @@ func TestComplexRule_Match(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rule := NewComplexRule(&entities.Keyword{Keyword: tt.rule})
+			rule := NewComplexRule(&model.Keyword{Keyword: tt.rule})
 			for _, td := range tt.testData {
 				result := rule.IsMatch(td.input)
 				if result != td.expected {
@@ -248,7 +248,7 @@ func TestNewComplexRule(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rule := NewComplexRule(&entities.Keyword{Keyword: tt.ruleString})
+			rule := NewComplexRule(&model.Keyword{Keyword: tt.ruleString})
 
 			// Check includes
 			if len(rule.IncludeTerms) != len(tt.expectedInclude) {
@@ -313,7 +313,7 @@ func TestComplexRule_ToString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rule := NewComplexRule(&entities.Keyword{Keyword: tt.rule})
+			rule := NewComplexRule(&model.Keyword{Keyword: tt.rule})
 			result := rule.ToString()
 			if result != tt.expected {
 				t.Errorf("Expected '%s', but got '%s'", tt.expected, result)

@@ -1,4 +1,4 @@
-package entities
+package model
 
 type ProjectResult struct {
 	Msg   string `json:"msg"`

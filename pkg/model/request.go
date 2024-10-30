@@ -1,4 +1,4 @@
-package entities
+package model
 
 type RequestInfo struct {
 	ChatId    int64

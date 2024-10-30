@@ -14,12 +14,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gythialy/magnet/pkg/utils"
+
+	"github.com/gythialy/magnet/pkg/dal"
+	"github.com/gythialy/magnet/pkg/model"
+
 	"github.com/gythialy/magnet/pkg"
 
 	"github.com/PuerkitoBio/goquery"
 
 	"github.com/google/uuid"
-	"github.com/gythialy/magnet/pkg/entities"
 	"github.com/gythialy/magnet/pkg/rule"
 
 	"github.com/gythialy/magnet/pkg/constant"
@@ -36,28 +40,21 @@ const (
 )
 
 type CommandsHandler struct {
-	ctx        *pkg.BotContext
-	keywordDao *entities.KeywordDao
-	alarmDao   *entities.AlarmDao
-	historyDao *entities.HistoryDao
+	ctx *pkg.BotContext
 }
 
 func NewCommandsHandler(ctx *pkg.BotContext) *CommandsHandler {
-	db := ctx.DB
 	return &CommandsHandler{
-		ctx:        ctx,
-		keywordDao: entities.NewKeywordDao(db),
-		alarmDao:   entities.NewAlarmDao(db),
-		historyDao: entities.NewHistoryDao(db),
+		ctx: ctx,
 	}
 }
 
-func (c *CommandsHandler) addKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update, prefix string, t entities.KeywordType) {
+func (c *CommandsHandler) addKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update, prefix string, t model.KeywordType) {
 	text := update.Message.Text
 	tmp := strings.TrimSpace(strings.TrimPrefix(text, prefix))
 	keywords := strings.Split(tmp, ",")
 	id := update.Message.Chat.ID
-	result := c.keywordDao.Add(keywords, id, t)
+	result := dal.Keyword.Insert(keywords, id, t)
 	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,
 		Text:   fmt.Sprintf("%s: %s", prefix, result),
@@ -66,62 +63,42 @@ func (c *CommandsHandler) addKeywordHandler(ctx context.Context, b *bot.Bot, upd
 	}
 }
 
-func (c *CommandsHandler) deleteKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update, prefix string, t entities.KeywordType) {
+func (c *CommandsHandler) deleteKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update, prefix string, t model.KeywordType) {
 	text := update.Message.Text
 	tmp := strings.TrimSpace(strings.TrimPrefix(text, prefix))
 	keywords := strings.Split(tmp, ",")
 	id := update.Message.Chat.ID
-	result := c.keywordDao.Delete(keywords, id, t)
-
-	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: update.Message.Chat.ID,
-		Text:   fmt.Sprintf("%s: %s", prefix, result),
-	}); err != nil {
-		c.ctx.Logger.Error().Err(err)
-	}
-}
-
-func (c *CommandsHandler) listKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update, t entities.KeywordType) {
-	id := update.Message.Chat.ID
-	rules := c.keywordDao.List(id, t)
-	result := make([]string, len(rules))
-	if t == entities.PROJECT {
-		for i, v := range rules {
-			if cr := rule.NewComplexRule(&v); cr != nil {
-				result[i] = fmt.Sprintf("%s[%s]", v.Keyword, cr.ToString())
-			}
+	if result, err := dal.Keyword.Delete(keywords, id, t); err == nil {
+		if _, msgErr := b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: update.Message.Chat.ID,
+			Text:   fmt.Sprintf("%s: %s", prefix, result),
+		}); msgErr != nil {
+			c.ctx.Logger.Error().Err(msgErr)
 		}
-	}
-	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: update.Message.Chat.ID,
-		Text:   fmt.Sprintf("All %s keywords:\n%s", t.String(), strings.Join(result, "\n")),
-	}); err != nil {
-		c.ctx.Logger.Error().Err(err)
+	} else {
+		if _, msgErr := b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: update.Message.Chat.ID,
+			Text:   fmt.Sprintf("%s failed, %s", prefix, err.Error()),
+		}); msgErr != nil {
+			c.ctx.Logger.Error().Err(msgErr)
+		}
 	}
 }
 
 func (c *CommandsHandler) AddKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	c.addKeywordHandler(ctx, b, update, constant.AddKeyword, entities.PROJECT)
+	c.addKeywordHandler(ctx, b, update, constant.AddKeyword, model.PROJECT)
 }
 
 func (c *CommandsHandler) DeleteKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	c.deleteKeywordHandler(ctx, b, update, constant.DeleteKeyword, entities.PROJECT)
-}
-
-func (c *CommandsHandler) ListKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	c.listKeywordHandler(ctx, b, update, entities.PROJECT)
+	c.deleteKeywordHandler(ctx, b, update, constant.DeleteKeyword, model.PROJECT)
 }
 
 func (c *CommandsHandler) AddAlarmKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	c.addKeywordHandler(ctx, b, update, constant.AddAlarmKeyword, entities.ALARM)
+	c.addKeywordHandler(ctx, b, update, constant.AddAlarmKeyword, model.ALARM)
 }
 
 func (c *CommandsHandler) DeleteAlarmKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	c.deleteKeywordHandler(ctx, b, update, constant.DeleteAlarmKeyword, entities.ALARM)
-}
-
-func (c *CommandsHandler) ListAlarmKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	c.listKeywordHandler(ctx, b, update, entities.ALARM)
+	c.deleteKeywordHandler(ctx, b, update, constant.DeleteAlarmKeyword, model.ALARM)
 }
 
 func (c *CommandsHandler) ListAlarmRecordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -134,7 +111,7 @@ func (c *CommandsHandler) sendPaginatedAlarms(ctx context.Context, b *bot.Bot, u
 	userId int64, page, messageId int,
 ) {
 	pageSize := alarmPageSize
-	alarms, total := c.alarmDao.List(userId, page, pageSize)
+	alarms, total := dal.Alarm.List(userId, page, pageSize)
 
 	if total == 0 {
 		text := "No alarm records found."
@@ -146,8 +123,12 @@ func (c *CommandsHandler) sendPaginatedAlarms(ctx context.Context, b *bot.Bot, u
 
 	var response strings.Builder
 	for i, alarm := range alarms {
-		response.WriteString(fmt.Sprintf("%d. %s\n", (page-1)*pageSize+i+1, alarm.ToMarkdown()))
-		response.WriteString("\n")
+		if markdown, err := alarm.ToMarkdown(); err == nil {
+			response.WriteString(fmt.Sprintf("%d. %s\n", (page-1)*pageSize+i+1, markdown))
+			response.WriteString("\n")
+		} else {
+			c.ctx.Logger.Error().Msgf("%s,%s", utils.ToString(alarm), err.Error())
+		}
 	}
 
 	var keyboard [][]models.InlineKeyboardButton
@@ -200,7 +181,7 @@ func (c *CommandsHandler) paginatedSearchResult(ctx context.Context, b *bot.Bot,
 	query string, page, messageId int,
 ) {
 	id := update.Message.Chat.ID
-	results, total := c.historyDao.SearchByTitle(id, query, page, historyPageSize)
+	results, total := dal.History.SearchByTitle(id, query, page, historyPageSize)
 
 	if total == 0 {
 		text := "No matching history found."
@@ -212,7 +193,7 @@ func (c *CommandsHandler) paginatedSearchResult(ctx context.Context, b *bot.Bot,
 
 	var response strings.Builder
 	for i, history := range results {
-		response.WriteString(fmt.Sprintf("%d. <a href=\"%s\">%s</a>\n", (page-1)*historyPageSize+i+1, history.Url, history.Title))
+		response.WriteString(fmt.Sprintf("%d. <a href=\"%s\">%s</a>\n", (page-1)*historyPageSize+i+1, history.URL, history.Title))
 	}
 
 	var keyboard [][]models.InlineKeyboardButton
@@ -320,7 +301,7 @@ func (c *CommandsHandler) ConvertURLToPDFHandler(ctx context.Context, b *bot.Bot
 	}
 
 	// Store the chat ID and file name associated with this request
-	c.ctx.Store.Set(requestId, entities.RequestInfo{
+	c.ctx.Store.Set(requestId, model.RequestInfo{
 		ChatId:    userId,
 		MessageId: processingMsg.ID,
 		Message:   message,
@@ -463,20 +444,28 @@ func (c *CommandsHandler) StaticHandler(ctx context.Context, b *bot.Bot, update 
 	userId := update.Message.Chat.ID
 
 	// Get counter
-	alarmCount := c.keywordDao.Count(userId, entities.ALARM)
-	keywordCount := c.keywordDao.Count(userId, entities.PROJECT)
-	historyCount := c.historyDao.Count(userId)
-
+	keywordDao := dal.Keyword
+	alarmCount := keywordDao.CountByUserId(userId, model.ALARM)
+	alarmKeywords := keywordDao.GetByUserIdAndType(userId, model.ALARM)
+	keywordCount := keywordDao.CountByUserId(userId, model.PROJECT)
+	historyCount := dal.History.CountByUserId(userId)
+	var alarmStats strings.Builder
+	if len(alarmKeywords) > 0 {
+		alarmStats.WriteString(fmt.Sprintf("\n- Alarm Keywords: %d\n", alarmCount))
+		for idx, kw := range alarmKeywords {
+			alarmStats.WriteString(fmt.Sprintf("\n- [%d/%d] %s", idx+1, *kw.ID, kw.Keyword))
+		}
+	}
 	// Get keyword stats
-	keywords := c.keywordDao.List(userId, entities.PROJECT)
+	keywords := keywordDao.GetByUserIdAndType(userId, model.PROJECT)
 	var keywordStats strings.Builder
 	if len(keywords) > 0 {
-		keywordStats.WriteString(fmt.Sprintf("\n\n<b>Keyword Match Counts: %d</b>", keywordCount))
-		for _, kw := range keywords {
-			if cr := rule.NewComplexRule(&kw); cr != nil {
-				keywordStats.WriteString(fmt.Sprintf("\n- %s [%s]: %d", kw.Keyword, cr.ToString(), kw.Counter))
+		keywordStats.WriteString(fmt.Sprintf("\n- Keyword Match Counts: %d\n", keywordCount))
+		for idx, kw := range keywords {
+			if cr := rule.NewComplexRule(kw); cr != nil {
+				keywordStats.WriteString(fmt.Sprintf("\n- [%d/%d] %s => [%s]: %d", idx+1, *kw.ID, kw.Keyword, cr.ToString(), kw.Counter))
 			} else {
-				keywordStats.WriteString(fmt.Sprintf("\n- %s: %d", kw.Keyword, kw.Counter))
+				keywordStats.WriteString(fmt.Sprintf("\n- [%d/%d] %s: %d", idx+1, *kw.ID, kw.Keyword, kw.Counter))
 			}
 		}
 	}
@@ -487,12 +476,13 @@ Build Time: %s
 
 <b>Statistics:</b>
 - History Records: %d
-- Alarm Keywords: %d%s
+%s
+%s
 `,
 		constant.Version,
 		constant.BuildTime,
 		historyCount,
-		alarmCount,
+		alarmStats.String(),
 		keywordStats.String())
 
 	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{

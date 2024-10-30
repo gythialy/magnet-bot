@@ -6,12 +6,13 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/gythialy/magnet/pkg/model"
+
 	"github.com/gythialy/magnet/pkg/utils"
 
 	"github.com/gythialy/magnet/pkg/constant"
 
 	"github.com/go-resty/resty/v2"
-	m "github.com/gythialy/magnet/pkg/entities"
 )
 
 const (
@@ -69,8 +70,8 @@ func (c *Crawler) FetchProjects() []*Project {
 		if resp, err := c.client.R().
 			SetHeader("Content-Type", ContextType).
 			SetHeader("User-Agent", UserAgent).
-			SetQueryParams(params).SetResult(&m.ProjectResult{}).Get(url); err == nil {
-			r := resp.Result().(*m.ProjectResult)
+			SetQueryParams(params).SetResult(&model.ProjectResult{}).Get(url); err == nil {
+			r := resp.Result().(*model.ProjectResult)
 			size := len(r.Data)
 			if size > 0 {
 				for _, v := range r.Data {
@@ -101,8 +102,8 @@ func (c *Crawler) FetchProjects() []*Project {
 	return result
 }
 
-func (c *Crawler) fetch(keywords []string, type_ string) []*m.Alarm {
-	result := make([]*m.Alarm, 0)
+func (c *Crawler) fetch(keywords []string, type_ string) []*model.Alarm {
+	result := make([]*model.Alarm, 0)
 	for _, keyword := range keywords {
 		params := map[string]string{
 			"publishType": type_,
@@ -114,20 +115,20 @@ func (c *Crawler) fetch(keywords []string, type_ string) []*m.Alarm {
 			SetHeader("Content-Type", ContextType).
 			SetHeader("User-Agent", UserAgent).
 			SetQueryParams(params).
-			SetResult(&m.AlarmResult{}).Get(url); err == nil {
-			r := resp.Result().(*m.AlarmResult)
+			SetResult(&model.AlarmResult{}).Get(url); err == nil {
+			r := resp.Result().(*model.AlarmResult)
 			for _, row := range r.Data.Rows {
 				endDate := c.parseTime(row.EndDate)
 				if endDate.IsZero() || time.Now().Before(endDate) {
-					result = append(result, &m.Alarm{
+					result = append(result, &model.Alarm{
 						CreditName:       row.CreditName,
 						CreditCode:       row.CreditCode,
 						StartDate:        c.parseTime(row.StartDate),
-						EndDate:          endDate,
-						DetailReason:     row.DetailReason,
-						HandleDepartment: row.HandleDepartment,
-						HandleUnit:       row.HandleUnit,
-						HandleResult:     row.HandleResult,
+						EndDate:          &endDate,
+						DetailReason:     &row.DetailReason,
+						HandleDepartment: &row.HandleDepartment,
+						HandleUnit:       &row.HandleUnit,
+						HandleResult:     &row.HandleResult,
 					})
 				}
 			}
@@ -138,13 +139,13 @@ func (c *Crawler) fetch(keywords []string, type_ string) []*m.Alarm {
 	return result
 }
 
-func (c *Crawler) Fetch(keywords []string, userId int64) []*m.Alarm {
-	result := make([]*m.Alarm, 0)
+func (c *Crawler) Fetch(keywords []string, userId int64) []*model.Alarm {
+	result := make([]*model.Alarm, 0)
 	r1 := c.fetch(keywords, "breakFaith")
 	cache := make(map[string]interface{})
 	for _, alarm := range r1 {
 		if _, ok := cache[alarm.CreditCode]; !ok {
-			alarm.UserId = userId
+			alarm.UserID = userId
 			cache[alarm.CreditCode] = alarm
 			result = append(result, alarm)
 		}
@@ -152,7 +153,7 @@ func (c *Crawler) Fetch(keywords []string, userId int64) []*m.Alarm {
 	r2 := c.fetch(keywords, "suspend")
 	for _, alarm := range r2 {
 		if _, ok := cache[alarm.CreditCode]; !ok {
-			alarm.UserId = userId
+			alarm.UserID = userId
 			cache[alarm.CreditCode] = alarm
 			result = append(result, alarm)
 		}
