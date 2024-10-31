@@ -8,13 +8,13 @@ import (
 	"sync"
 	"unicode"
 
-	"github.com/gythialy/magnet/pkg/entities"
+	"github.com/gythialy/magnet/pkg/model"
 )
 
 type ComplexRule struct {
 	IncludeTerms map[string]struct{}
 	ExcludeTerms map[string]struct{}
-	Rule         *entities.Keyword
+	Rule         *model.Keyword
 }
 
 // Use sync.Pool to reuse slices during marshaling and unmarshaling
@@ -118,7 +118,7 @@ func sliceToMap(s *[]string) map[string]struct{} {
 	return m
 }
 
-func NewComplexRule(k *entities.Keyword) *ComplexRule {
+func NewComplexRule(k *model.Keyword) *ComplexRule {
 	rule := &ComplexRule{
 		IncludeTerms: make(map[string]struct{}),
 		ExcludeTerms: make(map[string]struct{}),

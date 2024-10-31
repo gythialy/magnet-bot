@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gythialy/magnet/pkg/entities"
+	"github.com/gythialy/magnet/pkg/dal"
 
 	"github.com/gythialy/magnet/pkg/rule"
 )
@@ -35,7 +35,6 @@ type Projects struct {
 	keywordProjects []*Project
 	rules           []*rule.ComplexRule
 	ctx             *BotContext
-	keywordDao      *entities.KeywordDao
 	counters        *sync.Map
 }
 
@@ -45,7 +44,6 @@ func NewProjects(ctx *BotContext, projects []*Project, rules []*rule.ComplexRule
 		rules:           rules,
 		keywordProjects: make([]*Project, 0),
 		ctx:             ctx,
-		keywordDao:      entities.NewKeywordDao(ctx.DB),
 		counters:        &sync.Map{},
 	}
 }
@@ -59,8 +57,8 @@ func (r *Projects) filter() {
 			if cr.IsMatch(v.ShortTitle) || cr.IsMatch(v.OpenTenderCode) {
 				matched = append(matched, cr.ToString())
 				key := cr.Rule.ID
-				if val, ok := r.counters.LoadOrStore(cr.Rule.ID, 0); ok {
-					r.counters.Store(key, val.(int)+1)
+				if val, ok := r.counters.LoadOrStore(cr.Rule.ID, int32(0)); ok {
+					r.counters.Store(key, val.(int32)+1)
 				}
 			}
 		}
@@ -72,12 +70,12 @@ func (r *Projects) filter() {
 	}
 
 	r.counters.Range(func(key, value interface{}) bool {
-		id, _ := key.(uint)
-		counter := int64(value.(int))
-		if err := r.keywordDao.UpdateCounter(id, counter); err != nil {
+		keyId, _ := key.(int32)
+		counter := value.(int32)
+		if err := dal.Keyword.UpdateCounter(keyId, counter); err != nil {
 			r.ctx.Logger.Error().Msgf("update counter error: %s", err.Error())
 		} else {
-			r.ctx.Logger.Debug().Msgf("update counter: %d=>%d", id, counter)
+			r.ctx.Logger.Debug().Msgf("update counter: %d=>%d", keyId, counter)
 		}
 		return true
 	})

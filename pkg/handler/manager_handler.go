@@ -3,7 +3,7 @@ package handler
 import (
 	"context"
 
-	"github.com/gythialy/magnet/pkg/entities"
+	"github.com/gythialy/magnet/pkg/dal"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -11,16 +11,12 @@ import (
 )
 
 type ManagerHandler struct {
-	ctx        *pkg.BotContext
-	historyDao *entities.HistoryDao
-	alarmDao   *entities.AlarmDao
+	ctx *pkg.BotContext
 }
 
 func NewManagerHandler(ctx *pkg.BotContext) *ManagerHandler {
 	return &ManagerHandler{
-		ctx:        ctx,
-		historyDao: entities.NewHistoryDao(ctx.DB),
-		alarmDao:   entities.NewAlarmDao(ctx.DB),
+		ctx: ctx,
 	}
 }
 
@@ -56,10 +52,10 @@ func (h *ManagerHandler) Clean(ctx context.Context, b *bot.Bot, update *models.U
 	id := update.Message.Chat.ID
 	if id == h.ctx.ManagerId {
 		msg := "done."
-		if err := h.historyDao.Clean(); err != nil {
+		if err := dal.History.Clean(0); err != nil {
 			msg = err.Error()
 		} else {
-			if err := h.alarmDao.Clean(); err != nil {
+			if err := dal.Alarm.Clean(); err != nil {
 				msg = err.Error()
 			}
 		}

@@ -6,11 +6,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gythialy/magnet/pkg/dal"
+	"github.com/gythialy/magnet/pkg/model"
+
 	"github.com/gythialy/magnet/pkg/rule"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
-	"github.com/gythialy/magnet/pkg/entities"
 	"github.com/panjf2000/ants/v2"
 )
 
@@ -20,25 +22,23 @@ const (
 )
 
 type InfoProcessor struct {
-	context    *BotContext
-	pool       *ants.PoolWithFunc
-	crawler    *Crawler
-	keywordDao *entities.KeywordDao
-	historyDao *entities.HistoryDao
-	alarmDao   *entities.AlarmDao
+	context *BotContext
+	pool    *ants.PoolWithFunc
+	crawler *Crawler
 }
 
 func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
-	historyDao := entities.NewHistoryDao(ctx.DB)
-	alarmDao := entities.NewAlarmDao(ctx.DB)
+	historyDao := dal.History
+	alarmDao := dal.Alarm
 	if pool, err := ants.NewPoolWithFunc(poolSize, func(i interface{}) {
 		switch m := i.(type) {
 		case ConfigData:
 			// process projects
 			messages := NewProjects(ctx, m.Projects, m.ProjectRules).ToMessage()
 			failed := []string{"failed:"}
+			filterFailed := make(map[string]struct{})
 			userId := m.UserId
-			var newHistories []*entities.History
+			var newHistories []*model.History
 			now := time.Now()
 			limiter := time.NewTicker(500 * time.Millisecond)
 			defer limiter.Stop()
@@ -61,16 +61,19 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 							Text:      chunk,
 							ParseMode: models.ParseModeHTML,
 						}); err != nil {
-							failed = append(failed, fmt.Sprintf("<a href=\"%s\">%s</a>", url, title))
+							if _, ok := filterFailed[url]; !ok {
+								filterFailed[url] = struct{}{}
+								failed = append(failed, fmt.Sprintf("<a href=\"%s\">%s</a>", url, title))
+							}
 							ctx.Logger.Error().Msg(err.Error())
 						} else {
 							ctx.Logger.Info().Msgf("notify: %s[%s]-%d", msg.Project.ShortTitle,
 								msg.Project.OpenTenderCode, idx)
 						}
 					}
-					newHistories = append(newHistories, &entities.History{
-						UserId:    userId,
-						Url:       url,
+					newHistories = append(newHistories, &model.History{
+						UserID:    userId,
+						URL:       url,
 						Title:     shortTitle,
 						UpdatedAt: now,
 					})
@@ -90,21 +93,19 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 			}
 
 			if len(newHistories) > 0 {
-				if err, rows := historyDao.Insert(newHistories); err != nil {
+				if err := historyDao.Insert(newHistories); err != nil {
 					ctx.Logger.Error().Msg(err.Error())
-				} else {
-					ctx.Logger.Info().Msgf("insert %d projects", rows)
 				}
 			}
 
 			// process alarms
 			alarmCache := alarmDao.Cache(userId)
-			var newAlarms []*entities.Alarm
+			var newAlarms []*model.Alarm
 			for _, alarm := range m.Alarms {
 				if _, ok := alarmCache[alarm.CreditCode]; ok {
 					continue
 				}
-				msg := alarm.ToMarkdown()
+				msg, _ := alarm.ToMarkdown()
 				if _, err := ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
 					ChatID:    userId,
 					Text:      msg,
@@ -117,10 +118,8 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 			}
 
 			if len(newAlarms) > 0 {
-				if err, rows := alarmDao.Insert(newAlarms); err != nil {
+				if err := alarmDao.Insert(newAlarms); err != nil {
 					ctx.Logger.Error().Msg(err.Error())
-				} else {
-					ctx.Logger.Info().Msgf("insert %d alarms", rows)
 				}
 			}
 		}
@@ -128,12 +127,9 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 		return nil, err
 	} else {
 		return &InfoProcessor{
-			context:    ctx,
-			pool:       pool,
-			crawler:    NewCrawler(ctx),
-			keywordDao: entities.NewKeywordDao(ctx.DB),
-			historyDao: historyDao,
-			alarmDao:   alarmDao,
+			context: ctx,
+			pool:    pool,
+			crawler: NewCrawler(ctx),
 		}, nil
 	}
 }
@@ -171,7 +167,7 @@ func (r *InfoProcessor) Release() {
 }
 
 func (r *InfoProcessor) config() map[int64]ConfigData {
-	ids := r.keywordDao.Ids()
+	ids := dal.Keyword.Ids()
 	m := make(map[int64]ConfigData)
 	for _, id := range ids {
 		if _, ok := m[id]; !ok {
@@ -183,10 +179,10 @@ func (r *InfoProcessor) config() map[int64]ConfigData {
 }
 
 func (r *InfoProcessor) get(id int64) ConfigData {
-	keywords := r.keywordDao.List(id, entities.PROJECT)
+	keywords := dal.Keyword.GetByUserIdAndType(id, model.PROJECT)
 	var rules []*rule.ComplexRule
-	for _, keyword := range keywords {
-		r := rule.NewComplexRule(&keyword)
+	for _, kw := range keywords {
+		r := rule.NewComplexRule(kw)
 		if r != nil {
 			rules = append(rules, r)
 		}
@@ -194,7 +190,7 @@ func (r *InfoProcessor) get(id int64) ConfigData {
 	return ConfigData{
 		UserId:       id,
 		ProjectRules: rules,
-		AlarmKeyword: r.keywordDao.ListKeywords(id, entities.ALARM),
+		AlarmKeyword: dal.Keyword.GetKeywords(id, model.ALARM),
 	}
 }
 
@@ -223,6 +219,6 @@ type ConfigData struct {
 	ProjectRules []*rule.ComplexRule
 	AlarmKeyword []string
 	Projects     []*Project
-	Alarms       []*entities.Alarm
+	Alarms       []*model.Alarm
 	IsForced     bool
 }
