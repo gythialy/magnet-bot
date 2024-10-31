@@ -1,4 +1,4 @@
-package pkg
+package handler
 
 import (
 	"sync"

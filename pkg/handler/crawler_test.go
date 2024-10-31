@@ -1,10 +1,12 @@
-package pkg
+package handler
 
 import (
 	"fmt"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/gythialy/magnet/pkg/config"
 
 	"github.com/gythialy/magnet/pkg/dal"
 	"github.com/gythialy/magnet/pkg/model"
@@ -16,7 +18,9 @@ import (
 
 func TestCrawler_Get(t *testing.T) {
 	crawler := NewCrawler(&BotContext{
-		MessageServerUrl: os.Getenv("SERVER_URL"),
+		Config: &config.ServiceConfig{
+			MessageServerUrl: os.Getenv("SERVER_URL"),
+		},
 	})
 
 	results := crawler.FetchProjects()
@@ -40,7 +44,9 @@ func TestCrawler_Fetch(t *testing.T) {
 	dal.SetDefault(db)
 
 	crawler := NewCrawler(&BotContext{
-		MessageServerUrl: os.Getenv("SERVER_URL"),
+		Config: &config.ServiceConfig{
+			MessageServerUrl: os.Getenv("SERVER_URL"),
+		},
 	})
 
 	userId := int64(1111)

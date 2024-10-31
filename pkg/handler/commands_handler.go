@@ -19,8 +19,6 @@ import (
 	"github.com/gythialy/magnet/pkg/dal"
 	"github.com/gythialy/magnet/pkg/model"
 
-	"github.com/gythialy/magnet/pkg"
-
 	"github.com/PuerkitoBio/goquery"
 
 	"github.com/google/uuid"
@@ -39,13 +37,19 @@ const (
 	fileExtension    = ".pdf"
 )
 
+var (
+	codeRegx    = regexp.MustCompile(`[（(]([^）)]+)[）)]`)
+	breakerRegx = regexp.MustCompile(`[\n\t]+`)
+	spaceRegx   = regexp.MustCompile(`\s+`)
+)
+
 type CommandsHandler struct {
-	ctx *pkg.BotContext
+	ctx *BotContext
 }
 
-func NewCommandsHandler(ctx *pkg.BotContext) *CommandsHandler {
+func NewCommandsHandler(ctx *BotContext) *CommandsHandler {
 	return &CommandsHandler{
-		ctx: ctx,
+		ctx,
 	}
 }
 
@@ -121,10 +125,10 @@ func (c *CommandsHandler) AddAlarmKeywordHandler(ctx context.Context, b *bot.Bot
 func (c *CommandsHandler) ListAlarmRecordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	id := update.Message.Chat.ID
 
-	c.sendPaginatedAlarms(ctx, b, update, id, 1, defaultMessageId)
+	c.sendPaginatedAlarms(ctx, b, id, 1, defaultMessageId)
 }
 
-func (c *CommandsHandler) sendPaginatedAlarms(ctx context.Context, b *bot.Bot, update *models.Update,
+func (c *CommandsHandler) sendPaginatedAlarms(ctx context.Context, b *bot.Bot,
 	userId int64, page, messageId int,
 ) {
 	pageSize := alarmPageSize
@@ -263,9 +267,7 @@ func (c *CommandsHandler) HandleCallbackQuery(ctx context.Context, b *bot.Bot, u
 			Message: update.CallbackQuery.Message.Message,
 		}, query, page, messageId)
 	case constant.Alarm:
-		c.sendPaginatedAlarms(ctx, b, &models.Update{
-			Message: update.CallbackQuery.Message.Message,
-		}, update.CallbackQuery.From.ID, page, messageId)
+		c.sendPaginatedAlarms(ctx, b, update.CallbackQuery.From.ID, page, messageId)
 	}
 
 	// Answer the callback query to remove the loading indicator
@@ -293,7 +295,7 @@ func (c *CommandsHandler) ConvertURLToPDFHandler(ctx context.Context, b *bot.Bot
 	}
 
 	// Check if the domain matches BotContext.MessageServerUrl
-	if parsedURL.Host != c.ctx.MessageServerUrl {
+	if parsedURL.Host != c.ctx.Config.MessageServerUrl {
 		c.sendErrorMessage(ctx, b, update, "URL domain is not allowed")
 		return
 	}
@@ -343,7 +345,12 @@ func (c *CommandsHandler) extractFileName(u *url.URL) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			c.ctx.Logger.Error().Msg(err.Error())
+		}
+	}(resp.Body)
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
@@ -352,12 +359,14 @@ func (c *CommandsHandler) extractFileName(u *url.URL) (string, error) {
 
 	var fileName string
 	title := strings.TrimSpace(doc.Find("h1.info-title").Text())
-	title = regexp.MustCompile(`[\n\t]+`).ReplaceAllString(title, "")
-	title = regexp.MustCompile(`\s+`).ReplaceAllString(title, "")
-	re := regexp.MustCompile(`[（(]([^）)]+)[）)]`)
+	if title == "" {
+		title = strings.TrimSpace(doc.Find("div.title").Text())
+	}
+	title = breakerRegx.ReplaceAllString(title, "")
+	title = spaceRegx.ReplaceAllString(title, "")
 
 	if title != "" {
-		matches := re.FindStringSubmatch(title)
+		matches := codeRegx.FindStringSubmatch(title)
 		if len(matches) > 1 {
 			// Use the extracted code as the filename
 			fileName = matches[1] + fileExtension
@@ -373,7 +382,7 @@ func (c *CommandsHandler) extractFileName(u *url.URL) (string, error) {
 }
 
 func (c *CommandsHandler) pdfService(u string, requestID string) {
-	webhookURL := fmt.Sprintf("%s%s%s", c.ctx.PDFServiceConfig.WebhookURL(), constant.PDFEndPoint, requestID)
+	webhookURL := fmt.Sprintf("%s%s%s", c.ctx.Config.PDF.WebhookURL(), constant.PDFEndPoint, requestID)
 
 	// Create a new form data
 	body := &bytes.Buffer{}
@@ -391,7 +400,7 @@ func (c *CommandsHandler) pdfService(u string, requestID string) {
 
 	// Create the request
 	req, err := http.NewRequest("POST",
-		fmt.Sprintf("%s/forms/chromium/convert/url", c.ctx.PDFServiceConfig.PDFServiceURL), body)
+		fmt.Sprintf("%s/forms/chromium/convert/url", c.ctx.Config.PDF.PDFServiceURL), body)
 	if err != nil {
 		c.ctx.Logger.Error().Msg(err.Error())
 		return
@@ -412,11 +421,15 @@ func (c *CommandsHandler) pdfService(u string, requestID string) {
 		c.ctx.Logger.Error().Msg(err.Error())
 		return
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			c.ctx.Logger.Error().Msg(err.Error())
+		}
+	}(resp.Body)
 
 	if resp.StatusCode != http.StatusNoContent {
 		c.ctx.Logger.Error().Msgf("Gotenberg service returned status: %d", resp.StatusCode)
-		// You might want to read and log the response body for more details
 		body, _ := io.ReadAll(resp.Body)
 		c.ctx.Logger.Error().Msgf("Response body: %s", string(body))
 	}

@@ -1,4 +1,4 @@
-package pkg
+package handler
 
 import (
 	"context"
@@ -31,13 +31,13 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 	historyDao := dal.History
 	alarmDao := dal.Alarm
 	if pool, err := ants.NewPoolWithFunc(poolSize, func(i interface{}) {
-		switch m := i.(type) {
-		case ConfigData:
+		switch pd := i.(type) {
+		case ProcessData:
 			// process projects
-			messages := NewProjects(ctx, m.Projects, m.ProjectRules).ToMessage()
+			messages := NewProjects(ctx, pd.Projects, pd.ProjectRules).ToMessage()
 			failed := []string{"failed:"}
 			filterFailed := make(map[string]struct{})
-			userId := m.UserId
+			userId := pd.UserId
 			var newHistories []*model.History
 			now := time.Now()
 			limiter := time.NewTicker(500 * time.Millisecond)
@@ -47,7 +47,7 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 				// already processed, skip it
 				url := msg.Project.Pageurl
 				shortTitle := msg.Project.ShortTitle
-				if historyDao.IsUrlExist(userId, url) && !m.IsForced {
+				if historyDao.IsUrlExist(userId, url) && !pd.IsForced {
 					ctx.Logger.Debug().Msgf("%s already processed", shortTitle)
 					continue
 				}
@@ -101,7 +101,7 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 			// process alarms
 			alarmCache := alarmDao.Cache(userId)
 			var newAlarms []*model.Alarm
-			for _, alarm := range m.Alarms {
+			for _, alarm := range pd.Alarms {
 				if _, ok := alarmCache[alarm.CreditCode]; ok {
 					continue
 				}
@@ -135,7 +135,6 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 }
 
 func (r *InfoProcessor) Process() {
-	// fetch info
 	projects := r.crawler.FetchProjects()
 	config := r.config()
 	for _, data := range config {
@@ -150,7 +149,6 @@ func (r *InfoProcessor) Process() {
 }
 
 func (r *InfoProcessor) Get(userId int64) {
-	// fetch info
 	results := r.crawler.FetchProjects()
 	if len(results) > 0 {
 		data := r.get(userId)
@@ -166,9 +164,9 @@ func (r *InfoProcessor) Release() {
 	r.pool.Release()
 }
 
-func (r *InfoProcessor) config() map[int64]ConfigData {
+func (r *InfoProcessor) config() map[int64]ProcessData {
 	ids := dal.Keyword.Ids()
-	m := make(map[int64]ConfigData)
+	m := make(map[int64]ProcessData)
 	for _, id := range ids {
 		if _, ok := m[id]; !ok {
 			m[id] = r.get(id)
@@ -178,7 +176,7 @@ func (r *InfoProcessor) config() map[int64]ConfigData {
 	return m
 }
 
-func (r *InfoProcessor) get(id int64) ConfigData {
+func (r *InfoProcessor) get(id int64) ProcessData {
 	keywords := dal.Keyword.GetByUserIdAndType(id, model.PROJECT)
 	var rules []*rule.ComplexRule
 	for _, kw := range keywords {
@@ -187,7 +185,7 @@ func (r *InfoProcessor) get(id int64) ConfigData {
 			rules = append(rules, r)
 		}
 	}
-	return ConfigData{
+	return ProcessData{
 		UserId:       id,
 		ProjectRules: rules,
 		AlarmKeyword: dal.Keyword.GetKeywords(id, model.ALARM),
@@ -214,7 +212,7 @@ func splitMessage(message string) ([]string, int) {
 	return chunks, len(chunks)
 }
 
-type ConfigData struct {
+type ProcessData struct {
 	UserId       int64
 	ProjectRules []*rule.ComplexRule
 	AlarmKeyword []string

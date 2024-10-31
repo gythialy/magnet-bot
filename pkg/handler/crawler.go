@@ -1,4 +1,4 @@
-package pkg
+package handler
 
 import (
 	"fmt"
@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	ContextType = "application/json"
-	UserAgent   = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0"
+	contextType = "application/json"
+	userAgent   = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0"
 	siteId      = "404bb030-5be9-4070-85bd-c94b1473e8de"
 	channelId   = "c5bff13f-21ca-4dac-b158-cb40accd3035"
 	pageSize    = "20"
@@ -45,7 +45,7 @@ func NewCrawler(ctx *BotContext) *Crawler {
 func (c *Crawler) FetchProjects() []*Project {
 	now := time.Now()
 	days := c.crawlDays()
-	url := fmt.Sprintf("https://%s/freecms/rest/v1/notice/selectInfoMoreChannel.do?operationStartTime=%s&operationEndTime=%s", c.ctx.MessageServerUrl,
+	url := fmt.Sprintf("https://%s/freecms/rest/v1/notice/selectInfoMoreChannel.do?operationStartTime=%s&operationEndTime=%s", c.ctx.Config.MessageServerUrl,
 		c.format(now.AddDate(0, 0, -days)), c.format(now))
 	idx := 1
 	result := make([]*Project, 0)
@@ -68,8 +68,8 @@ func (c *Crawler) FetchProjects() []*Project {
 	for {
 		params["currPage"] = strconv.Itoa(idx)
 		if resp, err := c.client.R().
-			SetHeader("Content-Type", ContextType).
-			SetHeader("User-Agent", UserAgent).
+			SetHeader("Content-Type", contextType).
+			SetHeader("User-Agent", userAgent).
 			SetQueryParams(params).SetResult(&model.ProjectResult{}).Get(url); err == nil {
 			r := resp.Result().(*model.ProjectResult)
 			size := len(r.Data)
@@ -82,7 +82,7 @@ func (c *Crawler) FetchProjects() []*Project {
 						ShortTitle:     v.Title,
 						Title:          v.Title,
 						Content:        content,
-						Pageurl:        fmt.Sprintf("%s%s", c.ctx.MessageServerUrl, v.Pageurl),
+						Pageurl:        fmt.Sprintf("%s%s", c.ctx.Config.MessageServerUrl, v.Pageurl),
 					})
 				}
 				idx++
@@ -110,10 +110,11 @@ func (c *Crawler) fetch(keywords []string, type_ string) []*model.Alarm {
 			"creditName":  keyword,
 		}
 
-		url := fmt.Sprintf("https://%s/gateway/gpc-gpcms/rest/v2/punish/public?&pageNumber=1&pageSize=10&handleUnit=&startDate=&endDate=", c.ctx.MessageServerUrl)
+		url := fmt.Sprintf("https://%s/gateway/gpc-gpcms/rest/v2/punish/public?&pageNumber=1&pageSize=10&handleUnit=&startDate=&endDate=",
+			c.ctx.Config.MessageServerUrl)
 		if resp, err := c.client.R().
-			SetHeader("Content-Type", ContextType).
-			SetHeader("User-Agent", UserAgent).
+			SetHeader("Content-Type", contextType).
+			SetHeader("User-Agent", userAgent).
 			SetQueryParams(params).
 			SetResult(&model.AlarmResult{}).Get(url); err == nil {
 			r := resp.Result().(*model.AlarmResult)

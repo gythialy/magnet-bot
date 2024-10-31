@@ -17,7 +17,6 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
-	"github.com/gythialy/magnet/pkg"
 	"github.com/nmmh/magneturi/magneturi"
 )
 
@@ -29,10 +28,10 @@ const (
 var splitRegex = regexp.MustCompile("\r?\n")
 
 type MagnetHandler struct {
-	ctx *pkg.BotContext
+	ctx *BotContext
 }
 
-func NewMagnetHandler(ctx *pkg.BotContext) *MagnetHandler {
+func NewMagnetHandler(ctx *BotContext) *MagnetHandler {
 	return &MagnetHandler{
 		ctx: ctx,
 	}
@@ -73,7 +72,7 @@ func (m *MagnetHandler) Handler(ctx context.Context, b *bot.Bot, update *models.
 }
 
 func (m *MagnetHandler) fetchServer() string {
-	f := filepath.Join(m.ctx.BaseDir, BestFile)
+	f := filepath.Join(m.ctx.Config.BaseDir, BestFile)
 	logger := m.ctx.Logger
 	logger.Info().Msgf("file: %s", f)
 
