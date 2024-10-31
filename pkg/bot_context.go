@@ -124,15 +124,15 @@ func NewBotContext() (*BotContext, error) {
 			},
 			{
 				Command:     constant.DeleteKeyword,
-				Description: "Delete keywords",
+				Description: "Delete keywords by record ids",
+			},
+			{
+				Command:     constant.EditKeyword,
+				Description: "Edit keywords by record id",
 			},
 			{
 				Command:     constant.AddAlarmKeyword,
 				Description: "Add tender codes",
-			},
-			{
-				Command:     constant.DeleteAlarmKeyword,
-				Description: "Delete alarm keywords",
 			},
 			{
 				Command:     constant.ListAlarmRecords,
