@@ -44,7 +44,7 @@ func (k *keyword) DeleteByIds(ids string) (string, error) {
 		if kw == "" {
 			continue
 		}
-		if i, err := strconv.Atoi(kw); err == nil {
+		if i, err := strconv.ParseInt(kw, 10, 32); err == nil {
 			dbIds = append(dbIds, int32(i))
 		}
 	}
@@ -114,7 +114,7 @@ func (k *keyword) EditById(content []string) error {
 	var combinedErr []error
 	for idx, r := range content {
 		split := strings.Split(r, "=")
-		if i, err := strconv.Atoi(strings.TrimSpace(split[0])); err == nil {
+		if i, err := strconv.ParseInt(strings.TrimSpace(split[0]), 10, 32); err == nil {
 			if _, err := k.Where(k.ID.Eq(int32(i))).Update(k.Keyword, strings.TrimSpace(split[1])); err != nil {
 				combinedErr = append(combinedErr, fmt.Errorf("invalid id: %d, content: %s, %s", idx, r, err.Error()))
 			}
