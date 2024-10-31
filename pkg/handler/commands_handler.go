@@ -63,42 +63,59 @@ func (c *CommandsHandler) addKeywordHandler(ctx context.Context, b *bot.Bot, upd
 	}
 }
 
-func (c *CommandsHandler) deleteKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update, prefix string, t model.KeywordType) {
+func (c *CommandsHandler) AddKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	c.addKeywordHandler(ctx, b, update, constant.AddKeyword, model.PROJECT)
+}
+
+func (c *CommandsHandler) DeleteKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	text := update.Message.Text
-	tmp := strings.TrimSpace(strings.TrimPrefix(text, prefix))
-	keywords := strings.Split(tmp, ",")
-	id := update.Message.Chat.ID
-	if result, err := dal.Keyword.Delete(keywords, id, t); err == nil {
+	tmp := strings.TrimSpace(strings.TrimPrefix(text, constant.DeleteKeyword))
+	if result, err := dal.Keyword.DeleteByIds(tmp); err == nil {
 		if _, msgErr := b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
-			Text:   fmt.Sprintf("%s: %s", prefix, result),
+			Text:   fmt.Sprintf("%s: %s", constant.DeleteKeyword, result),
 		}); msgErr != nil {
 			c.ctx.Logger.Error().Err(msgErr)
 		}
 	} else {
 		if _, msgErr := b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
-			Text:   fmt.Sprintf("%s failed, %s", prefix, err.Error()),
+			Text:   fmt.Sprintf("%s failed, %s", constant.DeleteKeyword, err.Error()),
 		}); msgErr != nil {
 			c.ctx.Logger.Error().Err(msgErr)
 		}
 	}
 }
 
-func (c *CommandsHandler) AddKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	c.addKeywordHandler(ctx, b, update, constant.AddKeyword, model.PROJECT)
-}
-
-func (c *CommandsHandler) DeleteKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	c.deleteKeywordHandler(ctx, b, update, constant.DeleteKeyword, model.PROJECT)
+func (c *CommandsHandler) EditKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	text := update.Message.Text
+	tmp := strings.TrimSpace(strings.TrimPrefix(text, constant.EditKeyword))
+	split := strings.Split(tmp, ",")
+	if len(split) != 2 {
+		c.sendErrorMessage(ctx, b, update,
+			fmt.Sprintf(`Invalid format. Please use the following format: %s keyword1="new_keyword1",keyword2=new_keyword2`, constant.EditKeyword),
+		)
+		return
+	}
+	if err := dal.Keyword.EditById(split); err == nil {
+		if _, msgErr := b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: update.Message.Chat.ID,
+			Text:   fmt.Sprintf("%s: successful.", constant.DeleteKeyword),
+		}); msgErr != nil {
+			c.ctx.Logger.Error().Err(msgErr)
+		}
+	} else {
+		if _, msgErr := b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: update.Message.Chat.ID,
+			Text:   fmt.Sprintf("%s failed, %s", constant.DeleteKeyword, err.Error()),
+		}); msgErr != nil {
+			c.ctx.Logger.Error().Err(msgErr)
+		}
+	}
 }
 
 func (c *CommandsHandler) AddAlarmKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	c.addKeywordHandler(ctx, b, update, constant.AddAlarmKeyword, model.ALARM)
-}
-
-func (c *CommandsHandler) DeleteAlarmKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	c.deleteKeywordHandler(ctx, b, update, constant.DeleteAlarmKeyword, model.ALARM)
 }
 
 func (c *CommandsHandler) ListAlarmRecordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {

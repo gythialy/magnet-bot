@@ -1,6 +1,9 @@
 package dal
 
 import (
+	"errors"
+	"fmt"
+	"strconv"
 	"strings"
 
 	"gorm.io/gen/field"
@@ -32,17 +35,28 @@ func (k *keyword) Insert(keywords []string, userId int64, t model.KeywordType) s
 	return strings.Join(result, ", ")
 }
 
-func (k *keyword) Delete(keywords []string, userId int64, t model.KeywordType) (string, error) {
+func (k *keyword) DeleteByIds(ids string) (string, error) {
+	var dbIds []int32
 	var result []string
-	for _, kw := range keywords {
+	tmp := strings.Split(ids, ",")
+	for _, kw := range tmp {
 		kw = strings.TrimSpace(kw)
 		if kw == "" {
 			continue
 		}
-		result = append(result, kw)
+		if i, err := strconv.Atoi(kw); err == nil {
+			dbIds = append(dbIds, int32(i))
+		}
 	}
-	if _, err := k.Where(k.Keyword.In(result...), k.UserID.Eq(userId), k.Type.Eq(int32(t))).Delete(); err == nil {
-		return strings.Join(result, ", "), err
+	if records, err := k.Where(k.ID.In(dbIds...)).Find(); err == nil {
+		for _, r := range records {
+			result = append(result, fmt.Sprintf("%d:%s", *r.ID, r.Keyword))
+		}
+		if _, err := k.Delete(records...); err == nil {
+			return strings.Join(result, ";"), nil
+		} else {
+			return "", err
+		}
 	} else {
 		return "", err
 	}
@@ -94,4 +108,20 @@ func (k *keyword) CountByUserId(userId int64, t model.KeywordType) int64 {
 	} else {
 		return 0
 	}
+}
+
+func (k *keyword) EditById(content []string) error {
+	var combinedErr []error
+	for idx, r := range content {
+		split := strings.Split(r, "=")
+		if i, err := strconv.Atoi(strings.TrimSpace(split[0])); err == nil {
+			if _, err := k.Where(k.ID.Eq(int32(i))).Update(k.Keyword, strings.TrimSpace(split[1])); err != nil {
+				combinedErr = append(combinedErr, fmt.Errorf("invalid id: %d, content: %s, %s", idx, r, err.Error()))
+			}
+		} else {
+			combinedErr = append(combinedErr, fmt.Errorf("invalid id: %d, content: %s", idx, r))
+		}
+	}
+
+	return errors.Join(combinedErr...)
 }
