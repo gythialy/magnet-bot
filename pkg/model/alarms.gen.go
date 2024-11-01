@@ -13,7 +13,7 @@ const TableNameAlarm = "alarms"
 // Alarm mapped from table <alarms>
 type Alarm struct {
 	UserID           int64      `gorm:"column:user_id;primaryKey;autoIncrement:false" json:"userId"`
-	CreditType       string     `gorm:"column:credit_type;not null" json:"creditType"`
+	BusinessID       string     `gorm:"column:business_id;not null" json:"businessId"`
 	CreditName       string     `gorm:"column:credit_name;not null" json:"creditName"`
 	CreditCode       string     `gorm:"column:credit_code;not null" json:"creditCode"`
 	StartDate        time.Time  `gorm:"column:start_date;not null" json:"startDate"`
@@ -22,6 +22,11 @@ type Alarm struct {
 	HandleDepartment *string    `gorm:"column:handle_department" json:"handleDepartment"`
 	HandleUnit       *string    `gorm:"column:handle_unit" json:"handleUnit"`
 	HandleResult     *string    `gorm:"column:handle_result" json:"handleResult"`
+	PageUrl1         string     `gorm:"column:page_url1;not null" json:"pageUrl1"`
+	NoticeID         string     `gorm:"column:notice_id;not null" json:"noticeId"`
+	OriginNoticeID   *string    `gorm:"column:origin_notice_id" json:"originNoticeId"`
+	PageUrl2         *string    `gorm:"column:page_url2" json:"pageUrl2"`
+	Title            *string    `gorm:"column:title" json:"title"`
 }
 
 // TableName Alarm's table name

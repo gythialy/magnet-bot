@@ -45,9 +45,9 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 
 			for title, msg := range messages {
 				// already processed, skip it
-				url := msg.Project.Pageurl
+				pageURL := msg.Project.Pageurl
 				shortTitle := msg.Project.ShortTitle
-				if historyDao.IsUrlExist(userId, url) && !pd.IsForced {
+				if historyDao.IsUrlExist(userId, pageURL) && !pd.IsForced {
 					ctx.Logger.Debug().Msgf("%s already processed", shortTitle)
 					continue
 				}
@@ -61,9 +61,9 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 							Text:      chunk,
 							ParseMode: models.ParseModeHTML,
 						}); err != nil {
-							if _, ok := filterFailed[url]; !ok {
-								filterFailed[url] = struct{}{}
-								failed = append(failed, fmt.Sprintf("<a href=\"%s\">%s</a>", url, title))
+							if _, ok := filterFailed[pageURL]; !ok {
+								filterFailed[pageURL] = struct{}{}
+								failed = append(failed, fmt.Sprintf("<a href=\"%s\">%s</a>", pageURL, title))
 							}
 							ctx.Logger.Error().Msg(err.Error())
 						} else {
@@ -73,7 +73,7 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 					}
 					newHistories = append(newHistories, &model.History{
 						UserID:    userId,
-						URL:       url,
+						URL:       pageURL,
 						Title:     shortTitle,
 						UpdatedAt: now,
 					})
@@ -105,7 +105,7 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 				if _, ok := alarmCache[alarm.CreditCode]; ok {
 					continue
 				}
-				msg, _ := alarm.ToMarkdown()
+				msg, _ := alarm.ToTelegramMessage()
 				if _, err := ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
 					ChatID:    userId,
 					Text:      msg,
@@ -135,12 +135,11 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 }
 
 func (r *InfoProcessor) Process() {
-	projects := r.crawler.FetchProjects()
+	projects := r.crawler.Projects()
 	config := r.config()
 	for _, data := range config {
 		data.Projects = projects
-		// fetch alarm data by userId
-		data.Alarms = r.crawler.Fetch(data.AlarmKeyword, data.UserId)
+		data.Alarms = r.crawler.Alarms(data.AlarmKeyword, data.UserId)
 		data.IsForced = false
 		if err := r.pool.Invoke(data); err != nil {
 			r.context.Logger.Error().Msg(err.Error())
@@ -149,7 +148,7 @@ func (r *InfoProcessor) Process() {
 }
 
 func (r *InfoProcessor) Get(userId int64) {
-	results := r.crawler.FetchProjects()
+	results := r.crawler.Projects()
 	if len(results) > 0 {
 		data := r.get(userId)
 		data.Projects = results

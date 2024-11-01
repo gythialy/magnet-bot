@@ -70,7 +70,10 @@ type BotContext struct {
 
 func NewBotContext() (*BotContext, error) {
 	cfg := config.NewServiceConfig()
-	telegramBot, err := bot.New(config.TelegramToken(), []bot.Option{}...)
+	telegramBot, err := bot.New(config.TelegramToken(), []bot.Option{
+		bot.WithDefaultHandler(DefaultHandler),
+		bot.WithDebug(),
+	}...)
 	if err != nil {
 		return nil, err
 	}
@@ -123,19 +126,19 @@ func NewBotContext() (*BotContext, error) {
 }
 
 func (ctx *BotContext) initBot() error {
-	commandsHandler := NewCommandsHandler(ctx)
+	cmdHandler := NewCommandsHandler(ctx)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Magnet, bot.MatchTypePrefix, NewMagnetHandler(ctx).Handler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Me, bot.MatchTypePrefix, MeHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.AddKeyword, bot.MatchTypePrefix, commandsHandler.AddKeywordHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.DeleteKeyword, bot.MatchTypePrefix, commandsHandler.DeleteKeywordHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.EditKeyword, bot.MatchTypePrefix, commandsHandler.EditKeywordHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.AddAlarmKeyword, bot.MatchTypePrefix, commandsHandler.AddAlarmKeywordHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.ListAlarmRecords, bot.MatchTypePrefix, commandsHandler.ListAlarmRecordHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.SearchHistory, bot.MatchTypePrefix, commandsHandler.SearchHistoryHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.ConvertPDF, bot.MatchTypePrefix, commandsHandler.ConvertURLToPDFHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Static, bot.MatchTypePrefix, commandsHandler.StaticHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeCallbackQueryData, constant.Search+":", bot.MatchTypePrefix, commandsHandler.HandleCallbackQuery)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeCallbackQueryData, constant.Alarm+":", bot.MatchTypePrefix, commandsHandler.HandleCallbackQuery)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.AddKeyword, bot.MatchTypePrefix, cmdHandler.AddKeywordHandler)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.DeleteKeyword, bot.MatchTypePrefix, cmdHandler.DeleteKeywordHandler)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.EditKeyword, bot.MatchTypePrefix, cmdHandler.EditKeywordHandler)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.AddAlarmKeyword, bot.MatchTypePrefix, cmdHandler.AddAlarmKeywordHandler)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.ListAlarmRecords, bot.MatchTypePrefix, cmdHandler.ListAlarmRecordHandler)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.SearchHistory, bot.MatchTypePrefix, cmdHandler.SearchHistoryHandler)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.ConvertPDF, bot.MatchTypePrefix, cmdHandler.ConvertURLToPDFHandler)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Statistics, bot.MatchTypePrefix, cmdHandler.StaticHandler)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeCallbackQueryData, constant.Search, bot.MatchTypePrefix, cmdHandler.HandleCallbackQuery)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeCallbackQueryData, constant.Alarm, bot.MatchTypePrefix, cmdHandler.HandleCallbackQuery)
 
 	managerHandler := NewManagerHandler(ctx)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Retry, bot.MatchTypePrefix, managerHandler.Retry)
@@ -176,8 +179,8 @@ func (ctx *BotContext) initBot() error {
 				Description: "Search history data by title",
 			},
 			{
-				Command:     constant.Static,
-				Description: "Show static information data",
+				Command:     constant.Statistics,
+				Description: "Show statistics information",
 			},
 			{
 				Command:     constant.ConvertPDF,
