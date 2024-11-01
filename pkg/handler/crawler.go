@@ -75,7 +75,7 @@ func (c *Crawler) Projects() []*Project {
 			size := len(r.Data)
 			if size > 0 {
 				for _, v := range r.Data {
-					content := utils.CleanContent(v.Content)
+					content := utils.SimplifyHTML(v.Content)
 					result = append(result, &Project{
 						NoticeTime:     v.NoticeTime,
 						OpenTenderCode: v.OpenTenderCode,

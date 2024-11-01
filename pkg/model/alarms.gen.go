@@ -15,7 +15,7 @@ type Alarm struct {
 	UserID           int64      `gorm:"column:user_id;primaryKey;autoIncrement:false" json:"userId"`
 	BusinessID       string     `gorm:"column:business_id;not null" json:"businessId"`
 	CreditName       string     `gorm:"column:credit_name;not null" json:"creditName"`
-	CreditCode       string     `gorm:"column:credit_code;not null" json:"creditCode"`
+	CreditCode       string     `gorm:"column:credit_code;primaryKey;autoIncrement:false;not null" json:"creditCode"`
 	StartDate        time.Time  `gorm:"column:start_date;not null" json:"startDate"`
 	EndDate          *time.Time `gorm:"column:end_date" json:"endDate"`
 	DetailReason     *string    `gorm:"column:detail_reason" json:"detailReason"`

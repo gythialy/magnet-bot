@@ -72,7 +72,7 @@ func NewBotContext() (*BotContext, error) {
 	cfg := config.NewServiceConfig()
 	telegramBot, err := bot.New(config.TelegramToken(), []bot.Option{
 		bot.WithDefaultHandler(DefaultHandler),
-		bot.WithDebug(),
+		// bot.WithDebug(),
 	}...)
 	if err != nil {
 		return nil, err

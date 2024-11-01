@@ -58,6 +58,10 @@ func main() {
 				tag.Set("primaryKey", "").Append("autoIncrement", "false")
 				return tag
 			}),
+			gen.FieldGORMTag("credit_code", func(tag field.GormTag) field.GormTag {
+				tag.Set("primaryKey", "").Append("autoIncrement", "false")
+				return tag
+			}),
 			tagWithNS),
 		g.GenerateModel("histories", gen.FieldType("user_id", "int64"),
 			gen.FieldGORMTag("user_id", func(tag field.GormTag) field.GormTag {

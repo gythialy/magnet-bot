@@ -18,7 +18,7 @@ import (
 
 const (
 	poolSize         = 10
-	maxMessageLength = 3900
+	maxMessageLength = 4090
 )
 
 type InfoProcessor struct {

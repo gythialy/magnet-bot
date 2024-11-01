@@ -223,14 +223,14 @@ func (c *CommandsHandler) paginatedSearchResult(ctx context.Context, b *bot.Bot,
 	if page > 1 {
 		row = append(row, models.InlineKeyboardButton{
 			Text:         fmt.Sprintf("« Previous (%d)", page-1),
-			CallbackData: fmt.Sprintf("%s:%d:%s", constant.Search, page-1, query),
+			CallbackData: fmt.Sprintf("%s%d:%s", constant.Search, page-1, query),
 		})
 	}
 
 	if page < totalPages {
 		row = append(row, models.InlineKeyboardButton{
 			Text:         fmt.Sprintf("Next (%d) »", page+1),
-			CallbackData: fmt.Sprintf("%s:%d:%s", constant.Search, page+1, query),
+			CallbackData: fmt.Sprintf("%s%d:%s", constant.Search, page+1, query),
 		})
 	}
 
@@ -260,13 +260,13 @@ func (c *CommandsHandler) HandleCallbackQuery(ctx context.Context, b *bot.Bot, u
 	}
 
 	messageId := update.CallbackQuery.Message.Message.ID
-	switch queryType {
-	case constant.Search:
+	switch {
+	case strings.HasPrefix(constant.Search, queryType):
 		query := parts[2]
 		c.paginatedSearchResult(ctx, b, &models.Update{
 			Message: update.CallbackQuery.Message.Message,
 		}, query, page, messageId)
-	case constant.Alarm:
+	case strings.HasPrefix(constant.Alarm, queryType):
 		c.sendPaginatedAlarms(ctx, b, update.CallbackQuery.From.ID, page, messageId)
 	}
 
