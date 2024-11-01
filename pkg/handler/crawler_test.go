@@ -23,7 +23,7 @@ func TestCrawler_Get(t *testing.T) {
 		},
 	})
 
-	results := crawler.FetchProjects()
+	results := crawler.Projects()
 	t.Log(len(results))
 }
 
@@ -45,12 +45,12 @@ func TestCrawler_Fetch(t *testing.T) {
 
 	crawler := NewCrawler(&BotContext{
 		Config: &config.ServiceConfig{
-			MessageServerUrl: os.Getenv("SERVER_URL"),
+			MessageServerUrl: config.MessageServerUrl(),
 		},
 	})
 
 	userId := int64(1111)
-	result := crawler.Fetch([]string{"中国"}, userId)
+	result := crawler.Alarms([]string{"中国"}, userId)
 
 	for idx, alarm := range result {
 		alarm.UserID = userId

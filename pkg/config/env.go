@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net/url"
 	"os"
 	"strconv"
 
@@ -42,7 +43,13 @@ func BaseDir() string {
 }
 
 func MessageServerUrl() string {
-	return os.Getenv(constant.ServerURL)
+	u := os.Getenv(constant.ServerURL)
+	if u != "" {
+		if parse, err := url.Parse(u); err == nil {
+			return parse.Host
+		}
+	}
+	return u
 }
 
 func TelegramToken() string {

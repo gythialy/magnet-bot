@@ -28,7 +28,7 @@ func newAlarm(db *gorm.DB, opts ...gen.DOOption) alarm {
 	tableName := _alarm.alarmDo.TableName()
 	_alarm.ALL = field.NewAsterisk(tableName)
 	_alarm.UserID = field.NewInt64(tableName, "user_id")
-	_alarm.CreditType = field.NewString(tableName, "credit_type")
+	_alarm.BusinessID = field.NewString(tableName, "business_id")
 	_alarm.CreditName = field.NewString(tableName, "credit_name")
 	_alarm.CreditCode = field.NewString(tableName, "credit_code")
 	_alarm.StartDate = field.NewTime(tableName, "start_date")
@@ -37,6 +37,11 @@ func newAlarm(db *gorm.DB, opts ...gen.DOOption) alarm {
 	_alarm.HandleDepartment = field.NewString(tableName, "handle_department")
 	_alarm.HandleUnit = field.NewString(tableName, "handle_unit")
 	_alarm.HandleResult = field.NewString(tableName, "handle_result")
+	_alarm.PageUrl1 = field.NewString(tableName, "page_url1")
+	_alarm.NoticeID = field.NewString(tableName, "notice_id")
+	_alarm.OriginNoticeID = field.NewString(tableName, "origin_notice_id")
+	_alarm.PageUrl2 = field.NewString(tableName, "page_url2")
+	_alarm.Title = field.NewString(tableName, "title")
 
 	_alarm.fillFieldMap()
 
@@ -48,7 +53,7 @@ type alarm struct {
 
 	ALL              field.Asterisk
 	UserID           field.Int64
-	CreditType       field.String
+	BusinessID       field.String
 	CreditName       field.String
 	CreditCode       field.String
 	StartDate        field.Time
@@ -57,6 +62,11 @@ type alarm struct {
 	HandleDepartment field.String
 	HandleUnit       field.String
 	HandleResult     field.String
+	PageUrl1         field.String
+	NoticeID         field.String
+	OriginNoticeID   field.String
+	PageUrl2         field.String
+	Title            field.String
 
 	fieldMap map[string]field.Expr
 }
@@ -74,7 +84,7 @@ func (a alarm) As(alias string) *alarm {
 func (a *alarm) updateTableName(table string) *alarm {
 	a.ALL = field.NewAsterisk(table)
 	a.UserID = field.NewInt64(table, "user_id")
-	a.CreditType = field.NewString(table, "credit_type")
+	a.BusinessID = field.NewString(table, "business_id")
 	a.CreditName = field.NewString(table, "credit_name")
 	a.CreditCode = field.NewString(table, "credit_code")
 	a.StartDate = field.NewTime(table, "start_date")
@@ -83,6 +93,11 @@ func (a *alarm) updateTableName(table string) *alarm {
 	a.HandleDepartment = field.NewString(table, "handle_department")
 	a.HandleUnit = field.NewString(table, "handle_unit")
 	a.HandleResult = field.NewString(table, "handle_result")
+	a.PageUrl1 = field.NewString(table, "page_url1")
+	a.NoticeID = field.NewString(table, "notice_id")
+	a.OriginNoticeID = field.NewString(table, "origin_notice_id")
+	a.PageUrl2 = field.NewString(table, "page_url2")
+	a.Title = field.NewString(table, "title")
 
 	a.fillFieldMap()
 
@@ -99,9 +114,9 @@ func (a *alarm) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (a *alarm) fillFieldMap() {
-	a.fieldMap = make(map[string]field.Expr, 10)
+	a.fieldMap = make(map[string]field.Expr, 15)
 	a.fieldMap["user_id"] = a.UserID
-	a.fieldMap["credit_type"] = a.CreditType
+	a.fieldMap["business_id"] = a.BusinessID
 	a.fieldMap["credit_name"] = a.CreditName
 	a.fieldMap["credit_code"] = a.CreditCode
 	a.fieldMap["start_date"] = a.StartDate
@@ -110,6 +125,11 @@ func (a *alarm) fillFieldMap() {
 	a.fieldMap["handle_department"] = a.HandleDepartment
 	a.fieldMap["handle_unit"] = a.HandleUnit
 	a.fieldMap["handle_result"] = a.HandleResult
+	a.fieldMap["page_url1"] = a.PageUrl1
+	a.fieldMap["notice_id"] = a.NoticeID
+	a.fieldMap["origin_notice_id"] = a.OriginNoticeID
+	a.fieldMap["page_url2"] = a.PageUrl2
+	a.fieldMap["title"] = a.Title
 }
 
 func (a alarm) clone(db *gorm.DB) alarm {

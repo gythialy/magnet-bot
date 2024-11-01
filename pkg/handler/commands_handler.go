@@ -144,7 +144,7 @@ func (c *CommandsHandler) sendPaginatedAlarms(ctx context.Context, b *bot.Bot,
 
 	var response strings.Builder
 	for i, alarm := range alarms {
-		if markdown, err := alarm.ToMarkdown(); err == nil {
+		if markdown, err := alarm.ToTelegramMessage(); err == nil {
 			response.WriteString(fmt.Sprintf("%d. %s\n", (page-1)*pageSize+i+1, markdown))
 			response.WriteString("\n")
 		} else {
@@ -157,14 +157,14 @@ func (c *CommandsHandler) sendPaginatedAlarms(ctx context.Context, b *bot.Bot,
 	if page > 1 {
 		row = append(row, models.InlineKeyboardButton{
 			Text:         fmt.Sprintf("« Previous (%d)", page-1),
-			CallbackData: fmt.Sprintf("%s:%d", constant.Alarm, page-1),
+			CallbackData: fmt.Sprintf("%s%d", constant.Alarm, page-1),
 		})
 	}
 
 	if page < totalPages {
 		row = append(row, models.InlineKeyboardButton{
 			Text:         fmt.Sprintf("Next (%d) »", page+1),
-			CallbackData: fmt.Sprintf("%s:%d", constant.Alarm, page+1),
+			CallbackData: fmt.Sprintf("%s%d", constant.Alarm, page+1),
 		})
 	}
 
@@ -340,7 +340,7 @@ func (c *CommandsHandler) extractFileName(u *url.URL) (string, error) {
 		urlFileName = strings.TrimSuffix(urlFileName, ".html")
 	}
 
-	// Fetch the page to get the title
+	// Alarms the page to get the title
 	resp, err := http.Get(u.String())
 	if err != nil {
 		return "", err
@@ -359,9 +359,6 @@ func (c *CommandsHandler) extractFileName(u *url.URL) (string, error) {
 
 	var fileName string
 	title := strings.TrimSpace(doc.Find("h1.info-title").Text())
-	if title == "" {
-		title = strings.TrimSpace(doc.Find("div.title").Text())
-	}
 	title = breakerRegx.ReplaceAllString(title, "")
 	title = spaceRegx.ReplaceAllString(title, "")
 

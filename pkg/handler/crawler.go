@@ -21,7 +21,7 @@ const (
 	siteId      = "404bb030-5be9-4070-85bd-c94b1473e8de"
 	channelId   = "c5bff13f-21ca-4dac-b158-cb40accd3035"
 	pageSize    = "20"
-	crawlDays   = 2
+	crawlDays   = 1
 )
 
 type Crawler struct {
@@ -42,7 +42,7 @@ func NewCrawler(ctx *BotContext) *Crawler {
 	}
 }
 
-func (c *Crawler) FetchProjects() []*Project {
+func (c *Crawler) Projects() []*Project {
 	now := time.Now()
 	days := c.crawlDays()
 	url := fmt.Sprintf("https://%s/freecms/rest/v1/notice/selectInfoMoreChannel.do?operationStartTime=%s&operationEndTime=%s", c.ctx.Config.MessageServerUrl,
@@ -102,64 +102,113 @@ func (c *Crawler) FetchProjects() []*Project {
 	return result
 }
 
-func (c *Crawler) fetch(keywords []string, type_ string) []*model.Alarm {
-	result := make([]*model.Alarm, 0)
+func (c *Crawler) alarmListByKeywords(keywords []string, alarmType constant.CreditType) []*model.Alarm {
+	var result []*model.Alarm
 	for _, keyword := range keywords {
 		params := map[string]string{
-			"publishType": type_,
-			"creditName":  keyword,
+			"creditName": keyword,
+			"channel":    alarmType.String(),
+			"siteId":     siteId,
 		}
-
-		url := fmt.Sprintf("https://%s/gateway/gpc-gpcms/rest/v2/punish/public?&pageNumber=1&pageSize=10&handleUnit=&startDate=&endDate=",
-			c.ctx.Config.MessageServerUrl)
-		if resp, err := c.client.R().
-			SetHeader("Content-Type", contextType).
-			SetHeader("User-Agent", userAgent).
-			SetQueryParams(params).
-			SetResult(&model.AlarmResult{}).Get(url); err == nil {
-			r := resp.Result().(*model.AlarmResult)
-			for _, row := range r.Data.Rows {
-				endDate := c.parseTime(row.EndDate)
-				if endDate.IsZero() || time.Now().Before(endDate) {
-					result = append(result, &model.Alarm{
-						CreditName:       row.CreditName,
-						CreditCode:       row.CreditCode,
-						StartDate:        c.parseTime(row.StartDate),
-						EndDate:          &endDate,
-						DetailReason:     &row.DetailReason,
-						HandleDepartment: &row.HandleDepartment,
-						HandleUnit:       &row.HandleUnit,
-						HandleResult:     &row.HandleResult,
-					})
-				}
-			}
+		if list, err := c.alarmList(params); err == nil {
+			result = append(result, list...)
 		}
-		time.Sleep(100 * time.Millisecond)
 	}
-
 	return result
 }
 
-func (c *Crawler) Fetch(keywords []string, userId int64) []*model.Alarm {
+func (c *Crawler) alarmList(params map[string]string) ([]*model.Alarm, error) {
 	result := make([]*model.Alarm, 0)
-	r1 := c.fetch(keywords, "breakFaith")
+	url := fmt.Sprintf("https://%s/freecms/rest/v1/punish/queryPunishList.do",
+		c.ctx.Config.MessageServerUrl)
+	if resp, err := c.client.R().
+		SetHeader("Content-Type", contextType).
+		SetHeader("User-Agent", userAgent).
+		SetQueryParams(params).
+		SetResult(&model.AlarmList{}).Get(url); err == nil {
+		r := resp.Result().(*model.AlarmList)
+		for _, row := range r.Data.Rows {
+			endDate := c.parseTime(row.EndDate)
+			if endDate.IsZero() || time.Now().Before(endDate) {
+				result = append(result, &model.Alarm{
+					CreditName:       row.CreditName,
+					CreditCode:       row.CreditCode,
+					BusinessID:       row.ID,
+					StartDate:        c.parseTime(row.StartDate),
+					EndDate:          &endDate,
+					DetailReason:     &row.DetailReason,
+					HandleDepartment: &row.HandleDepartment,
+					HandleUnit:       &row.HandleUnit,
+					HandleResult:     &row.HandleResult,
+					NoticeID:         row.NoticeID,
+					OriginNoticeID:   &row.OriginNoticeID,
+				})
+			}
+		}
+		return result, nil
+	} else {
+		return nil, err
+	}
+}
+
+func (c *Crawler) alarm(noticeId string) (*model.AlarmDetail, error) {
+	params := map[string]string{
+		"punishNoticeId": noticeId,
+		"env":            "1",
+	}
+	url := fmt.Sprintf("https://%s/freecms/rest/v1/punish/selectByNoticeId.do", c.ctx.Config.MessageServerUrl)
+	if resp, err := c.client.R().
+		SetHeader("Content-Type", contextType).
+		SetHeader("User-Agent", userAgent).
+		SetQueryParams(params).
+		SetResult(&model.AlarmDetail{}).Get(url); err == nil {
+		r := resp.Result().(*model.AlarmDetail)
+		return r, nil
+	} else {
+		return nil, err
+	}
+}
+
+func (c *Crawler) Alarms(keywords []string, userId int64) []*model.Alarm {
+	result := make([]*model.Alarm, 0)
+	r1 := c.alarmListByKeywords(keywords, constant.CreditTypeBreakFaith)
 	cache := make(map[string]interface{})
 	for _, alarm := range r1 {
 		if _, ok := cache[alarm.CreditCode]; !ok {
 			alarm.UserID = userId
+			c.alarmTitle(alarm)
 			cache[alarm.CreditCode] = alarm
 			result = append(result, alarm)
 		}
 	}
-	r2 := c.fetch(keywords, "suspend")
+	r2 := c.alarmListByKeywords(keywords, constant.CreditTypeSuspend)
 	for _, alarm := range r2 {
 		if _, ok := cache[alarm.CreditCode]; !ok {
 			alarm.UserID = userId
+			c.alarmTitle(alarm)
 			cache[alarm.CreditCode] = alarm
 			result = append(result, alarm)
 		}
 	}
 	return result
+}
+
+func (c *Crawler) alarmTitle(alarm *model.Alarm) {
+	if detail, err := c.alarm(alarm.NoticeID); err == nil {
+		alarm.Title = &detail.Data.Title
+		u := fmt.Sprintf("https://%s%s", c.ctx.Config.MessageServerUrl, detail.Data.Pageurl)
+		alarm.PageUrl1 = u
+	} else {
+		c.ctx.Logger.Error().Msg(err.Error())
+	}
+	if alarm.OriginNoticeID != nil && *alarm.OriginNoticeID != "" {
+		if detail, err := c.alarm(*alarm.OriginNoticeID); err == nil {
+			u := fmt.Sprintf("https://%s%s", c.ctx.Config.MessageServerUrl, detail.Data.Pageurl)
+			alarm.PageUrl2 = &u
+		} else {
+			c.ctx.Logger.Error().Msg(err.Error())
+		}
+	}
 }
 
 func (c *Crawler) format(time time.Time) string {
