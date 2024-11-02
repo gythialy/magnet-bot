@@ -12,6 +12,7 @@ const (
 	ListAlarmRecords = "/list_alarm_records"
 	SearchHistory    = "/search_history_title"
 	ConvertPDF       = "/convertpdf"
+	ConvertIMG       = "/convertimg"
 	Statistics       = "/statistics"
 	Alarm            = "alarm:"
 	Search           = "search:"

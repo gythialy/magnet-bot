@@ -16,4 +16,6 @@ const (
 	WebhookServerURL  = "WEBHOOK_SERVER_URL"
 	WebhookServerPort = "WEBHOOK_SERVER_PORT"
 	PDFServerUrl      = "PDF_SERVER_URL"
+	PDFExtension      = ".pdf"
+	ImgExtension      = ".png"
 )

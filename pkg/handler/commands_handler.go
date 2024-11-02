@@ -1,27 +1,23 @@
 package handler
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"net/url"
 	"path"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
+
+	"github.com/PuerkitoBio/goquery"
 
 	"github.com/gythialy/magnet/pkg/utils"
 
 	"github.com/gythialy/magnet/pkg/dal"
 	"github.com/gythialy/magnet/pkg/model"
 
-	"github.com/PuerkitoBio/goquery"
-
-	"github.com/google/uuid"
 	"github.com/gythialy/magnet/pkg/rule"
 
 	"github.com/gythialy/magnet/pkg/constant"
@@ -34,11 +30,10 @@ const (
 	historyPageSize  = 20
 	alarmPageSize    = 5
 	defaultMessageId = 0
-	fileExtension    = ".pdf"
 )
 
 var (
-	codeRegx    = regexp.MustCompile(`[（(]([^）)]+)[）)]`)
+	codeRegx    = regexp.MustCompile(`(?:（|[（(])([0-9]{4}-[A-Z]+-[A-Z0-9]+)(?:）|[）)])`)
 	breakerRegx = regexp.MustCompile(`[\n\t]+`)
 	spaceRegx   = regexp.MustCompile(`\s+`)
 )
@@ -124,11 +119,10 @@ func (c *CommandsHandler) AddAlarmKeywordHandler(ctx context.Context, b *bot.Bot
 
 func (c *CommandsHandler) ListAlarmRecordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	id := update.Message.Chat.ID
-
-	c.sendPaginatedAlarms(ctx, b, id, 1, defaultMessageId)
+	c.paginatedAlarms(ctx, b, id, 1, defaultMessageId)
 }
 
-func (c *CommandsHandler) sendPaginatedAlarms(ctx context.Context, b *bot.Bot,
+func (c *CommandsHandler) paginatedAlarms(ctx context.Context, b *bot.Bot,
 	userId int64, page, messageId int,
 ) {
 	pageSize := alarmPageSize
@@ -267,7 +261,7 @@ func (c *CommandsHandler) HandleCallbackQuery(ctx context.Context, b *bot.Bot, u
 			Message: update.CallbackQuery.Message.Message,
 		}, query, page, messageId)
 	case strings.HasPrefix(constant.Alarm, queryType):
-		c.sendPaginatedAlarms(ctx, b, update.CallbackQuery.From.ID, page, messageId)
+		c.paginatedAlarms(ctx, b, update.CallbackQuery.From.ID, page, messageId)
 	}
 
 	// Answer the callback query to remove the loading indicator
@@ -288,8 +282,8 @@ func (c *CommandsHandler) ConvertURLToPDFHandler(ctx context.Context, b *bot.Bot
 		return
 	}
 
-	parsedURL, err := url.Parse(message)
-	if err != nil {
+	parsedURL, urlErr := url.Parse(message)
+	if urlErr != nil {
 		c.sendErrorMessage(ctx, b, update, "Invalid URL format")
 		return
 	}
@@ -301,34 +295,92 @@ func (c *CommandsHandler) ConvertURLToPDFHandler(ctx context.Context, b *bot.Bot
 	}
 
 	// Generate a unique identifier for this request
-	requestId := uuid.New().String()
-	fileName := requestId + fileExtension
+	fileName := ""
 	if f, err := c.extractFileName(parsedURL); err == nil {
-		fileName = f
+		fileName = f + constant.PDFExtension
 	} else {
 		c.ctx.Logger.Error().Msg(err.Error())
 	}
 
 	// Send processing message
-	processingMsg, err := b.SendMessage(ctx, &bot.SendMessageParams{
+	processingMsg, msgErr := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: userId,
 		Text:   fmt.Sprintf("Converting URL to PDF(%s). Please wait...⌛", fileName),
 	})
-	if err != nil {
-		c.ctx.Logger.Error().Msg(err.Error())
+	if msgErr != nil {
+		c.ctx.Logger.Error().Msg(msgErr.Error())
 		return
 	}
 
-	// Store the chat ID and file name associated with this request
-	c.ctx.Store.Set(requestId, model.RequestInfo{
-		ChatId:    userId,
-		MessageId: processingMsg.ID,
-		Message:   message,
-		FileName:  fileName,
-	}, 10*time.Minute)
+	go func() {
+		if requestId, err := c.ctx.GotenbergClient.URLToPDF(message); err == nil {
+			c.ctx.Store.Set(requestId, model.RequestInfo{
+				ChatId:         userId,
+				MessageId:      processingMsg.ID,
+				Message:        message,
+				ReplyMessageId: update.Message.ID,
+				FileName:       fileName,
+				Type:           model.PDF,
+			}, DefaultCacheDuration)
+		} else {
+			c.ctx.Logger.Error().Msg(err.Error())
+		}
+	}()
+}
 
-	// Call Gotenberg service
-	go c.pdfService(message, requestId)
+func (c *CommandsHandler) ConvertURLToIMGHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	text := update.Message.Text
+	message := strings.TrimSpace(strings.TrimPrefix(text, constant.ConvertIMG))
+	userId := update.Message.Chat.ID
+
+	if message == "" {
+		c.sendErrorMessage(ctx, b, update, "Please provide a URL to convert")
+		return
+	}
+
+	parsedURL, urlErr := url.Parse(message)
+	if urlErr != nil {
+		c.sendErrorMessage(ctx, b, update, "Invalid URL format")
+		return
+	}
+
+	// Check if the domain matches BotContext.MessageServerUrl
+	if parsedURL.Host != c.ctx.Config.MessageServerUrl {
+		c.sendErrorMessage(ctx, b, update, "URL domain is not allowed")
+		return
+	}
+
+	fileName := ""
+	if f, err := c.extractFileName(parsedURL); err == nil {
+		fileName = f + constant.ImgExtension
+	} else {
+		c.ctx.Logger.Error().Msg(err.Error())
+	}
+
+	// Send processing message
+	processingMsg, msgErr := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID: userId,
+		Text:   fmt.Sprintf("Converting URL to IMG(%s). Please wait...⌛", fileName),
+	})
+	if msgErr != nil {
+		c.ctx.Logger.Error().Msg(msgErr.Error())
+		return
+	}
+
+	go func() {
+		if requestId, err := c.ctx.GotenbergClient.URLToImage(message); err == nil {
+			c.ctx.Store.Set(requestId, model.RequestInfo{
+				ChatId:         userId,
+				MessageId:      processingMsg.ID,
+				ReplyMessageId: update.Message.ID,
+				Message:        message,
+				FileName:       fileName,
+				Type:           model.IMG,
+			}, DefaultCacheDuration)
+		} else {
+			c.ctx.Logger.Error().Msg(err.Error())
+		}
+	}()
 }
 
 func (c *CommandsHandler) extractFileName(u *url.URL) (string, error) {
@@ -366,70 +418,16 @@ func (c *CommandsHandler) extractFileName(u *url.URL) (string, error) {
 		matches := codeRegx.FindStringSubmatch(title)
 		if len(matches) > 1 {
 			// Use the extracted code as the filename
-			fileName = matches[1] + fileExtension
+			fileName = matches[1]
 		} else {
 			// If no code found, use the full cleaned title
-			fileName = title + fileExtension
+			fileName = title
 		}
 	} else {
 		// If title not found, use the URL filename
-		fileName = urlFileName + fileExtension
+		fileName = urlFileName
 	}
 	return fileName, nil
-}
-
-func (c *CommandsHandler) pdfService(u string, requestID string) {
-	webhookURL := fmt.Sprintf("%s%s%s", c.ctx.Config.PDF.WebhookURL(), constant.PDFEndPoint, requestID)
-
-	// Create a new form data
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-
-	// Add the URL field
-	_ = writer.WriteField("url", u)
-
-	// Close the multipart writer
-	err := writer.Close()
-	if err != nil {
-		c.ctx.Logger.Error().Msg(err.Error())
-		return
-	}
-
-	// Create the request
-	req, err := http.NewRequest("POST",
-		fmt.Sprintf("%s/forms/chromium/convert/url", c.ctx.Config.PDF.PDFServiceURL), body)
-	if err != nil {
-		c.ctx.Logger.Error().Msg(err.Error())
-		return
-	}
-
-	// Set headers
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	req.Header.Set("Gotenberg-Webhook-Url", webhookURL)
-	req.Header.Set("Gotenberg-Webhook-Error-Url", webhookURL)
-	req.Header.Set("Gotenberg-Webhook-Method", "POST")
-
-	// Send the request
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.ctx.Logger.Error().Msg(err.Error())
-		return
-	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			c.ctx.Logger.Error().Msg(err.Error())
-		}
-	}(resp.Body)
-
-	if resp.StatusCode != http.StatusNoContent {
-		c.ctx.Logger.Error().Msgf("Gotenberg service returned status: %d", resp.StatusCode)
-		body, _ := io.ReadAll(resp.Body)
-		c.ctx.Logger.Error().Msgf("Response body: %s", string(body))
-	}
 }
 
 func (c *CommandsHandler) sendOrEditMessage(ctx context.Context, b *bot.Bot, chatID int64, messageID int, text string, replyMarkup *models.InlineKeyboardMarkup) {

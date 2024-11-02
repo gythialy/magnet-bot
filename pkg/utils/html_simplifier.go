@@ -36,14 +36,20 @@ var (
 	// spaceRegex = regexp.MustCompile(`\s+`)
 )
 
-func SimplifyHTML(htmlContent string) string {
-	content := html.UnescapeString(htmlContent)
+func UnescapeHTML(content string) string {
+	content = html.UnescapeString(content)
 	// 删除HTML注释
 	content = commentRegex.ReplaceAllString(content, "")
+	// 清理所有空白字符，包括换行符
+	content = multiNewlineRegex.ReplaceAllString(content, "\n")
 
+	return content
+}
+
+func SimplifyHTML(htmlContent string) string {
+	content := UnescapeHTML(htmlContent)
 	// 清理所有空白字符，包括换行符
 	content = whitespaceReplacer.Replace(content)
-
 	// 删除CSS和style
 	content = styleTagRegex.ReplaceAllString(content, "")
 	content = styleAttrRegex.ReplaceAllString(content, "")
@@ -103,7 +109,7 @@ func SimplifyHTML(htmlContent string) string {
 
 	// Remove all remaining HTML tags
 	content = htmlTagRegex.ReplaceAllString(content, "")
-	content = multiNewlineRegex.ReplaceAllString(content, `\n`)
+	content = multiNewlineRegex.ReplaceAllString(content, "\n")
 
 	// 最终清理
 	return strings.TrimSpace(content)

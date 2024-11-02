@@ -35,26 +35,53 @@ func (wh *webhooker) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Chat ID not found", http.StatusNotFound)
 	} else {
 		req := ri.(model.RequestInfo)
-		go func(req model.RequestInfo, pdfData []byte) {
-			// delete the processing message
-			_, err := wh.ctx.Bot.DeleteMessage(context.Background(), &bot.DeleteMessageParams{
-				ChatID:    req.ChatId,
-				MessageID: req.MessageId,
-			})
-			if err != nil {
-				wh.ctx.Logger.Error().Msgf("Failed to delete message: %v", err)
-			}
+		go func(req model.RequestInfo, data []byte) {
+			switch req.Type {
+			case model.PDF:
+				// delete the processing message
+				_, err := wh.ctx.Bot.DeleteMessage(context.Background(), &bot.DeleteMessageParams{
+					ChatID:    req.ChatId,
+					MessageID: req.MessageId,
+				})
+				if err != nil {
+					wh.ctx.Logger.Error().Msgf("Failed to delete message: %v", err)
+				}
 
-			// Send the PDF file
-			if _, err := wh.ctx.Bot.SendDocument(context.Background(), &bot.SendDocumentParams{
-				ChatID: req.ChatId,
-				Document: &models.InputFileUpload{
-					Filename: req.FileName,
-					Data:     bytes.NewReader(pdfData),
-				},
-				Caption: req.Message,
-			}); err != nil {
-				wh.ctx.Logger.Error().Msg(err.Error())
+				// Send the PDF file
+				if _, err := wh.ctx.Bot.SendDocument(context.Background(), &bot.SendDocumentParams{
+					ChatID: req.ChatId,
+					Document: &models.InputFileUpload{
+						Filename: req.FileName,
+						Data:     bytes.NewReader(data),
+					},
+					Caption: req.Message,
+					ReplyParameters: &models.ReplyParameters{
+						MessageID: req.ReplyMessageId,
+					},
+				}); err != nil {
+					wh.ctx.Logger.Error().Msg(err.Error())
+				}
+			case model.IMG:
+				_, err := wh.ctx.Bot.DeleteMessage(context.Background(), &bot.DeleteMessageParams{
+					ChatID:    req.ChatId,
+					MessageID: req.MessageId,
+				})
+				if err != nil {
+					wh.ctx.Logger.Error().Msgf("Failed to delete message: %v", err)
+				}
+				if _, err := wh.ctx.Bot.SendPhoto(context.Background(), &bot.SendPhotoParams{
+					ChatID: req.ChatId,
+					Photo: &models.InputFileUpload{
+						Filename: req.FileName,
+						Data:     bytes.NewReader(data),
+					},
+					Caption: req.Message,
+					ReplyParameters: &models.ReplyParameters{
+						MessageID: req.ReplyMessageId,
+					},
+				}); err != nil {
+					wh.ctx.Logger.Error().Msg(err.Error())
+				}
 			}
 		}(req, body)
 

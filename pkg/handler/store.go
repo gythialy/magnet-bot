@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+const DefaultCacheDuration = 10 * time.Minute
+
 type Store struct {
 	mu    sync.RWMutex
 	items map[string]storeItem

@@ -13,12 +13,14 @@ import (
 
 const (
 	keywordTemplate = `<b>【关键字: {{.Keyword}}】</b><a href="{{.Pageurl}}">{{.Title}}</a> @ {{.NoticeTime}}
-{{.Content | cleanContent}} `
+{{ .Content }} `
 )
 
-var keywordRender = template.Must(template.New("keyword_template").Funcs(template.FuncMap{
-	"cleanContent": cleanContent,
-}).Parse(keywordTemplate))
+var keywordRender = template.Must(template.New("keyword_template").
+	//	Funcs(template.FuncMap{
+	//	"cleanContent": cleanContent,
+	//}).
+	Parse(keywordTemplate))
 
 type Project struct {
 	NoticeTime     string `json:"noticeTime,omitempty"`

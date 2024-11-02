@@ -36,7 +36,7 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 			// process projects
 			messages := NewProjects(ctx, pd.Projects, pd.ProjectRules).ToMessage()
 			failed := []string{"failed:"}
-			filterFailed := make(map[string]struct{})
+			filterFailed := make(map[string]*TelegramMessage)
 			userId := pd.UserId
 			var newHistories []*model.History
 			now := time.Now()
@@ -62,7 +62,7 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 							ParseMode: models.ParseModeHTML,
 						}); err != nil {
 							if _, ok := filterFailed[pageURL]; !ok {
-								filterFailed[pageURL] = struct{}{}
+								filterFailed[pageURL] = &msg
 								failed = append(failed, fmt.Sprintf("<a href=\"%s\">%s</a>", pageURL, title))
 							}
 							ctx.Logger.Error().Msg(err.Error())
@@ -89,6 +89,16 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 					ParseMode: models.ParseModeHTML,
 				}); err != nil {
 					ctx.Logger.Error().Msg(err.Error())
+				} else {
+					for _, v := range filterFailed {
+						project := v.Project
+						newHistories = append(newHistories, &model.History{
+							UserID:    userId,
+							URL:       project.Pageurl,
+							Title:     project.ShortTitle,
+							UpdatedAt: now,
+						})
+					}
 				}
 			}
 

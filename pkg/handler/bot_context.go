@@ -61,6 +61,7 @@ type BotContext struct {
 	Store           *Store
 	Logger          *utils.Logger
 	Config          *config.ServiceConfig
+	GotenbergClient *GotenbergClient
 	ctx             context.Context
 	cancel          context.CancelFunc
 	scheduler       *gocron.Scheduler
@@ -104,16 +105,22 @@ func NewBotContext() (*BotContext, error) {
 	}
 	dal.SetDefault(db)
 
+	client, err := NewGotenbergClient(cfg.PDF.PDFServiceURL, cfg.PDF.WebhookURL())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create gotenberg client: %s", err)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	botContext := &BotContext{
-		ctx:       ctx,
-		cancel:    cancel,
-		scheduler: gocron.NewScheduler(time.FixedZone("CST", 8*60*60)),
-		Bot:       telegramBot,
-		Store:     NewStore(),
-		Logger:    ctxLogger,
-		Config:    cfg,
+		ctx:             ctx,
+		cancel:          cancel,
+		scheduler:       gocron.NewScheduler(time.FixedZone("CST", 8*60*60)),
+		Bot:             telegramBot,
+		GotenbergClient: client,
+		Store:           NewStore(),
+		Logger:          ctxLogger,
+		Config:          cfg,
 	}
 	if err = botContext.initBot(); err != nil {
 		return nil, err
@@ -136,6 +143,7 @@ func (ctx *BotContext) initBot() error {
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.ListAlarmRecords, bot.MatchTypePrefix, cmdHandler.ListAlarmRecordHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.SearchHistory, bot.MatchTypePrefix, cmdHandler.SearchHistoryHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.ConvertPDF, bot.MatchTypePrefix, cmdHandler.ConvertURLToPDFHandler)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.ConvertIMG, bot.MatchTypePrefix, cmdHandler.ConvertURLToIMGHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Statistics, bot.MatchTypePrefix, cmdHandler.StaticHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeCallbackQueryData, constant.Search, bot.MatchTypePrefix, cmdHandler.HandleCallbackQuery)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeCallbackQueryData, constant.Alarm, bot.MatchTypePrefix, cmdHandler.HandleCallbackQuery)
@@ -185,6 +193,10 @@ func (ctx *BotContext) initBot() error {
 			{
 				Command:     constant.ConvertPDF,
 				Description: "Convert URL to PDF",
+			},
+			{
+				Command:     constant.ConvertIMG,
+				Description: "Convert URL to IMG",
 			},
 			{
 				Command:     constant.Retry,
