@@ -273,16 +273,9 @@ func (c *CommandsHandler) HandleCallbackQuery(ctx context.Context, b *bot.Bot, u
 }
 
 func (c *CommandsHandler) ConvertURLToPDFHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	text := update.Message.Text
-	message := strings.TrimSpace(strings.TrimPrefix(text, constant.ConvertPDF))
 	userId := update.Message.Chat.ID
 
-	if message == "" {
-		c.sendErrorMessage(ctx, b, update, "Please provide a URL to convert")
-		return
-	}
-
-	parsedURL, urlErr := url.Parse(message)
+	parsedURL, urlErr := extractURL(update, constant.ConvertPDF)
 	if urlErr != nil {
 		c.sendErrorMessage(ctx, b, update, "Invalid URL format")
 		return
@@ -313,11 +306,12 @@ func (c *CommandsHandler) ConvertURLToPDFHandler(ctx context.Context, b *bot.Bot
 	}
 
 	go func() {
-		if requestId, err := c.ctx.GotenbergClient.URLToPDF(message); err == nil {
+		u := parsedURL.String()
+		if requestId, err := c.ctx.GotenbergClient.URLToPDF(u); err == nil {
 			c.ctx.Store.Set(requestId, model.RequestInfo{
 				ChatId:         userId,
 				MessageId:      processingMsg.ID,
-				Message:        message,
+				Message:        u,
 				ReplyMessageId: update.Message.ID,
 				FileName:       fileName,
 				Type:           model.PDF,
@@ -329,16 +323,9 @@ func (c *CommandsHandler) ConvertURLToPDFHandler(ctx context.Context, b *bot.Bot
 }
 
 func (c *CommandsHandler) ConvertURLToIMGHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	text := update.Message.Text
-	message := strings.TrimSpace(strings.TrimPrefix(text, constant.ConvertIMG))
 	userId := update.Message.Chat.ID
 
-	if message == "" {
-		c.sendErrorMessage(ctx, b, update, "Please provide a URL to convert")
-		return
-	}
-
-	parsedURL, urlErr := url.Parse(message)
+	parsedURL, urlErr := extractURL(update, constant.ConvertIMG)
 	if urlErr != nil {
 		c.sendErrorMessage(ctx, b, update, "Invalid URL format")
 		return
@@ -368,12 +355,13 @@ func (c *CommandsHandler) ConvertURLToIMGHandler(ctx context.Context, b *bot.Bot
 	}
 
 	go func() {
-		if requestId, err := c.ctx.GotenbergClient.URLToImage(message); err == nil {
+		u := parsedURL.String()
+		if requestId, err := c.ctx.GotenbergClient.URLToImage(u); err == nil {
 			c.ctx.Store.Set(requestId, model.RequestInfo{
 				ChatId:         userId,
 				MessageId:      processingMsg.ID,
 				ReplyMessageId: update.Message.ID,
-				Message:        message,
+				Message:        u,
 				FileName:       fileName,
 				Type:           model.IMG,
 			}, DefaultCacheDuration)
@@ -381,53 +369,6 @@ func (c *CommandsHandler) ConvertURLToIMGHandler(ctx context.Context, b *bot.Bot
 			c.ctx.Logger.Error().Msg(err.Error())
 		}
 	}()
-}
-
-func (c *CommandsHandler) extractFileName(u *url.URL) (string, error) {
-	urlPath := u.Path
-	urlFileName := path.Base(urlPath)
-	if urlFileName == "/" {
-		urlFileName = ""
-	} else {
-		urlFileName = strings.TrimSuffix(urlFileName, ".html")
-	}
-
-	// Alarms the page to get the title
-	resp, err := http.Get(u.String())
-	if err != nil {
-		return "", err
-	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			c.ctx.Logger.Error().Msg(err.Error())
-		}
-	}(resp.Body)
-
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	var fileName string
-	title := strings.TrimSpace(doc.Find("h1.info-title").Text())
-	title = breakerRegx.ReplaceAllString(title, "")
-	title = spaceRegx.ReplaceAllString(title, "")
-
-	if title != "" {
-		matches := codeRegx.FindStringSubmatch(title)
-		if len(matches) > 1 {
-			// Use the extracted code as the filename
-			fileName = matches[1]
-		} else {
-			// If no code found, use the full cleaned title
-			fileName = title
-		}
-	} else {
-		// If title not found, use the URL filename
-		fileName = urlFileName
-	}
-	return fileName, nil
 }
 
 func (c *CommandsHandler) sendOrEditMessage(ctx context.Context, b *bot.Bot, chatID int64, messageID int, text string, replyMarkup *models.InlineKeyboardMarkup) {
@@ -517,4 +458,67 @@ Build Time: %s
 	}); err != nil {
 		c.ctx.Logger.Error().Msg(err.Error())
 	}
+}
+
+func (c *CommandsHandler) extractFileName(u *url.URL) (string, error) {
+	urlPath := u.Path
+	urlFileName := path.Base(urlPath)
+	if urlFileName == "/" {
+		urlFileName = ""
+	} else {
+		urlFileName = strings.TrimSuffix(urlFileName, ".html")
+	}
+
+	// Alarms the page to get the title
+	resp, err := http.Get(u.String())
+	if err != nil {
+		return "", err
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			c.ctx.Logger.Error().Msg(err.Error())
+		}
+	}(resp.Body)
+
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	var fileName string
+	title := strings.TrimSpace(doc.Find("h1.info-title").Text())
+	title = breakerRegx.ReplaceAllString(title, "")
+	title = spaceRegx.ReplaceAllString(title, "")
+
+	if title != "" {
+		matches := codeRegx.FindStringSubmatch(title)
+		if len(matches) > 1 {
+			// Use the extracted code as the filename
+			fileName = matches[1]
+		} else {
+			// If no code found, use the full cleaned title
+			fileName = title
+		}
+	} else {
+		// If title not found, use the URL filename
+		fileName = urlFileName
+	}
+	return fileName, nil
+}
+
+func extractURL(update *models.Update, cmd string) (*url.URL, error) {
+	message := strings.TrimSpace(strings.TrimPrefix(update.Message.Text, cmd))
+	u := ""
+	if message == "" {
+		entities := update.Message.ReplyToMessage.Entities
+		for _, entity := range entities {
+			if entity.Type == models.MessageEntityTypeTextLink && entity.URL != "" {
+				u = entity.URL
+				break
+			}
+		}
+	}
+
+	return url.Parse(u)
 }

@@ -10,9 +10,14 @@ import (
 )
 
 func DefaultHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	userId := update.Message.Chat.ID
+
 	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: update.Message.Chat.ID,
-		Text:   "/magnet append tracker servers",
+		ChatID: userId,
+		Text:   utils.ToString(update),
+		ReplyParameters: &models.ReplyParameters{
+			MessageID: update.Message.ID,
+		},
 	}); err != nil {
 		slog.Error("Failed to send message", "error", err)
 	}

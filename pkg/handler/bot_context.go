@@ -71,8 +71,12 @@ type BotContext struct {
 
 func NewBotContext() (*BotContext, error) {
 	cfg := config.NewServiceConfig()
+
 	telegramBot, err := bot.New(config.TelegramToken(), []bot.Option{
 		bot.WithDefaultHandler(DefaultHandler),
+		bot.WithHTTPClient(time.Minute, &http.Client{
+			Timeout: 2 * time.Minute,
+		}),
 		// bot.WithDebug(),
 	}...)
 	if err != nil {
