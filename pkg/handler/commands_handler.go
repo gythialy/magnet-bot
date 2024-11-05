@@ -161,16 +161,15 @@ func (c *CommandsHandler) paginatedAlarms(ctx context.Context, b *bot.Bot,
 			CallbackData: fmt.Sprintf("%s%d", constant.Alarm, page+1),
 		})
 	}
-
+	var replyMarkup *models.InlineKeyboardMarkup
 	if len(row) > 0 {
 		keyboard = append(keyboard, row)
+		replyMarkup = &models.InlineKeyboardMarkup{
+			InlineKeyboard: keyboard,
+		}
 	}
 
-	replyMarkup := models.InlineKeyboardMarkup{
-		InlineKeyboard: keyboard,
-	}
-
-	c.sendOrEditMessage(ctx, b, userId, messageId, response.String(), &replyMarkup)
+	c.sendOrEditMessage(ctx, b, userId, messageId, response.String(), replyMarkup)
 }
 
 func (c *CommandsHandler) SearchHistoryHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -228,15 +227,17 @@ func (c *CommandsHandler) paginatedSearchResult(ctx context.Context, b *bot.Bot,
 		})
 	}
 
+	var replyMarkup *models.InlineKeyboardMarkup
+
 	if len(row) > 0 {
 		keyboard = append(keyboard, row)
+
+		replyMarkup = &models.InlineKeyboardMarkup{
+			InlineKeyboard: keyboard,
+		}
 	}
 
-	replyMarkup := models.InlineKeyboardMarkup{
-		InlineKeyboard: keyboard,
-	}
-
-	c.sendOrEditMessage(ctx, b, id, messageId, response.String(), &replyMarkup)
+	c.sendOrEditMessage(ctx, b, id, messageId, response.String(), replyMarkup)
 }
 
 func (c *CommandsHandler) HandleCallbackQuery(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -373,22 +374,28 @@ func (c *CommandsHandler) ConvertURLToIMGHandler(ctx context.Context, b *bot.Bot
 
 func (c *CommandsHandler) sendOrEditMessage(ctx context.Context, b *bot.Bot, chatID int64, messageID int, text string, replyMarkup *models.InlineKeyboardMarkup) {
 	if messageID == 0 {
-		if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID:      chatID,
-			Text:        text,
-			ParseMode:   models.ParseModeHTML,
-			ReplyMarkup: replyMarkup,
-		}); err != nil {
+		params := &bot.SendMessageParams{
+			ChatID:    chatID,
+			Text:      text,
+			ParseMode: models.ParseModeHTML,
+		}
+		if replyMarkup != nil {
+			params.ReplyMarkup = replyMarkup
+		}
+		if _, err := b.SendMessage(ctx, params); err != nil {
 			c.ctx.Logger.Error().Msg(err.Error())
 		}
 	} else {
-		if _, err := b.EditMessageText(ctx, &bot.EditMessageTextParams{
-			ChatID:      chatID,
-			MessageID:   messageID,
-			Text:        text,
-			ParseMode:   models.ParseModeHTML,
-			ReplyMarkup: replyMarkup,
-		}); err != nil {
+		params := &bot.EditMessageTextParams{
+			ChatID:    chatID,
+			MessageID: messageID,
+			Text:      text,
+			ParseMode: models.ParseModeHTML,
+		}
+		if replyMarkup != nil {
+			params.ReplyMarkup = replyMarkup
+		}
+		if _, err := b.EditMessageText(ctx, params); err != nil {
 			c.ctx.Logger.Error().Msg(err.Error())
 		}
 	}

@@ -10,13 +10,18 @@ import (
 )
 
 func DefaultHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	userId := update.Message.Chat.ID
+	m := update.Message
+	if m == nil {
+		m = update.EditedMessage
+	}
+	userId := m.Chat.ID
 
 	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: userId,
-		Text:   utils.ToString(update),
+		ChatID:    userId,
+		Text:      "<code>" + utils.ToString(update) + "</code>",
+		ParseMode: models.ParseModeHTML,
 		ReplyParameters: &models.ReplyParameters{
-			MessageID: update.Message.ID,
+			MessageID: m.ID,
 		},
 	}); err != nil {
 		slog.Error("Failed to send message", "error", err)
