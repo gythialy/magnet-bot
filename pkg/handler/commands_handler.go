@@ -308,7 +308,7 @@ func (c *CommandsHandler) ConvertURLToPDFHandler(ctx context.Context, b *bot.Bot
 
 	go func() {
 		u := parsedURL.String()
-		if requestId, err := c.ctx.GotenbergClient.URLToPDF(u); err == nil {
+		if requestId, err := c.ctx.Gotenberg.URLToPDF(u); err == nil {
 			c.ctx.Store.Set(requestId, model.RequestInfo{
 				ChatId:         userId,
 				MessageId:      processingMsg.ID,
@@ -357,7 +357,7 @@ func (c *CommandsHandler) ConvertURLToIMGHandler(ctx context.Context, b *bot.Bot
 
 	go func() {
 		u := parsedURL.String()
-		if requestId, err := c.ctx.GotenbergClient.URLToImage(u); err == nil {
+		if requestId, err := c.ctx.Gotenberg.URLToImage(u); err == nil {
 			c.ctx.Store.Set(requestId, model.RequestInfo{
 				ChatId:         userId,
 				MessageId:      processingMsg.ID,

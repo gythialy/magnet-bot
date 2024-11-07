@@ -51,7 +51,7 @@ func TestResults_Filter(t *testing.T) {
 		Counter: 0,
 	})})
 
-	// results.filter()
+	// results.Filter()
 
 	for _, v := range results.keywordProjects {
 		t.Log(v.OpenTenderCode, v.Title, v.Pageurl)

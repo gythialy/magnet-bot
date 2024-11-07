@@ -8,21 +8,7 @@ import (
 )
 
 var (
-	tableRegex        = regexp.MustCompile(`<table[^>]*>(.*?)</table>`)
-	trRegex           = regexp.MustCompile(`<tr[^>]*>(.*?)</tr>`)
-	tdRegex           = regexp.MustCompile(`<td[^>]*>(.*?)</td>|<th[^>]*>(.*?)</th>`)
-	styleAttrRegex    = regexp.MustCompile(`\s+style="[^"]*"`)
-	multiSpaceRegex   = regexp.MustCompile(`\s+`)
-	multiNewlineRegex = regexp.MustCompile(`\n{2,}`) // 匹配3个或更多换行
-
-	commentRegex  = regexp.MustCompile(`<!--[\s\S]*?-->`)
-	styleTagRegex = regexp.MustCompile(`<style[^>]*>[\s\S]*?</style>`)
-	// inlineStyleRegex = regexp.MustCompile(`<[^>]*style="[^"]*"[^>]*>`)
-	h1OpenRegex  = regexp.MustCompile(`<h1[^>]*>`)
-	h1CloseRegex = regexp.MustCompile(`</h1>`)
-	brRegex      = regexp.MustCompile(`<br\s*/>`)
-	htmlTagRegex = regexp.MustCompile(`<[^>]*>`)
-	// Add whitespace replacer as a package-level variable
+	styleAttrRegex     = regexp.MustCompile(`\s+(style|class)="[^"]*"`)
 	whitespaceReplacer = strings.NewReplacer(
 		`\r\n`, "",
 		"\r\n", "",
@@ -32,28 +18,32 @@ var (
 		"\n", "",
 	)
 
-	// Add spaceRegex as a package-level variable
-	// spaceRegex = regexp.MustCompile(`\s+`)
+	tableRegex        = regexp.MustCompile(`<table[^>]*>(.*?)</table>`)
+	trRegex           = regexp.MustCompile(`<tr[^>]*>(.*?)</tr>`)
+	tdRegex           = regexp.MustCompile(`<td[^>]*>(.*?)</td>|<th[^>]*>(.*?)</th>`)
+	styleTagRegex     = regexp.MustCompile(`<style[^>]*>[\s\S]*?</style>`)
+	multiSpaceRegex   = regexp.MustCompile(`\s+`)
+	commentRegex      = regexp.MustCompile(`<!--[\s\S]*?-->`)
+	h1OpenRegex       = regexp.MustCompile(`<h1[^>]*>`)
+	h1CloseRegex      = regexp.MustCompile(`</h1>`)
+	brRegex           = regexp.MustCompile(`<br\s*/>`)
+	htmlTagRegex      = regexp.MustCompile(`<[^>]*>`)
+	multiNewlineRegex = regexp.MustCompile(`\n{2,}`)
 )
 
-func UnescapeHTML(content string) string {
+func SimplifyHTML(content string) string {
 	content = html.UnescapeString(content)
 	// 删除HTML注释
 	content = commentRegex.ReplaceAllString(content, "")
 	// 清理所有空白字符，包括换行符
-	content = multiNewlineRegex.ReplaceAllString(content, "\n")
-
+	content = whitespaceReplacer.Replace(content)
+	// 删除CSS和style
+	content = styleAttrRegex.ReplaceAllString(content, "")
+	content = styleTagRegex.ReplaceAllString(content, "")
 	return content
 }
 
-func SimplifyHTML(htmlContent string) string {
-	content := UnescapeHTML(htmlContent)
-	// 清理所有空白字符，包括换行符
-	content = whitespaceReplacer.Replace(content)
-	// 删除CSS和style
-	content = styleTagRegex.ReplaceAllString(content, "")
-	content = styleAttrRegex.ReplaceAllString(content, "")
-
+func SimplifyContent(content string) string {
 	// 结构性元素转换为<br />
 	// First replace existing <br /> patterns to avoid duplication
 	content = strings.ReplaceAll(content, "</div><br />", "||DIV_BR||")

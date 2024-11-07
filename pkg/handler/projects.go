@@ -13,13 +13,15 @@ import (
 
 const (
 	keywordTemplate = `<b>【关键字: {{.Keyword}}】</b><a href="{{.Pageurl}}">{{.Title}}</a> @ {{.NoticeTime}}
-{{ .Content }} `
+{{ .Content | noescape }} `
 )
 
 var keywordRender = template.Must(template.New("keyword_template").
-	//	Funcs(template.FuncMap{
-	//	"cleanContent": cleanContent,
-	//}).
+	Funcs(template.FuncMap{
+		"noescape": func(str string) template.HTML {
+			return template.HTML(str)
+		},
+	}).
 	Parse(keywordTemplate))
 
 type Project struct {
@@ -30,6 +32,15 @@ type Project struct {
 	Content        string `json:"content,omitempty"`
 	Pageurl        string `json:"pageurl,omitempty"`
 	Keyword        string `json:"keyword,omitempty"`
+}
+
+func (p *Project) ToMessage() string {
+	var buf bytes.Buffer
+
+	if err := keywordRender.Execute(&buf, p); err == nil {
+		return buf.String()
+	}
+	return ""
 }
 
 type Projects struct {
@@ -50,7 +61,7 @@ func NewProjects(ctx *BotContext, projects []*Project, rules []*rule.ComplexRule
 	}
 }
 
-func (r *Projects) filter() {
+func (r *Projects) Filter() []*Project {
 	logger := r.ctx.Logger
 	for _, v := range r.Projects {
 		logger.Debug().Msgf("process: %s,%s[%s]", v.ShortTitle, v.OpenTenderCode, v.NoticeTime)
@@ -59,7 +70,7 @@ func (r *Projects) filter() {
 			if cr.IsMatch(v.ShortTitle) || cr.IsMatch(v.OpenTenderCode) {
 				matched = append(matched, cr.ToString())
 				key := cr.Rule.ID
-				if val, ok := r.counters.LoadOrStore(cr.Rule.ID, int32(0)); ok {
+				if val, ok := r.counters.LoadOrStore(cr.Rule.ID, int32(1)); ok {
 					r.counters.Store(key, val.(int32)+1)
 				}
 			}
@@ -81,25 +92,8 @@ func (r *Projects) filter() {
 		}
 		return true
 	})
-}
 
-func (r *Projects) ToMessage() map[string]TelegramMessage {
-	r.filter()
-	result := make(map[string]TelegramMessage)
-
-	for _, project := range r.keywordProjects {
-		var buf bytes.Buffer
-		// Remove '**' from the content
-		project.Content = strings.ReplaceAll(project.Content, "**", "")
-
-		if err := keywordRender.Execute(&buf, project); err == nil {
-			result[project.Title] = TelegramMessage{Content: buf.String(), Project: project}
-		} else {
-			r.ctx.Logger.Error().Msg(err.Error())
-		}
-	}
-
-	return result
+	return r.keywordProjects
 }
 
 func cleanContent(content string) string {
@@ -131,9 +125,4 @@ func cleanContent(content string) string {
 	}
 
 	return strings.Join(merged, "\n")
-}
-
-type TelegramMessage struct {
-	Content string
-	Project *Project
 }

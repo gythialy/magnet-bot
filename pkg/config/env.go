@@ -66,3 +66,7 @@ func ScheduleInterval() int {
 	}
 	return result
 }
+
+func GeminiAPIKey() string {
+	return os.Getenv(constant.GeminiAPIKey)
+}

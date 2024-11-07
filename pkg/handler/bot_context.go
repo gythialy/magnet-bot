@@ -61,7 +61,7 @@ type BotContext struct {
 	Store           *Store
 	Logger          *utils.Logger
 	Config          *config.ServiceConfig
-	GotenbergClient *GotenbergClient
+	Gotenberg       *GotenbergClient
 	ctx             context.Context
 	cancel          context.CancelFunc
 	scheduler       *gocron.Scheduler
@@ -117,14 +117,14 @@ func NewBotContext() (*BotContext, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	botContext := &BotContext{
-		ctx:             ctx,
-		cancel:          cancel,
-		scheduler:       gocron.NewScheduler(time.FixedZone("CST", 8*60*60)),
-		Bot:             telegramBot,
-		GotenbergClient: client,
-		Store:           NewStore(),
-		Logger:          ctxLogger,
-		Config:          cfg,
+		ctx:       ctx,
+		cancel:    cancel,
+		scheduler: gocron.NewScheduler(time.FixedZone("CST", 8*60*60)),
+		Bot:       telegramBot,
+		Gotenberg: client,
+		Store:     NewStore(),
+		Logger:    ctxLogger,
+		Config:    cfg,
 	}
 	if err = botContext.initBot(); err != nil {
 		return nil, err

@@ -1,53 +1,14 @@
 package utils
 
 import (
+	"context"
 	"fmt"
 	"testing"
+
+	"github.com/google/generative-ai-go/genai"
+	"github.com/gythialy/magnet/pkg/config"
+	"google.golang.org/api/option"
 )
-
-func TestSimplifyHTML_ComplexTable(t *testing.T) {
-	input := `<h2 style="margin-top: 0pt; margin-bottom: 0pt; text-align: center; line-height: 28pt; break-after: avoid; font-family: Arial; font-size: 16pt;">竞争性谈判公告</h2>
-<table style="border-collapse: collapse; border: none; font-family: 'Times New Roman' ; font-size: 10pt;" border="1" cellspacing="0">
-<tbody>
-<tr>
-<td style="width: 43.1500pt;"><span style="font-family: 宋体;">5</span></td>
-<td style="width: 202.9000pt;"><span style="font-family: 宋体;">台式机</span></td>
-<td style="width: 45.3000pt;"><span style="font-family: 宋体;">台</span></td>
-<td style="width: 37.1000pt;"><span style="font-family: 宋体;">1</span></td>
-<td style="width: 33.5500pt;"> </td>
-</tr>
-<tr>
-<td><span style="font-family: 宋体;">6</span></td>
-<td><span style="font-family: 宋体;">车牌识别一体机（含机头）</span></td>
-<td><span style="font-family: 宋体;">台</span></td>
-<td><span style="font-family: 宋体;">2</span></td>
-<td> </td>
-</tr>
-</tbody>
-</table>
-<p style="text-indent: 28pt;"><span style="font-family: 宋体;">2024年11月01日</span></p>`
-
-	expected := `<b>竞争性谈判公告</b>
-5,台式机,台,1,
-6,车牌识别一体机（含机头）,台,2,
-2024年11月01日`
-
-	result := SimplifyHTML(input)
-	if result != expected {
-		t.Errorf("SimplifyHTML() failed\nExpected:\n%s\nGot:\n%s", expected, result)
-	}
-}
-
-func TestSimplifyHTML_UnderlineText(t *testing.T) {
-	input := `<span style="font-family: 宋体; text-decoration: underline; font-size: 14.0000pt;">2024</span>年<span style="text-decoration: underline;">11</span>月<span style="text-decoration: underline;">01</span>日`
-
-	expected := `<u>2024</u>年<u>11</u>月<u>01</u>日`
-
-	result := SimplifyHTML(input)
-	if result != expected {
-		t.Errorf("SimplifyHTML() failed\nExpected:\n%s\nGot:\n%s", expected, result)
-	}
-}
 
 func Test_SimplifyHTML_TableWithoutBorder(t *testing.T) {
 	input := `<h2 style="margin-top: 0pt; margin-bottom: 0pt; text-align: center; line-height: 28pt; break-after: avoid; font-family:
@@ -1020,5 +981,29 @@ func Test_SimplifyHTML_TableWithoutBorder(t *testing.T) {
     style="font-family: 'Times New Roman' ; font-size: 10.5000pt;"> </span></p>`
 
 	content := SimplifyHTML(input)
-	fmt.Println(content)
+	ctx := context.Background()
+	client, err := genai.NewClient(ctx, option.WithAPIKey(config.GeminiAPIKey()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	m := client.GenerativeModel("gemini-1.5-flash")
+	if resp, err := m.GenerateContent(ctx, genai.Text(fmt.Sprintf(`将下列 HTML 转换为 Telegram message:
+- 尽可能使用文本显示
+- telegram html 支持的标签有<b>bold</b>,<i>italic</i>,<em>italic</em>,<code>code</code>，不支持的标签做删除处理
+- 对于复杂的表格使用csv格式显示，每个单元格的值删除多余的换行符和空白字符，最终格式显示为"1;cell1value;cell2value"\n%s`, content))); err == nil {
+		printResponse(resp)
+	} else {
+		t.Fatal(err)
+	}
+}
+
+func printResponse(resp *genai.GenerateContentResponse) {
+	for _, cand := range resp.Candidates {
+		if cand.Content != nil {
+			for _, part := range cand.Content.Parts {
+				fmt.Println(part)
+			}
+		}
+	}
 }

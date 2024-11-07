@@ -18,4 +18,5 @@ const (
 	PDFServerUrl      = "PDF_SERVER_URL"
 	PDFExtension      = ".pdf"
 	ImgExtension      = ".png"
+	GeminiAPIKey      = "GEMINI_API_KEY"
 )
