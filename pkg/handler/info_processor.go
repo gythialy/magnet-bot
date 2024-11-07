@@ -32,7 +32,7 @@ const (
 	systemPrompt      = `将下列 HTML 转换为纯文本:
 - 尽可能使用文本显示
 - "申领时间"和"申领地址"之间应该去除多余的换行和空格转为一行，如: "2024年11月07日 至 2024年11月12日，每天上午 08:30 至 11:30，下午13:00至16:30(北京时间,工作日)"
-- 对于复杂的表格使用csv格式显示，每个单元格的值删除多余的换行符和空白字符，最终格式显示为"1;cell1value;cell2value"\n%s`
+- 对于复杂的表格使用csv格式显示，每个单元格的值删除多余的换行符和空白字符，如果处理后该行所有单元格的内容都为空，则删除，正常数据最终格式显示为"1;cell1value;cell2value"\n%s`
 )
 
 type InfoProcessor struct {
@@ -74,7 +74,7 @@ func (r *InfoProcessor) Process() {
 		data.Alarms = r.crawler.Alarms(data.AlarmKeyword, data.UserId)
 		data.IsForced = false
 		if err := r.pool.Invoke(data); err != nil {
-			r.ctx.Logger.Error().Msg(err.Error())
+			r.ctx.Logger.Error().Stack().Err(err).Msg("")
 		}
 	}
 }
@@ -86,7 +86,7 @@ func (r *InfoProcessor) Get(userId int64) {
 		data.Projects = results
 		data.IsForced = true
 		if err := r.pool.Invoke(data); err != nil {
-			r.ctx.Logger.Error().Msg(err.Error())
+			r.ctx.Logger.Error().Stack().Err(err).Msg("")
 		}
 	}
 }
@@ -94,7 +94,7 @@ func (r *InfoProcessor) Get(userId int64) {
 func (r *InfoProcessor) Release() {
 	r.pool.Release()
 	if err := r.gemini.Close(); err != nil {
-		r.ctx.Logger.Error().Msg(err.Error())
+		r.ctx.Logger.Error().Stack().Err(err).Msg("")
 	}
 }
 
@@ -136,47 +136,49 @@ func (r *InfoProcessor) Handler(i interface{}) {
 		failed := []string{"failed:"}
 		filterFailed := make(map[string]*Project)
 		userId := pd.UserId
-		var newHistories []*model.History
+		var processedURL []*model.History
 		now := time.Now()
-		limiter := time.NewTicker(500 * time.Millisecond)
-		defer limiter.Stop()
 
+		logger := r.ctx.Logger
+	projectLoop:
 		for _, project := range projects {
 			title := project.Title
 			pageURL := project.Pageurl
 			shortTitle := project.ShortTitle
 			if historyDao.IsUrlExist(userId, pageURL) && !pd.IsForced {
-				r.ctx.Logger.Debug().Msgf("%s already processed", shortTitle)
+				logger.Debug().Msgf("%s already processed", shortTitle)
 				continue
 			}
 
-			if chunks, total := r.ToMessage(project); total > 0 {
-				for idx, chunk := range chunks {
-					<-limiter.C
+			chunks, total := r.ToMessage(project)
+			logger.Debug().Msgf("split content to %d parts", total)
 
-					if _, err := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
-						ChatID:    userId,
-						Text:      chunk,
-						ParseMode: models.ParseModeHTML,
-					}); err != nil {
-						if _, ok := filterFailed[pageURL]; !ok {
-							filterFailed[pageURL] = project
-							failed = append(failed, fmt.Sprintf("<a href=\"%s\">%s</a>", pageURL, title))
-						}
-						r.ctx.Logger.Error().Msg(err.Error())
-					} else {
-						r.ctx.Logger.Info().Msgf("notify: %s[%s]-%d", shortTitle, project.OpenTenderCode, idx)
+			for idx, chunk := range chunks {
+				if _, err := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
+					ChatID:    userId,
+					Text:      chunk,
+					ParseMode: models.ParseModeHTML,
+				}); err != nil {
+					if _, ok := filterFailed[pageURL]; !ok {
+						filterFailed[pageURL] = project
+						failed = append(failed, fmt.Sprintf("<a href=\"%s\">%s</a>", pageURL, title))
 					}
+					logger.Error().Stack().Err(err).Msg("")
+					if idx == 0 {
+						continue projectLoop
+					}
+				} else {
+					logger.Info().Msgf("notify: %s[%s]-%d", shortTitle, project.OpenTenderCode, idx)
 				}
-				newHistories = append(newHistories, &model.History{
-					UserID:    userId,
-					URL:       pageURL,
-					Title:     shortTitle,
-					UpdatedAt: now,
-				})
-			} else {
-				r.ctx.Logger.Warn().Msgf("message for %s", shortTitle)
+				time.Sleep(500 * time.Millisecond)
 			}
+
+			processedURL = append(processedURL, &model.History{
+				UserID:    userId,
+				URL:       pageURL,
+				Title:     shortTitle,
+				UpdatedAt: now,
+			})
 		}
 
 		if len(failed) > 1 {
@@ -185,10 +187,10 @@ func (r *InfoProcessor) Handler(i interface{}) {
 				Text:      strings.Join(failed, "\n"),
 				ParseMode: models.ParseModeHTML,
 			}); err != nil {
-				r.ctx.Logger.Error().Msg(err.Error())
+				logger.Error().Stack().Err(err).Msg("")
 			} else {
 				for _, v := range filterFailed {
-					newHistories = append(newHistories, &model.History{
+					processedURL = append(processedURL, &model.History{
 						UserID:    userId,
 						URL:       v.Pageurl,
 						Title:     v.ShortTitle,
@@ -198,9 +200,9 @@ func (r *InfoProcessor) Handler(i interface{}) {
 			}
 		}
 
-		if len(newHistories) > 0 {
-			if err := historyDao.Insert(newHistories); err != nil {
-				r.ctx.Logger.Error().Msg(err.Error())
+		if len(processedURL) > 0 {
+			if err := historyDao.Insert(processedURL); err != nil {
+				logger.Error().Stack().Err(err).Msg("")
 			}
 		}
 
@@ -211,13 +213,13 @@ func (r *InfoProcessor) Handler(i interface{}) {
 			if _, ok := alarmCache[alarm.CreditCode]; ok {
 				continue
 			}
-			msg, _ := alarm.ToTelegramMessage()
+			msg, _ := alarm.ToMessage()
 			if _, err := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
 				ChatID:    userId,
 				Text:      msg,
 				ParseMode: models.ParseModeHTML,
 			}); err != nil {
-				r.ctx.Logger.Error().Msg(err.Error())
+				logger.Error().Stack().Err(err).Msg("")
 			} else {
 				newAlarms = append(newAlarms, alarm)
 			}
@@ -225,7 +227,7 @@ func (r *InfoProcessor) Handler(i interface{}) {
 
 		if len(newAlarms) > 0 {
 			if err := alarmDao.Insert(newAlarms); err != nil {
-				r.ctx.Logger.Error().Msg(err.Error())
+				logger.Error().Stack().Err(err).Msg("")
 			}
 		}
 	}
@@ -247,7 +249,7 @@ func (r *InfoProcessor) ToMessage(project *Project) ([]string, int) {
 	} else {
 		ctx := context.Background()
 		if err := r.minuteLimiter.Wait(ctx); err != nil {
-			r.ctx.Logger.Error().Msgf("minute rate limiter error: %v", err)
+			r.ctx.Logger.Error().Err(err).Msg("minute rate limiter error")
 		} else {
 			m := r.gemini.GenerativeModel(modelName)
 			content := project.Content
@@ -267,7 +269,7 @@ func (r *InfoProcessor) ToMessage(project *Project) ([]string, int) {
 					}
 				}
 			} else {
-				r.ctx.Logger.Error().Msg(err.Error())
+				r.ctx.Logger.Error().Stack().Err(err).Msg("")
 			}
 		}
 	}

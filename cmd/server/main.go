@@ -1,10 +1,12 @@
 package main
 
 import (
-	"log"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/gythialy/magnet/pkg/handler"
 
@@ -12,11 +14,11 @@ import (
 )
 
 func main() {
-	log.Printf("magnet %s @ %s\n", constant.Version, constant.BuildTime)
+	fmt.Printf("magnet %s @ %s\n", constant.Version, constant.BuildTime)
 
 	ctx, err := handler.NewBotContext()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Stack().Err(err).Msg("NewBotContext")
 	}
 
 	ctx.Start()

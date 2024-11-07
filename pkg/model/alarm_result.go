@@ -190,7 +190,7 @@ type AlarmDetail struct {
 	} `json:"data,omitempty"`
 }
 
-func (a *Alarm) ToTelegramMessage() (string, error) {
+func (a *Alarm) ToMessage() (string, error) {
 	var buf bytes.Buffer
 	if err := alarmRender.Execute(&buf, a); err == nil {
 		return buf.String(), nil

@@ -86,7 +86,7 @@ func (r *Projects) Filter() []*Project {
 		keyId, _ := key.(int32)
 		counter := value.(int32)
 		if err := dal.Keyword.UpdateCounter(keyId, counter); err != nil {
-			r.ctx.Logger.Error().Msgf("update counter error: %s", err.Error())
+			r.ctx.Logger.Error().Stack().Err(err).Msg("update counter error")
 		} else {
 			r.ctx.Logger.Debug().Msgf("update counter: %d=>%d", keyId, counter)
 		}

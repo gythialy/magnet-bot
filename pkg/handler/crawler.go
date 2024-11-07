@@ -199,14 +199,14 @@ func (c *Crawler) alarmTitle(alarm *model.Alarm) {
 		u := fmt.Sprintf("https://%s%s", c.ctx.Config.MessageServerUrl, detail.Data.Pageurl)
 		alarm.PageUrl1 = u
 	} else {
-		c.ctx.Logger.Error().Msg(err.Error())
+		c.ctx.Logger.Error().Stack().Err(err).Msg("")
 	}
 	if alarm.OriginNoticeID != nil && *alarm.OriginNoticeID != "" {
 		if detail, err := c.alarm(*alarm.OriginNoticeID); err == nil {
 			u := fmt.Sprintf("https://%s%s", c.ctx.Config.MessageServerUrl, detail.Data.Pageurl)
 			alarm.PageUrl2 = &u
 		} else {
-			c.ctx.Logger.Error().Msg(err.Error())
+			c.ctx.Logger.Error().Stack().Err(err).Msg("")
 		}
 	}
 }

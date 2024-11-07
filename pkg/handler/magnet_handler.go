@@ -52,7 +52,7 @@ func (m *MagnetHandler) Handler(ctx context.Context, b *bot.Bot, update *models.
 			}
 			filter, err := uri.Filter("xt", "dn", "tr")
 			if err != nil {
-				m.ctx.Logger.Error().Msg(err.Error())
+				m.ctx.Logger.Error().Stack().Err(err).Msg("")
 				continue
 			}
 			result.WriteString(filter.String() + server + "\n")
@@ -67,7 +67,7 @@ func (m *MagnetHandler) Handler(ctx context.Context, b *bot.Bot, update *models.
 		ChatID: update.Message.Chat.ID,
 		Text:   result.String(),
 	}); err != nil {
-		m.ctx.Logger.Error().Msg(err.Error())
+		m.ctx.Logger.Error().Stack().Err(err).Msg("")
 	}
 }
 
@@ -79,7 +79,7 @@ func (m *MagnetHandler) fetchServer() string {
 	if s, err := os.Stat(f); errors.Is(err, os.ErrNotExist) || s.ModTime().Add(time.Hour*24).Before(time.Now()) {
 		_ = os.Remove(f)
 		if _, err := resty.New().EnableTrace().R().SetOutput(f).Get(BestUrlFile); err != nil {
-			m.ctx.Logger.Error().Msg(err.Error())
+			m.ctx.Logger.Error().Stack().Err(err).Msg("")
 		}
 	}
 

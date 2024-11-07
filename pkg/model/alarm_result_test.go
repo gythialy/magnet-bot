@@ -27,7 +27,7 @@ func TestAlarm_ToMarkdown(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if markdown, err := a.ToTelegramMessage(); err == nil {
+	if markdown, err := a.ToMessage(); err == nil {
 		fmt.Println(markdown)
 	} else {
 		t.Fatal(err)

@@ -5,6 +5,8 @@ import (
 	"os"
 	"path"
 
+	"github.com/rs/zerolog/pkgerrors"
+
 	"github.com/rs/zerolog"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
@@ -37,6 +39,9 @@ type Logger struct {
 }
 
 func Configure(config Config) *Logger {
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	zerolog.ErrorStackMarshaler = pkgerrors.MarshalStack
+
 	var writers []io.Writer
 
 	if config.ConsoleLoggingEnabled {
@@ -58,8 +63,7 @@ func Configure(config Config) *Logger {
 		}
 	}
 
-	logger := zerolog.New(io.MultiWriter(writers...)).With().Timestamp().Logger().Level(config.LogLevel)
-
+	logger := zerolog.New(io.MultiWriter(writers...)).With().Timestamp().Caller().Logger().Level(config.LogLevel)
 	logger.Info().
 		Bool("fileLogging", config.FileLoggingEnabled).
 		Bool("jsonLogOutput", config.EncodeLogsAsJson).

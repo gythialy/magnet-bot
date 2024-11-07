@@ -27,7 +27,7 @@ func (h *ManagerHandler) Retry(ctx context.Context, b *bot.Bot, update *models.U
 			Text:   "Processing, please wait...",
 		})
 		if err != nil {
-			h.ctx.Logger.Error().Msg(err.Error())
+			h.ctx.Logger.Error().Stack().Err(err).Msg("")
 			return
 		}
 
@@ -40,7 +40,7 @@ func (h *ManagerHandler) Retry(ctx context.Context, b *bot.Bot, update *models.U
 				MessageID: sentMsg.ID,
 				Text:      "Processing completed.",
 			}); err != nil {
-				h.ctx.Logger.Err(err)
+				h.ctx.Logger.Error().Stack().Err(err).Msg("")
 			}
 		}()
 	}
@@ -61,7 +61,7 @@ func (h *ManagerHandler) Clean(ctx context.Context, b *bot.Bot, update *models.U
 			ChatID: update.Message.Chat.ID,
 			Text:   msg,
 		}); err != nil {
-			h.ctx.Logger.Err(err)
+			h.ctx.Logger.Error().Stack().Err(err).Msg("")
 		}
 	}
 }

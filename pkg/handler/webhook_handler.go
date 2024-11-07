@@ -25,7 +25,7 @@ func (wh *webhooker) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		wh.ctx.Logger.Error().Msg(err.Error())
+		wh.ctx.Logger.Error().Stack().Err(err).Msg("")
 		http.Error(w, "Failed to read body", http.StatusInternalServerError)
 		return
 	}
@@ -59,7 +59,7 @@ func (wh *webhooker) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 						MessageID: req.ReplyMessageId,
 					},
 				}); err != nil {
-					wh.ctx.Logger.Error().Msg(err.Error())
+					wh.ctx.Logger.Error().Stack().Err(err).Msg("")
 				}
 			case model.IMG:
 				_, err := wh.ctx.Bot.DeleteMessage(context.Background(), &bot.DeleteMessageParams{
@@ -80,7 +80,7 @@ func (wh *webhooker) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 						MessageID: req.ReplyMessageId,
 					},
 				}); err != nil {
-					wh.ctx.Logger.Error().Msg(err.Error())
+					wh.ctx.Logger.Error().Stack().Err(err).Msg("")
 				}
 			}
 		}(req, body)

@@ -58,7 +58,7 @@ func (c *CommandsHandler) addKeywordHandler(ctx context.Context, b *bot.Bot, upd
 		ChatID: update.Message.Chat.ID,
 		Text:   fmt.Sprintf("%s: %s", prefix, result),
 	}); err != nil {
-		c.ctx.Logger.Error().Msg(err.Error())
+		c.ctx.Logger.Error().Stack().Err(err).Msg("")
 	}
 }
 
@@ -74,14 +74,14 @@ func (c *CommandsHandler) DeleteKeywordHandler(ctx context.Context, b *bot.Bot, 
 			ChatID: update.Message.Chat.ID,
 			Text:   fmt.Sprintf("%s: %s", constant.DeleteKeyword, result),
 		}); msgErr != nil {
-			c.ctx.Logger.Error().Err(msgErr)
+			c.ctx.Logger.Error().Stack().Err(msgErr).Msg("")
 		}
 	} else {
 		if _, msgErr := b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
 			Text:   fmt.Sprintf("%s failed, %s", constant.DeleteKeyword, err.Error()),
 		}); msgErr != nil {
-			c.ctx.Logger.Error().Err(msgErr)
+			c.ctx.Logger.Error().Stack().Err(msgErr).Msg("")
 		}
 	}
 }
@@ -108,7 +108,7 @@ func (c *CommandsHandler) EditKeywordHandler(ctx context.Context, b *bot.Bot, up
 			ChatID: update.Message.Chat.ID,
 			Text:   fmt.Sprintf("%s failed, %s", constant.DeleteKeyword, err.Error()),
 		}); msgErr != nil {
-			c.ctx.Logger.Error().Err(msgErr)
+			c.ctx.Logger.Error().Stack().Err(msgErr).Msg("")
 		}
 	}
 }
@@ -138,11 +138,11 @@ func (c *CommandsHandler) paginatedAlarms(ctx context.Context, b *bot.Bot,
 
 	var response strings.Builder
 	for i, alarm := range alarms {
-		if markdown, err := alarm.ToTelegramMessage(); err == nil {
+		if markdown, err := alarm.ToMessage(); err == nil {
 			response.WriteString(fmt.Sprintf("%d. %s\n", (page-1)*pageSize+i+1, markdown))
 			response.WriteString("\n")
 		} else {
-			c.ctx.Logger.Error().Msgf("%s,%s", utils.ToString(alarm), err.Error())
+			c.ctx.Logger.Error().Stack().Err(err).Msgf("%s", utils.ToString(alarm))
 		}
 	}
 
@@ -182,7 +182,7 @@ func (c *CommandsHandler) SearchHistoryHandler(ctx context.Context, b *bot.Bot, 
 			ChatID: id,
 			Text:   "Please provide a search term",
 		}); err != nil {
-			c.ctx.Logger.Error().Msg(err.Error())
+			c.ctx.Logger.Error().Stack().Err(err).Msg("")
 		}
 		return
 	}
@@ -250,7 +250,7 @@ func (c *CommandsHandler) HandleCallbackQuery(ctx context.Context, b *bot.Bot, u
 	queryType := parts[0]
 	page, err := strconv.Atoi(parts[1])
 	if err != nil {
-		c.ctx.Logger.Error().Msg(err.Error())
+		c.ctx.Logger.Error().Stack().Err(err).Msg("")
 		return
 	}
 
@@ -269,14 +269,14 @@ func (c *CommandsHandler) HandleCallbackQuery(ctx context.Context, b *bot.Bot, u
 	if _, err := b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
 		CallbackQueryID: update.CallbackQuery.ID,
 	}); err != nil {
-		c.ctx.Logger.Error().Msg(err.Error())
+		c.ctx.Logger.Error().Stack().Err(err).Msg("")
 	}
 }
 
 func (c *CommandsHandler) ConvertURLToPDFHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	userId := update.Message.Chat.ID
 
-	parsedURL, urlErr := extractURL(update, constant.ConvertPDF)
+	msgId, parsedURL, urlErr := extractURL(update, constant.ConvertPDF)
 	if urlErr != nil {
 		c.sendErrorMessage(ctx, b, update, "Invalid URL format")
 		return
@@ -293,7 +293,7 @@ func (c *CommandsHandler) ConvertURLToPDFHandler(ctx context.Context, b *bot.Bot
 	if f, err := c.extractFileName(parsedURL); err == nil {
 		fileName = f + constant.PDFExtension
 	} else {
-		c.ctx.Logger.Error().Msg(err.Error())
+		c.ctx.Logger.Error().Stack().Err(err).Msg("")
 	}
 
 	// Send processing message
@@ -302,7 +302,7 @@ func (c *CommandsHandler) ConvertURLToPDFHandler(ctx context.Context, b *bot.Bot
 		Text:   fmt.Sprintf("Converting URL to PDF(%s). Please wait...⌛", fileName),
 	})
 	if msgErr != nil {
-		c.ctx.Logger.Error().Msg(msgErr.Error())
+		c.ctx.Logger.Error().Stack().Err(msgErr).Msg("")
 		return
 	}
 
@@ -313,12 +313,12 @@ func (c *CommandsHandler) ConvertURLToPDFHandler(ctx context.Context, b *bot.Bot
 				ChatId:         userId,
 				MessageId:      processingMsg.ID,
 				Message:        u,
-				ReplyMessageId: update.Message.ID,
+				ReplyMessageId: msgId,
 				FileName:       fileName,
 				Type:           model.PDF,
 			}, DefaultCacheDuration)
 		} else {
-			c.ctx.Logger.Error().Msg(err.Error())
+			c.ctx.Logger.Error().Stack().Err(err).Msg("")
 		}
 	}()
 }
@@ -326,7 +326,7 @@ func (c *CommandsHandler) ConvertURLToPDFHandler(ctx context.Context, b *bot.Bot
 func (c *CommandsHandler) ConvertURLToIMGHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	userId := update.Message.Chat.ID
 
-	parsedURL, urlErr := extractURL(update, constant.ConvertIMG)
+	msgId, parsedURL, urlErr := extractURL(update, constant.ConvertIMG)
 	if urlErr != nil {
 		c.sendErrorMessage(ctx, b, update, "Invalid URL format")
 		return
@@ -342,7 +342,7 @@ func (c *CommandsHandler) ConvertURLToIMGHandler(ctx context.Context, b *bot.Bot
 	if f, err := c.extractFileName(parsedURL); err == nil {
 		fileName = f + constant.ImgExtension
 	} else {
-		c.ctx.Logger.Error().Msg(err.Error())
+		c.ctx.Logger.Error().Stack().Err(err).Msg("")
 	}
 
 	// Send processing message
@@ -351,7 +351,7 @@ func (c *CommandsHandler) ConvertURLToIMGHandler(ctx context.Context, b *bot.Bot
 		Text:   fmt.Sprintf("Converting URL to IMG(%s). Please wait...⌛", fileName),
 	})
 	if msgErr != nil {
-		c.ctx.Logger.Error().Msg(msgErr.Error())
+		c.ctx.Logger.Error().Stack().Err(msgErr).Msg("")
 		return
 	}
 
@@ -361,13 +361,13 @@ func (c *CommandsHandler) ConvertURLToIMGHandler(ctx context.Context, b *bot.Bot
 			c.ctx.Store.Set(requestId, model.RequestInfo{
 				ChatId:         userId,
 				MessageId:      processingMsg.ID,
-				ReplyMessageId: update.Message.ID,
+				ReplyMessageId: msgId,
 				Message:        u,
 				FileName:       fileName,
 				Type:           model.IMG,
 			}, DefaultCacheDuration)
 		} else {
-			c.ctx.Logger.Error().Msg(err.Error())
+			c.ctx.Logger.Error().Stack().Err(err).Msg("")
 		}
 	}()
 }
@@ -383,7 +383,7 @@ func (c *CommandsHandler) sendOrEditMessage(ctx context.Context, b *bot.Bot, cha
 			params.ReplyMarkup = replyMarkup
 		}
 		if _, err := b.SendMessage(ctx, params); err != nil {
-			c.ctx.Logger.Error().Msg(err.Error())
+			c.ctx.Logger.Error().Stack().Err(err).Msg("")
 		}
 	} else {
 		params := &bot.EditMessageTextParams{
@@ -396,7 +396,7 @@ func (c *CommandsHandler) sendOrEditMessage(ctx context.Context, b *bot.Bot, cha
 			params.ReplyMarkup = replyMarkup
 		}
 		if _, err := b.EditMessageText(ctx, params); err != nil {
-			c.ctx.Logger.Error().Msg(err.Error())
+			c.ctx.Logger.Error().Stack().Err(err).Msg("")
 		}
 	}
 }
@@ -409,7 +409,7 @@ func (c *CommandsHandler) sendErrorMessage(ctx context.Context, b *bot.Bot, upda
 			MessageID: update.Message.ID,
 		},
 	}); err != nil {
-		c.ctx.Logger.Error().Msg(err.Error())
+		c.ctx.Logger.Error().Stack().Err(err).Msg("")
 	}
 }
 
@@ -463,7 +463,7 @@ Build Time: %s
 		Text:      responseText,
 		ParseMode: models.ParseModeHTML,
 	}); err != nil {
-		c.ctx.Logger.Error().Msg(err.Error())
+		c.ctx.Logger.Error().Stack().Err(err).Msg("")
 	}
 }
 
@@ -484,7 +484,7 @@ func (c *CommandsHandler) extractFileName(u *url.URL) (string, error) {
 	defer func(Body io.ReadCloser) {
 		err := Body.Close()
 		if err != nil {
-			c.ctx.Logger.Error().Msg(err.Error())
+			c.ctx.Logger.Error().Stack().Err(err).Msg("")
 		}
 	}(resp.Body)
 
@@ -514,18 +514,23 @@ func (c *CommandsHandler) extractFileName(u *url.URL) (string, error) {
 	return fileName, nil
 }
 
-func extractURL(update *models.Update, cmd string) (*url.URL, error) {
+func extractURL(update *models.Update, cmd string) (int, *url.URL, error) {
 	message := strings.TrimSpace(strings.TrimPrefix(update.Message.Text, cmd))
-	u := ""
-	if message == "" {
+	m := update.Message.ReplyToMessage
+
+	if m != nil {
 		entities := update.Message.ReplyToMessage.Entities
+		u := ""
 		for _, entity := range entities {
 			if entity.Type == models.MessageEntityTypeTextLink && entity.URL != "" {
 				u = entity.URL
 				break
 			}
 		}
+		parse, err := url.Parse(u)
+		return m.ID, parse, err
 	}
 
-	return url.Parse(u)
+	parse, err := url.Parse(message)
+	return update.Message.ID, parse, err
 }
