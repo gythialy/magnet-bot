@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -24,15 +25,20 @@ import (
 )
 
 const (
-	poolSize          = 10
-	maxMessageLength  = 4090
+	poolSize = 10
+
 	modelName         = "gemini-1.5-flash"
 	requestsPerDay    = 1500
 	requestsPerMinute = 15
 	systemPrompt      = `将下列 HTML 转换为纯文本:
-- 尽可能使用文本显示
+- 使用纯文本显示，不能包含任何 html 标签
 - "申领时间"和"申领地址"之间应该去除多余的换行和空格转为一行，如: "2024年11月07日 至 2024年11月12日，每天上午 08:30 至 11:30，下午13:00至16:30(北京时间,工作日)"
 - 对于复杂的表格使用csv格式显示，每个单元格的值删除多余的换行符和空白字符，如果处理后该行所有单元格的内容都为空，则删除，正常数据最终格式显示为"1;cell1value;cell2value"\n%s`
+)
+
+var (
+	htmlTagsRegex = regexp.MustCompile(`<[^>]*>|</[^>]*>|<[^/][^>]*/>|<\s*[a-zA-Z][^>]*>`)
+	htmlAttrRegex = regexp.MustCompile(`\s+\w+\s*=\s*("[^"]*"|'[^']*')`)
 )
 
 type InfoProcessor struct {
@@ -50,10 +56,11 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	processor := &InfoProcessor{
 		ctx:            ctx,
-		minuteLimiter:  rate.NewLimiter(rate.Every(time.Minute/requestsPerMinute), 1), // 15 requests per minute
-		dailyResetTime: time.Now().Add(24 * time.Hour),
+		minuteLimiter:  rate.NewLimiter(rate.Every(time.Minute/requestsPerMinute), 1),
+		dailyResetTime: nextMidnight(),
 		gemini:         client,
 		crawler:        NewCrawler(ctx),
 	}
@@ -163,7 +170,7 @@ func (r *InfoProcessor) Handler(i interface{}) {
 						filterFailed[pageURL] = project
 						failed = append(failed, fmt.Sprintf("<a href=\"%s\">%s</a>", pageURL, title))
 					}
-					logger.Error().Stack().Err(err).Msg("")
+					logger.Error().Stack().Err(err).Msgf("content: %s", chunk)
 					if idx == 0 {
 						continue projectLoop
 					}
@@ -173,12 +180,14 @@ func (r *InfoProcessor) Handler(i interface{}) {
 				time.Sleep(500 * time.Millisecond)
 			}
 
-			processedURL = append(processedURL, &model.History{
-				UserID:    userId,
-				URL:       pageURL,
-				Title:     shortTitle,
-				UpdatedAt: now,
-			})
+			if total > 0 {
+				processedURL = append(processedURL, &model.History{
+					UserID:    userId,
+					URL:       pageURL,
+					Title:     shortTitle,
+					UpdatedAt: now,
+				})
+			}
 		}
 
 		if len(failed) > 1 {
@@ -219,7 +228,7 @@ func (r *InfoProcessor) Handler(i interface{}) {
 				Text:      msg,
 				ParseMode: models.ParseModeHTML,
 			}); err != nil {
-				logger.Error().Stack().Err(err).Msg("")
+				logger.Error().Stack().Err(err).Msg("send alarm")
 			} else {
 				newAlarms = append(newAlarms, alarm)
 			}
@@ -234,65 +243,83 @@ func (r *InfoProcessor) Handler(i interface{}) {
 }
 
 func (r *InfoProcessor) ToMessage(project *Project) ([]string, int) {
-	now := time.Now()
-
-	// Reset daily counter if we've passed the reset time
-	if now.After(r.dailyResetTime) {
+	// Reset daily counter if needed
+	if time.Now().After(r.dailyResetTime) {
 		r.dailyCount = 0
-		r.dailyResetTime = now.Add(24 * time.Hour)
+		r.dailyResetTime = nextMidnight()
 	}
 
-	// Check daily limit
+	// Use simplified content if we hit API limits or encounter errors
 	if r.dailyCount >= requestsPerDay {
-		project.Content = utils.SimplifyContent(project.Content)
 		r.ctx.Logger.Error().Msgf("daily API limit (%d) reached", requestsPerDay)
-	} else {
-		ctx := context.Background()
-		if err := r.minuteLimiter.Wait(ctx); err != nil {
-			r.ctx.Logger.Error().Err(err).Msg("minute rate limiter error")
-		} else {
-			m := r.gemini.GenerativeModel(modelName)
-			content := project.Content
-			prompt := genai.Text(fmt.Sprintf(systemPrompt, content))
+		project.Content = utils.SimplifyContent(project.Content)
+		return project.SplitMessage()
+	}
 
-			if resp, err := m.GenerateContent(context.Background(), prompt); err == nil {
-				for _, can := range resp.Candidates {
-					if can.Content != nil {
-						for _, part := range can.Content.Parts {
-							if part != nil {
-								if data, ok := part.(genai.Text); ok {
-									project.Content = strings.ReplaceAll(string(data), "**", "")
-									break
-								}
-							}
-						}
-					}
-				}
-			} else {
-				r.ctx.Logger.Error().Stack().Err(err).Msg("")
+	// Try to use Gemini API
+	if err := r.minuteLimiter.Wait(context.Background()); err != nil {
+		r.ctx.Logger.Error().Err(err).Msg("minute rate limiter error")
+		project.Content = utils.SimplifyContent(project.Content)
+		return project.SplitMessage()
+	}
+
+	// Generate content using Gemini
+	m := r.gemini.GenerativeModel(modelName)
+	prompt := genai.Text(fmt.Sprintf(systemPrompt, project.Content))
+	resp, err := m.GenerateContent(context.Background(), prompt)
+	if err != nil {
+		r.ctx.Logger.Error().Stack().Err(err).Msg("Gemini API error")
+		project.Content = utils.SimplifyContent(project.Content)
+		return project.SplitMessage()
+	}
+
+	if content := extractContent(resp); content != "" {
+		project.Content = content
+	} else {
+		project.Content = utils.SimplifyContent(project.Content)
+	}
+
+	return project.SplitMessage()
+}
+
+func extractContent(resp *genai.GenerateContentResponse) string {
+	if resp == nil {
+		return ""
+	}
+
+	for _, can := range resp.Candidates {
+		if can.Content == nil {
+			continue
+		}
+		for _, part := range can.Content.Parts {
+			if part == nil {
+				continue
+			}
+			if data, ok := part.(genai.Text); ok {
+				return cleanContent(string(data))
 			}
 		}
 	}
+	return ""
+}
 
-	message := project.ToMessage()
+func cleanContent(content string) string {
+	// Remove HTML attributes and tags
+	content = htmlAttrRegex.ReplaceAllString(content, "")
+	content = htmlTagsRegex.ReplaceAllString(content, "")
 
-	var chunks []string
-	for len(message) > 0 {
-		if len(message) <= maxMessageLength {
-			chunks = append(chunks, message)
-			break
-		}
+	// Remove markdown style bold and any remaining < or > characters
+	content = strings.NewReplacer(
+		"**", "",
+	).Replace(content)
 
-		chunk := message[:maxMessageLength]
-		lastNewline := strings.LastIndex(chunk, "\n")
-		if lastNewline > 0 {
-			chunk = chunk[:lastNewline]
-		}
+	return content
+}
 
-		chunks = append(chunks, chunk)
-		message = message[len(chunk):]
-	}
-	return chunks, len(chunks)
+func nextMidnight() time.Time {
+	now := time.Now()
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0,
+		now.Location()).Add(24 * time.Hour)
 }
 
 type ProcessData struct {

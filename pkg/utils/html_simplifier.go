@@ -8,7 +8,6 @@ import (
 )
 
 var (
-	styleAttrRegex     = regexp.MustCompile(`\s+(style|class)="[^"]*"`)
 	whitespaceReplacer = strings.NewReplacer(
 		`\r\n`, "",
 		"\r\n", "",
@@ -37,13 +36,15 @@ func SimplifyHTML(content string) string {
 	content = commentRegex.ReplaceAllString(content, "")
 	// 清理所有空白字符，包括换行符
 	content = whitespaceReplacer.Replace(content)
-	// 删除CSS和style
-	content = styleAttrRegex.ReplaceAllString(content, "")
+	// 删除 style 和 script 标签及其内容
 	content = styleTagRegex.ReplaceAllString(content, "")
-	return content
+	// 删除所有 HTML 标签的属性，只保留标签名
+	content = regexp.MustCompile(`<([a-zA-Z][a-zA-Z0-9]*)[^>]*>`).ReplaceAllString(content, "<$1>")
+	return multiSpaceRegex.ReplaceAllString(content, "")
 }
 
 func SimplifyContent(content string) string {
+	content = SimplifyHTML(content)
 	// 结构性元素转换为<br />
 	// First replace existing <br /> patterns to avoid duplication
 	content = strings.ReplaceAll(content, "</div><br />", "||DIV_BR||")

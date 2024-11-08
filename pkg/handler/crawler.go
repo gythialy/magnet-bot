@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gythialy/magnet/pkg/model"
-
 	"github.com/gythialy/magnet/pkg/utils"
+
+	"github.com/gythialy/magnet/pkg/model"
 
 	"github.com/gythialy/magnet/pkg/constant"
 

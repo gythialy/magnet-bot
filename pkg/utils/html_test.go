@@ -10,8 +10,7 @@ import (
 	"google.golang.org/api/option"
 )
 
-func Test_SimplifyHTML_TableWithoutBorder(t *testing.T) {
-	input := `<h2 style="margin-top: 0pt; margin-bottom: 0pt; text-align: center; line-height: 28pt; break-after: avoid; font-family:
+const input = `<h2 style="margin-top: 0pt; margin-bottom: 0pt; text-align: center; line-height: 28pt; break-after: avoid; font-family:
   Arial; font-size: 16pt;" align="center"><span style="font-family: 方正小标宋简体; font-size: 22.0000pt;"><span
       style="font-family: 方正小标宋简体;">竞争性谈判</span><span style="font-family: 方正小标宋简体;">公告</span></span></h2>\n<p
   style="text-indent: 28pt; line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify;
@@ -980,6 +979,7 @@ func Test_SimplifyHTML_TableWithoutBorder(t *testing.T) {
   style="margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span
     style="font-family: 'Times New Roman' ; font-size: 10.5000pt;"> </span></p>`
 
+func Test_SimplifyHTML_TableWithoutBorder(t *testing.T) {
 	content := SimplifyHTML(input)
 	ctx := context.Background()
 	client, err := genai.NewClient(ctx, option.WithAPIKey(config.GeminiAPIKey()))

@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"strings"
 	"sync"
+	"unicode"
 
 	"github.com/gythialy/magnet/pkg/dal"
 
@@ -14,6 +15,7 @@ import (
 const (
 	keywordTemplate = `<b>【关键字: {{.Keyword}}】</b><a href="{{.Pageurl}}">{{.Title}}</a> @ {{.NoticeTime}}
 {{ .Content | noescape }} `
+	maxMessageLength = 4090
 )
 
 var keywordRender = template.Must(template.New("keyword_template").
@@ -41,6 +43,44 @@ func (p *Project) ToMessage() string {
 		return buf.String()
 	}
 	return ""
+}
+
+func (p *Project) SplitMessage() ([]string, int) {
+	message := p.ToMessage()
+	var chunks []string
+
+	for len(message) > 0 {
+		if len(message) <= maxMessageLength {
+			if len(message) > 0 {
+				chunks = append(chunks, message)
+			}
+			break
+		}
+
+		runes := []rune(message)
+		end := maxMessageLength
+		if end > len(runes) {
+			end = len(runes)
+		}
+
+		chunk := string(runes[:end])
+		lastNewline := strings.LastIndex(chunk, "\n")
+		if lastNewline > 0 {
+			chunk = chunk[:lastNewline]
+		}
+
+		chunk = strings.TrimSpace(chunk)
+
+		// Only add chunk if it contains visible characters
+		if chunk != "" && strings.IndexFunc(chunk, func(r rune) bool {
+			return !unicode.IsSpace(r) && unicode.IsPrint(r)
+		}) >= 0 {
+			chunks = append(chunks, chunk)
+		}
+		message = message[len(chunk):]
+	}
+
+	return chunks, len(chunks)
 }
 
 type Projects struct {
@@ -94,35 +134,4 @@ func (r *Projects) Filter() []*Project {
 	})
 
 	return r.keywordProjects
-}
-
-func cleanContent(content string) string {
-	lines := strings.Split(content, "\n")
-	var merged []string
-	inMergeBlock := false
-	var currentBlock strings.Builder
-
-	for _, line := range lines {
-		trimmedLine := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmedLine, "(一)申领时间") {
-			inMergeBlock = true
-			currentBlock.WriteString(trimmedLine)
-		} else if inMergeBlock && strings.HasPrefix(trimmedLine, "(二)") {
-			merged = append(merged, strings.TrimRight(currentBlock.String(), " "))
-			merged = append(merged, "") // Add an empty line before (二)
-			merged = append(merged, line)
-			inMergeBlock = false
-			currentBlock.Reset()
-		} else if inMergeBlock {
-			currentBlock.WriteString(" " + trimmedLine)
-		} else {
-			merged = append(merged, line)
-		}
-	}
-
-	if inMergeBlock {
-		merged = append(merged, strings.TrimRight(currentBlock.String(), " "))
-	}
-
-	return strings.Join(merged, "\n")
 }
