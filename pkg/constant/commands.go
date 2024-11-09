@@ -13,7 +13,10 @@ const (
 	SearchHistory      = "/search_history_title"
 	ConvertPDF         = "/convertpdf"
 	ConvertIMG         = "/convertimg"
+	Start              = "/start"
+	Alarm              = "/alarm"
+	Debug              = "/debug"
 	Statistics         = "/statistics"
-	Alarm              = "alarm:"
-	Search             = "search:"
+	AlarmCallback      = "alarm:"
+	SearchCallback     = "search:"
 )

@@ -72,7 +72,7 @@ func (p *Project) SplitMessage() ([]string, int) {
 		chunk = strings.TrimSpace(chunk)
 
 		// Only add chunk if it contains visible characters
-		if chunk != "" && strings.IndexFunc(chunk, func(r rune) bool {
+		if chunk != "" || strings.IndexFunc(chunk, func(r rune) bool {
 			return !unicode.IsSpace(r) && unicode.IsPrint(r)
 		}) >= 0 {
 			chunks = append(chunks, chunk)

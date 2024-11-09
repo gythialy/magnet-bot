@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/PuerkitoBio/goquery"
+	"github.com/gythialy/magnet/pkg/config"
 
-	"github.com/gythialy/magnet/pkg/utils"
+	"github.com/PuerkitoBio/goquery"
 
 	"github.com/gythialy/magnet/pkg/dal"
 	"github.com/gythialy/magnet/pkg/model"
@@ -28,7 +28,7 @@ import (
 
 const (
 	historyPageSize  = 20
-	alarmPageSize    = 5
+	alarmPageSize    = 20
 	defaultMessageId = 0
 	alarmTemplate    = "%s%d:%s"
 	historyTemplate  = alarmTemplate
@@ -47,6 +47,23 @@ type CommandsHandler struct {
 func NewCommandsHandler(ctx *BotContext) *CommandsHandler {
 	return &CommandsHandler{
 		ctx,
+	}
+}
+
+func (c *CommandsHandler) StartHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	m := update.Message
+	command := strings.TrimSpace(strings.TrimPrefix(m.Text, constant.Start))
+	switch {
+	case strings.HasPrefix(command, constant.Alarm[1:]):
+		split := strings.Split(command, "_")
+		if len(split) == 2 {
+			update.Message.Text = fmt.Sprintf("%s %s", constant.Alarm, strings.TrimSpace(split[1]))
+			c.AlarmRecordHandler(ctx, b, update)
+		} else {
+			c.sendErrorMessage(ctx, b, update, fmt.Sprintf("invalid alarm %s", command))
+		}
+	default:
+		DefaultHandler(ctx, b, update)
 	}
 }
 
@@ -119,16 +136,40 @@ func (c *CommandsHandler) AddAlarmKeywordHandler(ctx context.Context, b *bot.Bot
 	c.addKeywordHandler(ctx, b, update, constant.AddAlarmKeyword, model.ALARM)
 }
 
+func (c *CommandsHandler) AlarmRecordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	id := update.Message.Chat.ID
+	businessId := strings.TrimSpace(strings.TrimPrefix(update.Message.Text, constant.Alarm))
+
+	if businessId == "" {
+		c.sendErrorMessage(ctx, b, update, "Please provide a valid alarm ID.")
+		return
+	}
+
+	if alarm, err := dal.Alarm.GetById(id, businessId); err == nil {
+		message, _ := alarm.ToMessage()
+		if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:      update.Message.Chat.ID,
+			Text:        message,
+			ParseMode:   models.ParseModeHTML,
+			ReplyMarkup: models.ReplyParameters{MessageID: update.Message.ID},
+		}); err != nil {
+			c.ctx.Logger.Error().Err(err).Msg("")
+		}
+	} else {
+		c.sendErrorMessage(ctx, b, update, err.Error())
+	}
+}
+
 func (c *CommandsHandler) SearchAlarmRecordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	id := update.Message.Chat.ID
-	term := strings.TrimSpace(strings.TrimPrefix(update.Message.Text, constant.EditKeyword))
+	term := strings.TrimSpace(strings.TrimPrefix(update.Message.Text, constant.SearchAlarmRecords))
 	c.paginatedAlarms(ctx, b, id, term, 1, defaultMessageId)
 }
 
 func (c *CommandsHandler) paginatedAlarms(ctx context.Context, b *bot.Bot,
 	userId int64, term string, page, messageId int,
 ) {
-	alarms, total := dal.Alarm.SearchByTitle(userId, term, page, alarmPageSize)
+	alarms, total := dal.Alarm.SearchByName(userId, term, page, alarmPageSize)
 
 	if total == 0 {
 		text := "No alarm records found."
@@ -140,11 +181,9 @@ func (c *CommandsHandler) paginatedAlarms(ctx context.Context, b *bot.Bot,
 
 	var response strings.Builder
 	for i, alarm := range alarms {
-		if msg, err := alarm.ToMessage(); err == nil {
-			response.WriteString(fmt.Sprintf("%d. %s\n", (page-1)*alarmPageSize+i+1, msg))
-		} else {
-			c.ctx.Logger.Error().Stack().Err(err).Msg(utils.ToString(alarm))
-		}
+		response.WriteString(fmt.Sprintf("%d. <a href=\"%s\">%s @%s</a>\n", (page-1)*alarmPageSize+i+1,
+			fmt.Sprintf("https://t.me/%s?start=alarm_%s", config.TelegramName(), alarm.BusinessID),
+			alarm.CreditName, alarm.StartDate.Format("2006-01-02")))
 	}
 
 	var keyboard [][]models.InlineKeyboardButton
@@ -153,14 +192,14 @@ func (c *CommandsHandler) paginatedAlarms(ctx context.Context, b *bot.Bot,
 	if page > 1 {
 		row = append(row, models.InlineKeyboardButton{
 			Text:         fmt.Sprintf("« Previous (%d)", page-1),
-			CallbackData: fmt.Sprintf(alarmTemplate, constant.Alarm, page-1, term),
+			CallbackData: fmt.Sprintf(alarmTemplate, constant.AlarmCallback, page-1, term),
 		})
 	}
 
 	if page < totalPages {
 		row = append(row, models.InlineKeyboardButton{
 			Text:         fmt.Sprintf("Next (%d) »", page+1),
-			CallbackData: fmt.Sprintf(alarmTemplate, constant.Alarm, page+1, term),
+			CallbackData: fmt.Sprintf(alarmTemplate, constant.AlarmCallback, page+1, term),
 		})
 	}
 	var replyMarkup *models.InlineKeyboardMarkup
@@ -206,14 +245,14 @@ func (c *CommandsHandler) paginatedSearchResult(ctx context.Context, b *bot.Bot,
 	if page > 1 {
 		row = append(row, models.InlineKeyboardButton{
 			Text:         fmt.Sprintf("« Previous (%d)", page-1),
-			CallbackData: fmt.Sprintf(historyTemplate, constant.Search, page-1, term),
+			CallbackData: fmt.Sprintf(historyTemplate, constant.SearchCallback, page-1, term),
 		})
 	}
 
 	if page < totalPages {
 		row = append(row, models.InlineKeyboardButton{
 			Text:         fmt.Sprintf("Next (%d) »", page+1),
-			CallbackData: fmt.Sprintf(historyTemplate, constant.Search, page+1, term),
+			CallbackData: fmt.Sprintf(historyTemplate, constant.SearchCallback, page+1, term),
 		})
 	}
 
@@ -246,12 +285,12 @@ func (c *CommandsHandler) HandleCallbackQuery(ctx context.Context, b *bot.Bot, u
 
 	messageId := update.CallbackQuery.Message.Message.ID
 	switch {
-	case strings.HasPrefix(constant.Search, queryType):
+	case strings.HasPrefix(constant.SearchCallback, queryType):
 		term := parts[2]
 		c.paginatedSearchResult(ctx, b, &models.Update{
 			Message: update.CallbackQuery.Message.Message,
 		}, term, page, messageId)
-	case strings.HasPrefix(constant.Alarm, queryType):
+	case strings.HasPrefix(constant.AlarmCallback, queryType):
 		term := parts[2]
 		c.paginatedAlarms(ctx, b, update.CallbackQuery.From.ID, term, page, messageId)
 	}

@@ -2,6 +2,7 @@ package constant
 
 const (
 	TelegramBotToken = "TELEGRAM_BOT_TOKEN"
+	TelegramBotName  = "TELEGRAM_BOT_NAME"
 	ScheduleInterval = "SCHEDULE_INTERVAL"
 	ConfigPath       = "CONFIG_PATH"
 	ManagerId        = "MANAGER_ID"

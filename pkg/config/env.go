@@ -56,6 +56,10 @@ func TelegramToken() string {
 	return os.Getenv(constant.TelegramBotToken)
 }
 
+func TelegramName() string {
+	return os.Getenv(constant.TelegramBotName)
+}
+
 func ScheduleInterval() int {
 	result := defaultScheduleInterval
 	interval := os.Getenv(constant.ScheduleInterval)

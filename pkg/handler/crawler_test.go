@@ -71,7 +71,7 @@ func TestCrawler_Fetch(t *testing.T) {
 		fmt.Println(strings.Repeat("-", 20))
 	}
 
-	list, _ := dao.SearchByTitle(userId, "", 1, 20)
+	list, _ := dao.SearchByName(userId, "", 1, 20)
 	for idx, alarm := range list {
 		fmt.Printf("%d: %s(%s),%s\n", idx, alarm.CreditName, alarm.CreditCode, alarm.EndDate)
 	}

@@ -171,7 +171,7 @@ func (r *InfoProcessor) Handler(i interface{}) {
 					if !isSuccessful {
 						if _, ok := filterFailed[pageURL]; !ok {
 							filterFailed[pageURL] = project
-							failed = append(failed, fmt.Sprintf("%d <b>【关键字: %s</b> <a href=\"%s\">%s</a>",
+							failed = append(failed, fmt.Sprintf("%d <b>【关键字: %s】</b> <a href=\"%s\">%s</a>",
 								len(failed), project.Keyword, pageURL, title))
 						}
 					}
