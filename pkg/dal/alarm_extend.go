@@ -28,10 +28,14 @@ func (a *alarm) Cache(userId int64) map[string]*model.Alarm {
 	return result
 }
 
-func (a *alarm) List(userId int64, page, pageSize int) ([]*model.Alarm, int64) {
+func (a *alarm) SearchByTitle(userId int64, term string, page, pageSize int) ([]*model.Alarm, int64) {
 	offset := (page - 1) * pageSize
 
-	if result, total, err := a.Where(a.UserID.Eq(userId)).FindByPage(offset, pageSize); err == nil {
+	query := a.Where(a.UserID.Eq(userId))
+	if term != "" {
+		query = query.Where(a.Title.Like("%" + term + "%"))
+	}
+	if result, total, err := query.Order(a.StartDate.Desc()).FindByPage(offset, pageSize); err == nil {
 		return result, total
 	} else {
 		return nil, 0

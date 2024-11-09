@@ -160,21 +160,27 @@ func (r *InfoProcessor) Handler(i interface{}) {
 			chunks, total := r.ToMessage(project)
 			logger.Debug().Msgf("split content to %d parts", total)
 
+			// only save all parts failed to failed list
+			isSuccessful := false
 			for idx, chunk := range chunks {
 				if _, err := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
 					ChatID:    userId,
 					Text:      chunk,
 					ParseMode: models.ParseModeHTML,
 				}); err != nil {
-					if _, ok := filterFailed[pageURL]; !ok {
-						filterFailed[pageURL] = project
-						failed = append(failed, fmt.Sprintf("<a href=\"%s\">%s</a>", pageURL, title))
+					if !isSuccessful {
+						if _, ok := filterFailed[pageURL]; !ok {
+							filterFailed[pageURL] = project
+							failed = append(failed, fmt.Sprintf("%d <b>【关键字: %s</b> <a href=\"%s\">%s</a>",
+								len(failed), project.Keyword, pageURL, title))
+						}
 					}
 					logger.Error().Stack().Err(err).Msgf("content: %s", chunk)
 					if idx == 0 {
 						continue projectLoop
 					}
 				} else {
+					isSuccessful = true
 					logger.Info().Msgf("notify: %s[%s]-%d", shortTitle, project.OpenTenderCode, idx)
 				}
 				time.Sleep(500 * time.Millisecond)

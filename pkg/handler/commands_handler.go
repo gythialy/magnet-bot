@@ -30,6 +30,8 @@ const (
 	historyPageSize  = 20
 	alarmPageSize    = 5
 	defaultMessageId = 0
+	alarmTemplate    = "%s%d:%s"
+	historyTemplate  = alarmTemplate
 )
 
 var (
@@ -117,16 +119,16 @@ func (c *CommandsHandler) AddAlarmKeywordHandler(ctx context.Context, b *bot.Bot
 	c.addKeywordHandler(ctx, b, update, constant.AddAlarmKeyword, model.ALARM)
 }
 
-func (c *CommandsHandler) ListAlarmRecordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+func (c *CommandsHandler) SearchAlarmRecordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	id := update.Message.Chat.ID
-	c.paginatedAlarms(ctx, b, id, 1, defaultMessageId)
+	term := strings.TrimSpace(strings.TrimPrefix(update.Message.Text, constant.EditKeyword))
+	c.paginatedAlarms(ctx, b, id, term, 1, defaultMessageId)
 }
 
 func (c *CommandsHandler) paginatedAlarms(ctx context.Context, b *bot.Bot,
-	userId int64, page, messageId int,
+	userId int64, term string, page, messageId int,
 ) {
-	pageSize := alarmPageSize
-	alarms, total := dal.Alarm.List(userId, page, pageSize)
+	alarms, total := dal.Alarm.SearchByTitle(userId, term, page, alarmPageSize)
 
 	if total == 0 {
 		text := "No alarm records found."
@@ -134,31 +136,31 @@ func (c *CommandsHandler) paginatedAlarms(ctx context.Context, b *bot.Bot,
 		return
 	}
 
-	totalPages := (int(total) + pageSize - 1) / pageSize
+	totalPages := (int(total) + alarmPageSize - 1) / alarmPageSize
 
 	var response strings.Builder
 	for i, alarm := range alarms {
-		if markdown, err := alarm.ToMessage(); err == nil {
-			response.WriteString(fmt.Sprintf("%d. %s\n", (page-1)*pageSize+i+1, markdown))
-			response.WriteString("\n")
+		if msg, err := alarm.ToMessage(); err == nil {
+			response.WriteString(fmt.Sprintf("%d. %s\n", (page-1)*alarmPageSize+i+1, msg))
 		} else {
-			c.ctx.Logger.Error().Stack().Err(err).Msgf("%s", utils.ToString(alarm))
+			c.ctx.Logger.Error().Stack().Err(err).Msg(utils.ToString(alarm))
 		}
 	}
 
 	var keyboard [][]models.InlineKeyboardButton
 	var row []models.InlineKeyboardButton
+
 	if page > 1 {
 		row = append(row, models.InlineKeyboardButton{
 			Text:         fmt.Sprintf("« Previous (%d)", page-1),
-			CallbackData: fmt.Sprintf("%s%d", constant.Alarm, page-1),
+			CallbackData: fmt.Sprintf(alarmTemplate, constant.Alarm, page-1, term),
 		})
 	}
 
 	if page < totalPages {
 		row = append(row, models.InlineKeyboardButton{
 			Text:         fmt.Sprintf("Next (%d) »", page+1),
-			CallbackData: fmt.Sprintf("%s%d", constant.Alarm, page+1),
+			CallbackData: fmt.Sprintf(alarmTemplate, constant.Alarm, page+1, term),
 		})
 	}
 	var replyMarkup *models.InlineKeyboardMarkup
@@ -174,28 +176,16 @@ func (c *CommandsHandler) paginatedAlarms(ctx context.Context, b *bot.Bot,
 
 func (c *CommandsHandler) SearchHistoryHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	text := update.Message.Text
-	query := strings.TrimSpace(strings.TrimPrefix(text, constant.SearchHistory))
-	id := update.Message.Chat.ID
-
-	if query == "" {
-		if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID: id,
-			Text:   "Please provide a search term",
-		}); err != nil {
-			c.ctx.Logger.Error().Stack().Err(err).Msg("")
-		}
-		return
-	}
-
+	term := strings.TrimSpace(strings.TrimPrefix(text, constant.SearchHistory))
 	// Get first page of results
-	c.paginatedSearchResult(ctx, b, update, query, 1, defaultMessageId)
+	c.paginatedSearchResult(ctx, b, update, term, 1, defaultMessageId)
 }
 
 func (c *CommandsHandler) paginatedSearchResult(ctx context.Context, b *bot.Bot, update *models.Update,
-	query string, page, messageId int,
+	term string, page, messageId int,
 ) {
 	id := update.Message.Chat.ID
-	results, total := dal.History.SearchByTitle(id, query, page, historyPageSize)
+	results, total := dal.History.SearchByTitle(id, term, page, historyPageSize)
 
 	if total == 0 {
 		text := "No matching history found."
@@ -216,14 +206,14 @@ func (c *CommandsHandler) paginatedSearchResult(ctx context.Context, b *bot.Bot,
 	if page > 1 {
 		row = append(row, models.InlineKeyboardButton{
 			Text:         fmt.Sprintf("« Previous (%d)", page-1),
-			CallbackData: fmt.Sprintf("%s%d:%s", constant.Search, page-1, query),
+			CallbackData: fmt.Sprintf(historyTemplate, constant.Search, page-1, term),
 		})
 	}
 
 	if page < totalPages {
 		row = append(row, models.InlineKeyboardButton{
 			Text:         fmt.Sprintf("Next (%d) »", page+1),
-			CallbackData: fmt.Sprintf("%s%d:%s", constant.Search, page+1, query),
+			CallbackData: fmt.Sprintf(historyTemplate, constant.Search, page+1, term),
 		})
 	}
 
@@ -257,12 +247,13 @@ func (c *CommandsHandler) HandleCallbackQuery(ctx context.Context, b *bot.Bot, u
 	messageId := update.CallbackQuery.Message.Message.ID
 	switch {
 	case strings.HasPrefix(constant.Search, queryType):
-		query := parts[2]
+		term := parts[2]
 		c.paginatedSearchResult(ctx, b, &models.Update{
 			Message: update.CallbackQuery.Message.Message,
-		}, query, page, messageId)
+		}, term, page, messageId)
 	case strings.HasPrefix(constant.Alarm, queryType):
-		c.paginatedAlarms(ctx, b, update.CallbackQuery.From.ID, page, messageId)
+		term := parts[2]
+		c.paginatedAlarms(ctx, b, update.CallbackQuery.From.ID, term, page, messageId)
 	}
 
 	// Answer the callback query to remove the loading indicator

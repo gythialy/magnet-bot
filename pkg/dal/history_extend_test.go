@@ -56,7 +56,7 @@ func setupTestDB(t *testing.T) func() {
 //		t.Logf("insert %d rows", i)
 //	}
 //
-//	data1 := dao.List(userId)
+//	data1 := dao.SearchByTitle(userId)
 //	t.Log(utils.ToString(data1))
 //
 //	date1 := now.AddDate(0, 0, -7)
@@ -73,14 +73,14 @@ func setupTestDB(t *testing.T) func() {
 //	} else {
 //		t.Logf("insert %d rows", i)
 //	}
-//	data2 := dao.List(userId)
+//	data2 := dao.SearchByTitle(userId)
 //	t.Log(utils.ToString(data2))
 //
 //	if err := dao.Clean(); err != nil {
 //		t.Fatal(err)
 //	}
 //
-//	data3 := dao.List(userId)
+//	data3 := dao.SearchByTitle(userId)
 //	t.Log(utils.ToString(data3))
 //}
 

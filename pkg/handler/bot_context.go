@@ -144,7 +144,7 @@ func (ctx *BotContext) initBot() error {
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.DeleteKeyword, bot.MatchTypePrefix, cmdHandler.DeleteKeywordHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.EditKeyword, bot.MatchTypePrefix, cmdHandler.EditKeywordHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.AddAlarmKeyword, bot.MatchTypePrefix, cmdHandler.AddAlarmKeywordHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.ListAlarmRecords, bot.MatchTypePrefix, cmdHandler.ListAlarmRecordHandler)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.SearchAlarmRecords, bot.MatchTypePrefix, cmdHandler.SearchAlarmRecordHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.SearchHistory, bot.MatchTypePrefix, cmdHandler.SearchHistoryHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.ConvertPDF, bot.MatchTypePrefix, cmdHandler.ConvertURLToPDFHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.ConvertIMG, bot.MatchTypePrefix, cmdHandler.ConvertURLToIMGHandler)
@@ -183,8 +183,8 @@ func (ctx *BotContext) initBot() error {
 				Description: "Add tender codes",
 			},
 			{
-				Command:     constant.ListAlarmRecords,
-				Description: "List all alarm records",
+				Command:     constant.SearchAlarmRecords,
+				Description: "Search all alarm records",
 			},
 			{
 				Command:     constant.SearchHistory,

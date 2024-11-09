@@ -50,9 +50,13 @@ func (h *history) Insert(data []*model.History) error {
 	}
 }
 
-func (h *history) SearchByTitle(userId int64, title string, page, pageSize int) ([]*model.History, int64) {
-	if result, total, err := h.Where(h.UserID.Eq(userId), h.Title.Like("%"+title+"%")).
-		Order(h.UpdatedAt.Desc()).FindByPage((page-1)*pageSize, pageSize); err == nil {
+func (h *history) SearchByTitle(userId int64, term string, page, pageSize int) ([]*model.History, int64) {
+	query := h.Where(h.UserID.Eq(userId))
+	if term != "" {
+		query.Where(h.Title.Like("%" + term + "%"))
+	}
+	offset := (page - 1) * pageSize
+	if result, total, err := query.Order(h.UpdatedAt.Desc()).FindByPage(offset, pageSize); err == nil {
 		return result, total
 	} else {
 		return nil, 0
