@@ -66,23 +66,15 @@ type BotContext struct {
 	cancel          context.CancelFunc
 	scheduler       *gocron.Scheduler
 	processor       *InfoProcessor
+	cmdHandler      *CommandsHandler
 	shutdownWebhook func()
 }
 
 func NewBotContext() (*BotContext, error) {
 	cfg := config.NewServiceConfig()
+	ctx, cancel := context.WithCancel(context.Background())
 
-	telegramBot, err := bot.New(config.TelegramToken(), []bot.Option{
-		bot.WithDefaultHandler(DefaultHandler),
-		bot.WithHTTPClient(time.Minute, &http.Client{
-			Timeout: 2 * time.Minute,
-		}),
-		// bot.WithDebug(),
-	}...)
-	if err != nil {
-		return nil, err
-	}
-
+	// init log
 	level := cfg.LogLevel
 	ctxLogger := utils.Configure(utils.Config{
 		ConsoleLoggingEnabled: true,
@@ -96,6 +88,7 @@ func NewBotContext() (*BotContext, error) {
 		LogLevel:              level,
 	})
 
+	// init database
 	db, err := gorm.Open(sqlite.Open(path.Join(cfg.BaseDir, constant.DatabaseFile)), &gorm.Config{
 		Logger: &dbLogger{ctxLogger},
 	})
@@ -109,23 +102,42 @@ func NewBotContext() (*BotContext, error) {
 	}
 	dal.SetDefault(db)
 
+	// init gotenberg
 	client, err := NewGotenbergClient(cfg.PDF.PDFServiceURL, cfg.PDF.WebhookURL())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create gotenberg client: %s", err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	botContext := &BotContext{
 		ctx:       ctx,
 		cancel:    cancel,
 		scheduler: gocron.NewScheduler(time.FixedZone("CST", 8*60*60)),
-		Bot:       telegramBot,
-		Gotenberg: client,
-		Store:     NewStore(),
 		Logger:    ctxLogger,
 		Config:    cfg,
+		Store:     NewStore(),
+		Gotenberg: client,
 	}
+
+	botContext.cmdHandler = NewCommandsHandler(botContext)
+
+	// init telegram bot
+	defaultHandlerInstance := &defaultHandler{
+		cmd: botContext.cmdHandler,
+	}
+
+	telegramBot, err := bot.New(config.TelegramToken(), []bot.Option{
+		bot.WithDefaultHandler(defaultHandlerInstance.Handler),
+		bot.WithHTTPClient(time.Minute, &http.Client{
+			Timeout: 2 * time.Minute,
+		}),
+		// bot.WithDebug(),
+	}...)
+	if err != nil {
+		return nil, err
+	}
+
+	botContext.Bot = telegramBot
+
 	if err = botContext.initBot(); err != nil {
 		return nil, err
 	}
@@ -137,11 +149,12 @@ func NewBotContext() (*BotContext, error) {
 }
 
 func (ctx *BotContext) initBot() error {
-	cmdHandler := NewCommandsHandler(ctx)
+	cmdHandler := ctx.cmdHandler
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Magnet, bot.MatchTypePrefix, NewMagnetHandler(ctx).Handler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Me, bot.MatchTypePrefix, MeHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Debug, bot.MatchTypePrefix, DebugHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Start, bot.MatchTypePrefix, cmdHandler.StartHandler)
+	sHandler := &startHandler{cmdHandler: cmdHandler}
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Start, bot.MatchTypePrefix, sHandler.Handler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.AddKeyword, bot.MatchTypePrefix, cmdHandler.AddKeywordHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.DeleteKeyword, bot.MatchTypePrefix, cmdHandler.DeleteKeywordHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.EditKeyword, bot.MatchTypePrefix, cmdHandler.EditKeywordHandler)

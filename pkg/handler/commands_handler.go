@@ -50,23 +50,6 @@ func NewCommandsHandler(ctx *BotContext) *CommandsHandler {
 	}
 }
 
-func (c *CommandsHandler) StartHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	m := update.Message
-	command := strings.TrimSpace(strings.TrimPrefix(m.Text, constant.Start))
-	switch {
-	case strings.HasPrefix(command, constant.Alarm[1:]):
-		split := strings.Split(command, "_")
-		if len(split) == 2 {
-			update.Message.Text = fmt.Sprintf("%s %s", constant.Alarm, strings.TrimSpace(split[1]))
-			c.AlarmRecordHandler(ctx, b, update)
-		} else {
-			c.sendErrorMessage(ctx, b, update, fmt.Sprintf("invalid alarm %s", command))
-		}
-	default:
-		DefaultHandler(ctx, b, update)
-	}
-}
-
 func (c *CommandsHandler) addKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update, prefix string, t model.KeywordType) {
 	text := update.Message.Text
 	tmp := strings.TrimSpace(strings.TrimPrefix(text, prefix))
@@ -531,14 +514,11 @@ func (c *CommandsHandler) extractFileName(u *url.URL) (string, error) {
 	if title != "" {
 		matches := codeRegx.FindStringSubmatch(title)
 		if len(matches) > 1 {
-			// Use the extracted code as the filename
 			fileName = matches[1]
 		} else {
-			// If no code found, use the full cleaned title
 			fileName = title
 		}
 	} else {
-		// If title not found, use the URL filename
 		fileName = urlFileName
 	}
 	return fileName, nil

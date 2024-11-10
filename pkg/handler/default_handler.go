@@ -3,25 +3,46 @@ package handler
 import (
 	"context"
 	"log/slog"
+	"strings"
+
+	"github.com/gythialy/magnet/pkg/constant"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"github.com/gythialy/magnet/pkg/utils"
 )
 
-func DefaultHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	m := update.Message
-	if m == nil {
-		m = update.EditedMessage
-	}
-	userId := m.Chat.ID
+type defaultHandler struct {
+	cmd *CommandsHandler
+}
 
+func (d *defaultHandler) Handler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	// Use the edited message if available, otherwise use the original message
+	message := update.EditedMessage
+	if message == nil {
+		message = update.Message
+	}
+
+	userId := message.Chat.ID
+	command := message.Text
+
+	// Handle specific commands
+	switch {
+	case strings.HasPrefix(command, constant.ConvertPDF):
+		d.cmd.ConvertURLToPDFHandler(ctx, b, update)
+		return
+	case strings.HasPrefix(command, constant.ConvertIMG):
+		d.cmd.ConvertURLToIMGHandler(ctx, b, update)
+		return
+	}
+
+	// Send a default message if no command is matched
 	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:    userId,
 		Text:      "<code>" + utils.ToString(update) + "</code>",
 		ParseMode: models.ParseModeHTML,
 		ReplyParameters: &models.ReplyParameters{
-			MessageID: m.ID,
+			MessageID: message.ID,
 		},
 	}); err != nil {
 		slog.Error("Failed to send message", "error", err)
