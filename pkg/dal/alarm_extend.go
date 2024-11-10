@@ -28,6 +28,17 @@ func (a *alarm) Cache(userId int64) map[string]*model.Alarm {
 	return result
 }
 
+func (a *alarm) IsExist(userId int64, creditCode string) (bool, error) {
+	now := time.Now()
+	if count, err := a.Where(a.UserID.Eq(userId),
+		a.CreditCode.Eq(creditCode),
+		a.Where(a.EndDate.Gt(now)).Or(a.EndDate.Eq(emptyTime))).Count(); err == nil {
+		return count > 0, nil
+	} else {
+		return false, err
+	}
+}
+
 func (a *alarm) GetById(userId int64, businessId string) (*model.Alarm, error) {
 	return a.Where(a.BusinessID.Eq(businessId)).Where(a.UserID.Eq(userId)).First()
 }
@@ -47,12 +58,8 @@ func (a *alarm) SearchByName(userId int64, term string, page, pageSize int) ([]*
 }
 
 func (a *alarm) Insert(data []*model.Alarm) error {
-	if err := a.Clauses(clause.OnConflict{
+	return a.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: a.UserID.ColumnName().String()}, {Name: a.CreditCode.ColumnName().String()}},
 		UpdateAll: true,
-	}).CreateInBatches(data, batchSize); err != nil {
-		return err
-	} else {
-		return nil
-	}
+	}).CreateInBatches(data, batchSize)
 }

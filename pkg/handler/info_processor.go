@@ -222,21 +222,25 @@ func (r *InfoProcessor) Handler(i interface{}) {
 		}
 
 		// process alarms
-		alarmCache := alarmDao.Cache(userId)
 		var newAlarms []*model.Alarm
 		for _, alarm := range pd.Alarms {
-			if _, ok := alarmCache[alarm.CreditCode]; ok {
+			if isExist, err := dal.Alarm.IsExist(userId, alarm.CreditCode); isExist {
 				continue
-			}
-			msg, _ := alarm.ToMessage()
-			if _, err := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
-				ChatID:    userId,
-				Text:      msg,
-				ParseMode: models.ParseModeHTML,
-			}); err != nil {
-				logger.Error().Stack().Err(err).Msg("send alarm")
 			} else {
-				newAlarms = append(newAlarms, alarm)
+				logger.Warn().Err(err).Msg("")
+			}
+			if msg, err := alarm.ToMessage(); err == nil {
+				if _, msgErr := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
+					ChatID:    userId,
+					Text:      msg,
+					ParseMode: models.ParseModeHTML,
+				}); msgErr != nil {
+					logger.Error().Stack().Err(msgErr).Msg("send alarm")
+				} else {
+					newAlarms = append(newAlarms, alarm)
+				}
+			} else {
+				logger.Error().Stack().Err(err).Msg("alarm to msg")
 			}
 		}
 
