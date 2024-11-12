@@ -7,7 +7,7 @@ require (
 	github.com/dcaraxes/gotenberg-go-client/v8 v8.6.3
 	github.com/glebarez/sqlite v1.11.0
 	github.com/go-co-op/gocron v1.37.0
-	github.com/go-resty/resty/v2 v2.15.3
+	github.com/go-resty/resty/v2 v2.16.0
 	github.com/go-telegram/bot v1.10.1
 	github.com/google/generative-ai-go v0.18.0
 	github.com/google/uuid v1.6.0
