@@ -1,6 +1,7 @@
 package rule
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/gythialy/magnet/pkg/model"
@@ -410,6 +411,84 @@ func Test_NormalizeString(t *testing.T) {
 			result := normalizeString(tt.input)
 			if result != tt.expected {
 				t.Errorf("cleanTitle(%q) = %q, want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestSortComplexRules(t *testing.T) {
+	tests := []struct {
+		name     string
+		rules    []*ComplexRule
+		expected []string
+	}{
+		{
+			name: "Sort by tender code priority",
+			rules: []*ComplexRule{
+				NewComplexRule(&model.Keyword{Keyword: "普通关键词"}),
+				NewComplexRule(&model.Keyword{Keyword: "2023-JQ01-W1295"}),
+				NewComplexRule(&model.Keyword{Keyword: "带排除 -测试"}),
+			},
+			expected: []string{
+				"2023-JQ01-W1295",
+				"带排除 -测试",
+				"普通关键词",
+			},
+		},
+		{
+			name: "Multiple tender codes",
+			rules: []*ComplexRule{
+				NewComplexRule(&model.Keyword{Keyword: "2023-KK01-W1295"}),
+				NewComplexRule(&model.Keyword{Keyword: "2023-JQ01-W1295"}),
+				NewComplexRule(&model.Keyword{Keyword: "普通词"}),
+			},
+			expected: []string{
+				"2023-JQ01-W1295",
+				"2023-KK01-W1295",
+				"普通词",
+			},
+		},
+		{
+			name: "Mixed Chinese and tender codes",
+			rules: []*ComplexRule{
+				NewComplexRule(&model.Keyword{Keyword: "招标 -排除"}),
+				NewComplexRule(&model.Keyword{Keyword: "2023-JQ01-W1295 招标"}),
+				NewComplexRule(&model.Keyword{Keyword: "纯中文关键词"}),
+			},
+			expected: []string{
+				"2023-JQ01-W1295 招标",
+				"招标 -排除",
+				"纯中文关键词",
+			},
+		},
+		{
+			name: "Complex Chinese patterns",
+			rules: []*ComplexRule{
+				NewComplexRule(&model.Keyword{Keyword: "招标公告 -测试 -预告"}),
+				NewComplexRule(&model.Keyword{Keyword: "采购 信息化"}),
+				NewComplexRule(&model.Keyword{Keyword: "2023-JQ01-W1295 信息化"}),
+			},
+			expected: []string{
+				"2023-JQ01-W1295 信息化",
+				"招标公告 -测试 -预告",
+				"采购 信息化",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			SortComplexRules(tt.rules)
+
+			// Convert sorted rules to strings for comparison
+			got := make([]string, len(tt.rules))
+			for i, rule := range tt.rules {
+				got[i] = rule.Rule.Keyword
+			}
+
+			// Compare results
+			if !reflect.DeepEqual(got, tt.expected) {
+				t.Errorf("SortComplexRules() = %v, want %v", got, tt.expected)
 			}
 		})
 	}

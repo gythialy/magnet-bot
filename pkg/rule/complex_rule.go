@@ -3,6 +3,7 @@ package rule
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -15,6 +16,69 @@ type ComplexRule struct {
 	IncludeTerms map[string]struct{}
 	ExcludeTerms map[string]struct{}
 	Rule         *model.Keyword
+}
+
+var tenderCodeRegex = regexp.MustCompile(`\d{4}-[A-Z0-9]+-[A-Z0-9]+`)
+
+type ComplexRules []*ComplexRule
+
+func (r ComplexRules) Len() int      { return len(r) }
+func (r ComplexRules) Swap(i, j int) { r[i], r[j] = r[j], r[i] }
+func (r ComplexRules) Less(i, j int) bool {
+	// Check if rules have tender code pattern
+	iHasTenderCode := r[i].hasTenderCode()
+	jHasTenderCode := r[j].hasTenderCode()
+
+	// If one has tender code and the other doesn't, tender code has higher priority
+	if iHasTenderCode != jHasTenderCode {
+		return iHasTenderCode
+	}
+
+	// If both have or don't have tender codes, check ExcludeTerms
+	iHasExclude := len(r[i].ExcludeTerms) > 0
+	jHasExclude := len(r[j].ExcludeTerms) > 0
+
+	// If one has exclude terms and the other doesn't, exclude terms has higher priority
+	if iHasExclude != jHasExclude {
+		return iHasExclude
+	}
+
+	// If all above conditions are equal, sort by IncludeTerms
+	iTerms := r[i].getIncludeTermsSorted()
+	jTerms := r[j].getIncludeTermsSorted()
+
+	// Compare terms lexicographically
+	minLen := min(len(iTerms), len(jTerms))
+	for k := 0; k < minLen; k++ {
+		if iTerms[k] != jTerms[k] {
+			return iTerms[k] < jTerms[k]
+		}
+	}
+	return len(iTerms) < len(jTerms)
+}
+
+// Helper method to check if rule has tender code pattern
+func (r *ComplexRule) hasTenderCode() bool {
+	for term := range r.IncludeTerms {
+		if tenderCodeRegex.MatchString(term) {
+			return true
+		}
+	}
+	return false
+}
+
+// Helper method to get sorted include terms
+func (r *ComplexRule) getIncludeTermsSorted() []string {
+	terms := make([]string, 0, len(r.IncludeTerms))
+	for term := range r.IncludeTerms {
+		terms = append(terms, term)
+	}
+	sort.Strings(terms)
+	return terms
+}
+
+func SortComplexRules(rules []*ComplexRule) {
+	sort.Sort(ComplexRules(rules))
 }
 
 // Use sync.Pool to reuse slices during marshaling and unmarshaling
