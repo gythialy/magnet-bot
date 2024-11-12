@@ -109,9 +109,14 @@ func (r *Projects) Filter() []*Project {
 		for _, cr := range r.rules {
 			if cr.IsMatch(v.ShortTitle) || cr.IsMatch(v.OpenTenderCode) {
 				matched = append(matched, cr.ToString())
-				key := cr.Rule.ID
-				if val, ok := r.counters.LoadOrStore(cr.Rule.ID, int32(1)); ok {
-					r.counters.Store(key, val.(int32)+1)
+				if cr.Rule != nil && cr.Rule.ID != nil {
+					key := *cr.Rule.ID
+					if val, ok := r.counters.Load(key); ok {
+						counter := val.(int32)
+						r.counters.Store(key, counter+1)
+					} else {
+						r.counters.Store(key, int32(1))
+					}
 				}
 			}
 		}
@@ -122,13 +127,36 @@ func (r *Projects) Filter() []*Project {
 		}
 	}
 
+	// Update counters in database
 	r.counters.Range(func(key, value interface{}) bool {
-		keyId, _ := key.(int32)
-		counter := value.(int32)
+		keyId, ok := key.(int32)
+		if !ok {
+			logger.Error().
+				Interface("key", key).
+				Msg("invalid key type in counter map")
+			return true
+		}
+
+		counter, ok := value.(int32)
+		if !ok {
+			logger.Error().
+				Interface("value", value).
+				Int32("keyId", keyId).
+				Msg("invalid counter type in map")
+			return true
+		}
+
 		if err := dal.Keyword.UpdateCounter(keyId, counter); err != nil {
-			r.ctx.Logger.Error().Stack().Err(err).Msg("update counter error")
+			logger.Error().
+				Err(err).
+				Int32("keyId", keyId).
+				Int32("counter", counter).
+				Msg("failed to update counter")
 		} else {
-			r.ctx.Logger.Debug().Msgf("update counter: %d=>%d", keyId, counter)
+			logger.Debug().
+				Int32("keyId", keyId).
+				Int32("counter", counter).
+				Msg("counter updated successfully")
 		}
 		return true
 	})
