@@ -17,12 +17,11 @@ type defaultHandler struct {
 }
 
 func (d *defaultHandler) Handler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	// Use the edited message if available, otherwise use the original message
-	message := update.EditedMessage
-	if message == nil {
-		message = update.Message
+	if update.Message == nil && update.EditedMessage != nil {
+		update.Message = update.EditedMessage
 	}
 
+	message := update.Message
 	userId := message.Chat.ID
 	command := message.Text
 
@@ -33,6 +32,12 @@ func (d *defaultHandler) Handler(ctx context.Context, b *bot.Bot, update *models
 		return
 	case strings.HasPrefix(command, constant.ConvertIMG):
 		d.cmd.ConvertURLToIMGHandler(ctx, b, update)
+		return
+	case strings.HasPrefix(command, constant.SearchAlarmRecords):
+		d.cmd.SearchAlarmRecordHandler(ctx, b, update)
+		return
+	case strings.HasPrefix(command, constant.SearchHistory):
+		d.cmd.SearchHistoryHandler(ctx, b, update)
 		return
 	}
 
