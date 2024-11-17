@@ -161,7 +161,7 @@ func (r *InfoProcessor) Handler(i interface{}) {
 			chunks, total := r.ToMessage(project)
 			logger.Debug().Msgf("split content to %d parts", total)
 
-			// only save all parts failed to failed list
+			// only save all parts failed to the failed list
 			isSuccessful := false
 			for idx, chunk := range chunks {
 				if _, err := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
@@ -172,7 +172,7 @@ func (r *InfoProcessor) Handler(i interface{}) {
 					if !isSuccessful {
 						if _, ok := filterFailed[pageURL]; !ok {
 							filterFailed[pageURL] = project
-							failed = append(failed, fmt.Sprintf("%d. <b>【关键字: %s】</b> <a href=\"%s\">%s</a>",
+							failed = append(failed, fmt.Sprintf("%d. <b>[%s]</b> <a href=\"%s\">%s</a>",
 								len(failed), project.Keyword, pageURL, title))
 						}
 					}

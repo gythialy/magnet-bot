@@ -199,7 +199,7 @@ func (c *CommandsHandler) paginatedAlarms(ctx context.Context, b *bot.Bot,
 func (c *CommandsHandler) SearchHistoryHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	text := update.Message.Text
 	term := strings.TrimSpace(strings.TrimPrefix(text, constant.SearchHistory))
-	// Get first page of results
+	// Get the first page of results
 	c.paginatedSearchResult(ctx, b, update, term, 1, defaultMessageId)
 }
 
@@ -219,7 +219,11 @@ func (c *CommandsHandler) paginatedSearchResult(ctx context.Context, b *bot.Bot,
 
 	var response strings.Builder
 	for i, history := range results {
-		response.WriteString(fmt.Sprintf("%d. <a href=\"%s\">%s</a>\n", (page-1)*historyPageSize+i+1, history.URL, history.Title))
+		response.WriteString(fmt.Sprintf("%d. <a href=\"%s\">%s</a> @ %s\n",
+			(page-1)*historyPageSize+i+1,
+			history.URL,
+			history.Title,
+			history.UpdatedAt.Format("2006-01-02 15:04:05")))
 	}
 
 	var keyboard [][]models.InlineKeyboardButton
@@ -309,7 +313,7 @@ func (c *CommandsHandler) ConvertURLToPDFHandler(ctx context.Context, b *bot.Bot
 		c.ctx.Logger.Error().Stack().Err(err).Msg("")
 	}
 
-	// Send processing message
+	// Send the processing message
 	processingMsg, msgErr := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: userId,
 		Text:   fmt.Sprintf("Converting URL to PDF(%s). Please wait...⌛", fileName),
@@ -358,7 +362,7 @@ func (c *CommandsHandler) ConvertURLToIMGHandler(ctx context.Context, b *bot.Bot
 		c.ctx.Logger.Error().Stack().Err(err).Msg("")
 	}
 
-	// Send processing message
+	// Send a processing message
 	processingMsg, msgErr := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: userId,
 		Text:   fmt.Sprintf("Converting URL to IMG(%s). Please wait...⌛", fileName),

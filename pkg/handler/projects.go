@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	keywordTemplate = `<b>【关键字: {{.Keyword}}】</b><a href="{{.Pageurl}}">{{.Title}}</a> @ {{.NoticeTime}}
+	keywordTemplate = `<b>[{{.Keyword}}]</b>{{if .OpenTenderCode}}#{{.OpenTenderCode}} {{end}}<a href="{{.Pageurl}}">{{.Title}}</a> @ {{.NoticeTime}}
 {{ .Content | noescape }} `
 	maxMessageLength = 4090
 )
@@ -71,7 +71,7 @@ func (p *Project) SplitMessage() ([]string, int) {
 
 		chunk = strings.TrimSpace(chunk)
 
-		// Only add chunk if it contains visible characters
+		// Only add a chunk if it contains visible characters
 		if chunk != "" || strings.IndexFunc(chunk, func(r rune) bool {
 			return !unicode.IsSpace(r) && unicode.IsPrint(r)
 		}) >= 0 {
