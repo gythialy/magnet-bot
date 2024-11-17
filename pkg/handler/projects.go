@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	keywordTemplate = `<b>[{{.Keyword}}]</b>{{if .OpenTenderCode}}#{{.OpenTenderCode}} {{end}}<a href="{{.Pageurl}}">{{.Title}}</a> @ {{.NoticeTime}}
+	keywordTemplate = `<b>[{{.Keyword}}]</b>{{if .OpenTenderCode}} #{{.OpenTenderCode}} {{end}}<a href="{{.Pageurl}}">{{.Title}}</a> @ {{.NoticeTime}}
 {{ .Content | noescape }} `
 	maxMessageLength = 4090
 )
