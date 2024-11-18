@@ -1007,3 +1007,8 @@ func printResponse(resp *genai.GenerateContentResponse) {
 		}
 	}
 }
+
+func TestToMarkdown(t *testing.T) {
+	tmp := SimplifyContent(input)
+	fmt.Println(tmp)
+}

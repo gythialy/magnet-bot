@@ -4,6 +4,9 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/JohannesKaufmann/html-to-markdown/v2/converter"
+	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/base"
+	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/commonmark"
 	"golang.org/x/net/html"
 )
 
@@ -28,6 +31,16 @@ var (
 	brRegex           = regexp.MustCompile(`<br\s*/>`)
 	htmlTagRegex      = regexp.MustCompile(`<[^>]*>`)
 	multiNewlineRegex = regexp.MustCompile(`\n{2,}`)
+
+	conv = converter.NewConverter(
+		converter.WithPlugins(
+			base.NewBasePlugin(),
+			commonmark.NewCommonmarkPlugin(
+				commonmark.WithStrongDelimiter("__"),
+			),
+			NewTablePlugin(),
+		), converter.WithEscapeMode(converter.EscapeModeDisabled),
+	)
 )
 
 func SimplifyHTML(content string) string {
@@ -43,7 +56,7 @@ func SimplifyHTML(content string) string {
 	return multiSpaceRegex.ReplaceAllString(content, "")
 }
 
-func SimplifyContent(content string) string {
+func cleanContent(content string) string {
 	content = SimplifyHTML(content)
 	// 结构性元素转换为<br />
 	// First replace existing <br /> patterns to avoid duplication
@@ -104,4 +117,14 @@ func SimplifyContent(content string) string {
 
 	// 最终清理
 	return strings.TrimSpace(content)
+}
+
+func SimplifyContent(content string) string {
+	content = SimplifyHTML(content)
+	if data, err := conv.ConvertString(content); err != nil {
+		return cleanContent(content)
+	} else {
+		data = multiNewlineRegex.ReplaceAllString(data, "\n")
+		return strings.TrimSpace(data)
+	}
 }
