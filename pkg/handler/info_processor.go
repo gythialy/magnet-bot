@@ -225,10 +225,13 @@ func (r *InfoProcessor) Handler(i interface{}) {
 		// process alarms
 		var newAlarms []*model.Alarm
 		for _, alarm := range pd.Alarms {
-			if isExist, err := dal.Alarm.IsExist(userId, alarm.CreditCode); isExist {
+			isExist, err := dal.Alarm.IsExist(userId, alarm.CreditCode)
+			if err != nil {
+				logger.Error().Err(err).Msg("failed to check alarm existence")
 				continue
-			} else {
-				logger.Warn().Err(err).Msg("")
+			}
+			if isExist {
+				continue
 			}
 			if msg, err := alarm.ToMessage(); err == nil {
 				if _, msgErr := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
