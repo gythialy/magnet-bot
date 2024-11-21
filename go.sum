@@ -16,8 +16,8 @@ filippo.io/edwards25519 v1.1.0/go.mod h1:BxyFTGdWcka3PhytdK4V28tE5sGfRvvvRV7EaN4
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/JohannesKaufmann/dom v0.1.1-0.20240706125338-ff9f3b772364 h1:TDlO/A2QqlNhdvH+hDnu8cv1rouhfHgLwhGzJeHGgFQ=
 github.com/JohannesKaufmann/dom v0.1.1-0.20240706125338-ff9f3b772364/go.mod h1:U+fBZLZTYiZCOwQUT04V3J4I+0TxyLNnj0R8nBlO4fk=
-github.com/JohannesKaufmann/html-to-markdown/v2 v2.2.0 h1:XFX8fmtW8E+h6OGJW00aTChhzpsrn1IvnJa6Std2yeM=
-github.com/JohannesKaufmann/html-to-markdown/v2 v2.2.0/go.mod h1:/4SMA6sya4rFx35o6hHFhK47vKunlKqrw1anAVsihGQ=
+github.com/JohannesKaufmann/html-to-markdown/v2 v2.2.1 h1:CTdlXnVjuOA8nh2NRjPx2hZvrSirvqWmgMfYSsgh3+8=
+github.com/JohannesKaufmann/html-to-markdown/v2 v2.2.1/go.mod h1:/4SMA6sya4rFx35o6hHFhK47vKunlKqrw1anAVsihGQ=
 github.com/PuerkitoBio/goquery v1.10.0 h1:6fiXdLuUvYs2OJSvNRqlNPoBm6YABE226xrbavY5Wv4=
 github.com/PuerkitoBio/goquery v1.10.0/go.mod h1:TjZZl68Q3eGHNBA8CWaxAN7rOU1EbDz3CWuolcO5Yu4=
 github.com/andybalholm/cascadia v1.3.2 h1:3Xi6Dw5lHF15JtdcmAHD3i1+T8plmv7BQ/nsViSLyss=
