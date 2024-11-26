@@ -91,24 +91,24 @@ func (c *CommandsHandler) DeleteKeywordHandler(ctx context.Context, b *bot.Bot, 
 func (c *CommandsHandler) EditKeywordHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	text := update.Message.Text
 	tmp := strings.TrimSpace(strings.TrimPrefix(text, constant.EditKeyword))
-	split := strings.Split(tmp, ",")
-	if len(split) != 2 {
+	split := strings.Split(tmp, ";")
+	if len(split) < 1 {
 		c.sendErrorMessage(ctx, b, update,
-			fmt.Sprintf(`Invalid format. Please use the following format: %s keyword1="new_keyword1",keyword2=new_keyword2`, constant.EditKeyword),
+			fmt.Sprintf(`Invalid format. Please use the following format: %s id1="new_keyword1";id2=new_keyword2`, constant.EditKeyword),
 		)
 		return
 	}
 	if err := dal.Keyword.EditById(split); err == nil {
 		if _, msgErr := b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
-			Text:   fmt.Sprintf("%s: successful.", constant.DeleteKeyword),
+			Text:   fmt.Sprintf("%s: successful.", constant.EditKeyword),
 		}); msgErr != nil {
 			c.ctx.Logger.Error().Err(msgErr)
 		}
 	} else {
 		if _, msgErr := b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
-			Text:   fmt.Sprintf("%s failed, %s", constant.DeleteKeyword, err.Error()),
+			Text:   fmt.Sprintf("%s failed, %s", constant.EditKeyword, err.Error()),
 		}); msgErr != nil {
 			c.ctx.Logger.Error().Stack().Err(msgErr).Msg("")
 		}

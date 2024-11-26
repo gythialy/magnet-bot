@@ -115,8 +115,11 @@ func (k *keyword) EditById(content []string) error {
 	for idx, r := range content {
 		split := strings.Split(r, "=")
 		if i, err := strconv.ParseInt(strings.TrimSpace(split[0]), 10, 32); err == nil {
-			if _, err := k.Where(k.ID.Eq(int32(i))).Update(k.Keyword, strings.TrimSpace(split[1])); err != nil {
-				combinedErr = append(combinedErr, fmt.Errorf("invalid id: %d, content: %s, %s", idx, r, err.Error()))
+			data := strings.TrimSpace(split[1])
+			if data != "" {
+				if _, err := k.Where(k.ID.Eq(int32(i))).Update(k.Keyword, data); err != nil {
+					combinedErr = append(combinedErr, fmt.Errorf("invalid id: %d, content: %s, %s", idx, r, err.Error()))
+				}
 			}
 		} else {
 			combinedErr = append(combinedErr, fmt.Errorf("invalid id: %d, content: %s", idx, r))
