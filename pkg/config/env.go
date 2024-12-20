@@ -9,7 +9,10 @@ import (
 	"github.com/rs/zerolog"
 )
 
-const defaultScheduleInterval = 1
+const (
+	defaultScheduleInterval = 1
+	defaultModelName        = "gemini-1.5-flash"
+)
 
 func ManagerId() int64 {
 	id := os.Getenv(constant.ManagerId)
@@ -73,4 +76,11 @@ func ScheduleInterval() int {
 
 func GeminiAPIKey() string {
 	return os.Getenv(constant.GeminiAPIKey)
+}
+
+func GeminiModel() string {
+	if name := os.Getenv(constant.GeminiModel); name != "" {
+		return name
+	}
+	return defaultModelName
 }

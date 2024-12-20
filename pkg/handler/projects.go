@@ -7,13 +7,17 @@ import (
 	"sync"
 	"unicode"
 
+	"github.com/gythialy/magnet/pkg/utils"
+
 	"github.com/gythialy/magnet/pkg/dal"
 
 	"github.com/gythialy/magnet/pkg/rule"
 )
 
 const (
-	keywordTemplate = `<b>[{{.Keyword}}]</b><a href="{{.Pageurl}}">{{.Title}}</a> @ {{.NoticeTime}}
+	keywordTemplate = `{{if .HasTenderCode}}🔥{{end}}<a href="{{.Pageurl}}">{{.Title}}</a> @ {{.NoticeTime}}
+<b>[{{.Keyword}}]</b>
+
 {{ .Content | noescape }} `
 	maxMessageLength = 4090
 )
@@ -34,11 +38,12 @@ type Project struct {
 	Content        string `json:"content,omitempty"`
 	Pageurl        string `json:"pageurl,omitempty"`
 	Keyword        string `json:"keyword,omitempty"`
+	HasTenderCode  bool   `json:"-"`
 }
 
 func (p *Project) ToMessage() string {
 	var buf bytes.Buffer
-
+	p.HasTenderCode = utils.TenderCodeRegex.MatchString(p.Keyword)
 	if err := keywordRender.Execute(&buf, p); err == nil {
 		return buf.String()
 	}

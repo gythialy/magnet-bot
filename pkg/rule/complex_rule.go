@@ -3,11 +3,12 @@ package rule
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"unicode"
+
+	"github.com/gythialy/magnet/pkg/utils"
 
 	"github.com/gythialy/magnet/pkg/model"
 )
@@ -18,14 +19,12 @@ type ComplexRule struct {
 	Rule         *model.Keyword
 }
 
-var tenderCodeRegex = regexp.MustCompile(`\d{4}-[A-Z0-9]+-[A-Z0-9]+`)
-
 type ComplexRules []*ComplexRule
 
 func (r ComplexRules) Len() int      { return len(r) }
 func (r ComplexRules) Swap(i, j int) { r[i], r[j] = r[j], r[i] }
 func (r ComplexRules) Less(i, j int) bool {
-	// Check if rules have tender code pattern
+	// Check if rules have a tender code pattern
 	iHasTenderCode := r[i].hasTenderCode()
 	jHasTenderCode := r[j].hasTenderCode()
 
@@ -57,10 +56,10 @@ func (r ComplexRules) Less(i, j int) bool {
 	return len(iTerms) < len(jTerms)
 }
 
-// Helper method to check if rule has tender code pattern
+// Helper method to check if rule has a tender code pattern
 func (r *ComplexRule) hasTenderCode() bool {
 	for term := range r.IncludeTerms {
-		if tenderCodeRegex.MatchString(term) {
+		if utils.TenderCodeRegex.MatchString(term) {
 			return true
 		}
 	}

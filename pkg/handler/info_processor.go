@@ -27,7 +27,6 @@ import (
 const (
 	poolSize = 10
 
-	modelName         = "gemini-1.5-flash"
 	requestsPerDay    = 1500
 	requestsPerMinute = 15
 	systemPrompt      = `将下列 HTML 转换为纯文本:
@@ -292,7 +291,7 @@ func (r *InfoProcessor) ToMessage(project *Project) ([]string, int) {
 	}
 
 	// Generate content using Gemini
-	m := r.gemini.GenerativeModel(modelName)
+	m := r.gemini.GenerativeModel(config.GeminiModel())
 	prompt := genai.Text(fmt.Sprintf(systemPrompt, project.Content))
 	resp, err := m.GenerateContent(context.Background(), prompt)
 	if err != nil {

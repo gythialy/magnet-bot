@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"regexp"
 	"strings"
 )
 
@@ -17,6 +18,8 @@ s1ZQQwP2RoPkFQF2jcT0HnNNT8ZoQgJTrGwNi5QNTBDoHC4oJesAVYe6DoxXS9Nl
 s8WbGE8ZNgOC5tVv1WVjyBw7k2x72C/qjPoyo/kO7TYl6Qnu4jqW/ImLoup/nsJp
 pUznF0YgbyU/dFFNBQIDAQAB
 -----END PUBLIC KEY-----`
+
+var TenderCodeRegex = regexp.MustCompile(`\d{4}-[A-Z0-9]+-[A-Z0-9]+`)
 
 func ToString(data interface{}) string {
 	b, err := json.MarshalIndent(data, "", "\t")
