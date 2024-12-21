@@ -18,7 +18,7 @@ require (
 	golang.org/x/net v0.33.0
 	golang.org/x/text v0.21.0
 	golang.org/x/time v0.8.0
-	google.golang.org/api v0.213.0
+	google.golang.org/api v0.214.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gorm.io/gen v0.3.26
 	gorm.io/gorm v1.25.12
