@@ -3,7 +3,7 @@ module github.com/gythialy/magnet
 go 1.23.2
 
 require (
-	github.com/JohannesKaufmann/html-to-markdown/v2 v2.2.1
+	github.com/JohannesKaufmann/html-to-markdown/v2 v2.2.2
 	github.com/PuerkitoBio/goquery v1.10.1
 	github.com/dcaraxes/gotenberg-go-client/v8 v8.6.3
 	github.com/glebarez/sqlite v1.11.0
@@ -33,7 +33,7 @@ require (
 	cloud.google.com/go/compute/metadata v0.6.0 // indirect
 	cloud.google.com/go/longrunning v0.6.2 // indirect
 	filippo.io/edwards25519 v1.1.0 // indirect
-	github.com/JohannesKaufmann/dom v0.1.1-0.20240706125338-ff9f3b772364 // indirect
+	github.com/JohannesKaufmann/dom v0.2.0 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
