@@ -13,7 +13,7 @@ require (
 	github.com/google/generative-ai-go v0.19.0
 	github.com/google/uuid v1.6.0
 	github.com/nmmh/magneturi v0.0.0-20180607142838-464c677b3fb5
-	github.com/panjf2000/ants/v2 v2.10.0
+	github.com/panjf2000/ants/v2 v2.11.0
 	github.com/rs/zerolog v1.33.0
 	golang.org/x/net v0.34.0
 	golang.org/x/text v0.21.0
