@@ -4,7 +4,7 @@ go 1.23.2
 
 require (
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.2.2
-	github.com/PuerkitoBio/goquery v1.10.1
+	github.com/PuerkitoBio/goquery v1.10.2
 	github.com/dcaraxes/gotenberg-go-client/v8 v8.6.3
 	github.com/glebarez/sqlite v1.11.0
 	github.com/go-co-op/gocron v1.37.0
