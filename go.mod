@@ -15,8 +15,8 @@ require (
 	github.com/nmmh/magneturi v0.0.0-20180607142838-464c677b3fb5
 	github.com/panjf2000/ants/v2 v2.11.1
 	github.com/rs/zerolog v1.33.0
-	golang.org/x/net v0.36.0
-	golang.org/x/text v0.22.0
+	golang.org/x/net v0.37.0
+	golang.org/x/text v0.23.0
 	golang.org/x/time v0.10.0
 	google.golang.org/api v0.223.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
@@ -59,12 +59,12 @@ require (
 	go.opentelemetry.io/otel/metric v1.34.0 // indirect
 	go.opentelemetry.io/otel/trace v1.34.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
-	golang.org/x/crypto v0.35.0 // indirect
+	golang.org/x/crypto v0.36.0 // indirect
 	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c // indirect
 	golang.org/x/mod v0.21.0 // indirect
 	golang.org/x/oauth2 v0.26.0 // indirect
-	golang.org/x/sync v0.11.0 // indirect
-	golang.org/x/sys v0.30.0 // indirect
+	golang.org/x/sync v0.12.0 // indirect
+	golang.org/x/sys v0.31.0 // indirect
 	golang.org/x/tools v0.26.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20241209162323-e6fa225c2576 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250219182151-9fdb1cabc7b2 // indirect
