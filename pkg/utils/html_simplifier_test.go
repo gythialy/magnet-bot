@@ -986,7 +986,9 @@ func Test_SimplifyHTML_TableWithoutBorder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	defer func(client *genai.Client) {
+		_ = client.Close()
+	}(client)
 	m := client.GenerativeModel("gemini-1.5-flash")
 	if resp, err := m.GenerateContent(ctx, genai.Text(fmt.Sprintf(`将下列 HTML 转换为 Telegram message:
 - 尽可能使用文本显示
