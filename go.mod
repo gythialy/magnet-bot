@@ -14,7 +14,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/nmmh/magneturi v0.0.0-20180607142838-464c677b3fb5
 	github.com/panjf2000/ants/v2 v2.11.2
-	github.com/rs/zerolog v1.33.0
+	github.com/rs/zerolog v1.34.0
 	golang.org/x/net v0.37.0
 	golang.org/x/text v0.23.0
 	golang.org/x/time v0.11.0
