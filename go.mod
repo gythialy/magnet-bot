@@ -2,6 +2,8 @@ module github.com/gythialy/magnet
 
 go 1.23.2
 
+toolchain go1.24.1
+
 require (
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.3.1
 	github.com/PuerkitoBio/goquery v1.10.2
@@ -15,7 +17,7 @@ require (
 	github.com/nmmh/magneturi v0.0.0-20180607142838-464c677b3fb5
 	github.com/panjf2000/ants/v2 v2.11.2
 	github.com/rs/zerolog v1.34.0
-	golang.org/x/net v0.37.0
+	golang.org/x/net v0.38.0
 	golang.org/x/text v0.23.0
 	golang.org/x/time v0.11.0
 	google.golang.org/api v0.228.0
