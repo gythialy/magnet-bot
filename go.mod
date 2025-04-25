@@ -23,7 +23,7 @@ require (
 	google.golang.org/api v0.230.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gorm.io/gen v0.3.27
-	gorm.io/gorm v1.25.12
+	gorm.io/gorm v1.26.0
 	gorm.io/plugin/dbresolver v1.5.3
 )
 
