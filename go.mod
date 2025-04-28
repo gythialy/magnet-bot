@@ -5,7 +5,7 @@ go 1.23.2
 toolchain go1.24.1
 
 require (
-	github.com/JohannesKaufmann/html-to-markdown/v2 v2.3.1
+	github.com/JohannesKaufmann/html-to-markdown/v2 v2.3.2
 	github.com/PuerkitoBio/goquery v1.10.3
 	github.com/dcaraxes/gotenberg-go-client/v8 v8.6.3
 	github.com/glebarez/sqlite v1.11.0
