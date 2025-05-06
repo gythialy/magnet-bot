@@ -18,7 +18,7 @@ require (
 	github.com/panjf2000/ants/v2 v2.11.3
 	github.com/rs/zerolog v1.34.0
 	golang.org/x/net v0.39.0
-	golang.org/x/text v0.24.0
+	golang.org/x/text v0.25.0
 	golang.org/x/time v0.11.0
 	google.golang.org/api v0.231.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
@@ -65,7 +65,7 @@ require (
 	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c // indirect
 	golang.org/x/mod v0.24.0 // indirect
 	golang.org/x/oauth2 v0.29.0 // indirect
-	golang.org/x/sync v0.13.0 // indirect
+	golang.org/x/sync v0.14.0 // indirect
 	golang.org/x/sys v0.32.0 // indirect
 	golang.org/x/tools v0.31.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250218202821-56aae31c358a // indirect
