@@ -10,9 +10,8 @@ import (
 	"github.com/gythialy/magnet/pkg/utils"
 	"golang.org/x/time/rate"
 
-	"github.com/google/generative-ai-go/genai"
 	"github.com/gythialy/magnet/pkg/config"
-	"google.golang.org/api/option"
+	"google.golang.org/genai"
 
 	"github.com/gythialy/magnet/pkg/dal"
 	"github.com/gythialy/magnet/pkg/model"
@@ -51,7 +50,10 @@ type InfoProcessor struct {
 }
 
 func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
-	client, err := genai.NewClient(context.Background(), option.WithAPIKey(config.GeminiAPIKey()))
+	client, err := genai.NewClient(context.Background(), &genai.ClientConfig{
+		APIKey:  config.GeminiAPIKey(),
+		Backend: genai.BackendGeminiAPI,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -99,9 +101,6 @@ func (r *InfoProcessor) Get(userId int64) {
 
 func (r *InfoProcessor) Release() {
 	r.pool.Release()
-	if err := r.gemini.Close(); err != nil {
-		r.ctx.Logger.Error().Stack().Err(err).Msg("")
-	}
 }
 
 func (r *InfoProcessor) config() map[int64]ProcessData {
@@ -291,43 +290,22 @@ func (r *InfoProcessor) ToMessage(project *Project) ([]string, int) {
 	}
 
 	// Generate content using Gemini
-	m := r.gemini.GenerativeModel(config.GeminiModel())
+	ctx := context.Background()
 	prompt := genai.Text(fmt.Sprintf(systemPrompt, project.Content))
-	resp, err := m.GenerateContent(context.Background(), prompt)
+	resp, err := r.gemini.Models.GenerateContent(ctx, config.GeminiModel(), prompt, nil)
 	if err != nil {
 		r.ctx.Logger.Error().Stack().Err(err).Msg("Gemini API error")
 		project.Content = utils.SimplifyContent(project.Content)
 		return project.SplitMessage()
 	}
 
-	if content := extractContent(resp); content != "" {
+	if content := resp.Text(); content != "" {
 		project.Content = content
 	} else {
 		project.Content = utils.SimplifyContent(project.Content)
 	}
 
 	return project.SplitMessage()
-}
-
-func extractContent(resp *genai.GenerateContentResponse) string {
-	if resp == nil {
-		return ""
-	}
-
-	for _, can := range resp.Candidates {
-		if can.Content == nil {
-			continue
-		}
-		for _, part := range can.Content.Parts {
-			if part == nil {
-				continue
-			}
-			if data, ok := part.(genai.Text); ok {
-				return cleanContent(string(data))
-			}
-		}
-	}
-	return ""
 }
 
 func cleanContent(content string) string {
