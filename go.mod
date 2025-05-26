@@ -3,7 +3,7 @@ module github.com/gythialy/magnet
 go 1.24.2
 
 require (
-	github.com/JohannesKaufmann/html-to-markdown/v2 v2.3.2
+	github.com/JohannesKaufmann/html-to-markdown/v2 v2.3.3
 	github.com/PuerkitoBio/goquery v1.10.3
 	github.com/dcaraxes/gotenberg-go-client/v8 v8.6.3
 	github.com/glebarez/sqlite v1.11.0
