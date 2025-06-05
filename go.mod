@@ -16,7 +16,7 @@ require (
 	github.com/rs/zerolog v1.34.0
 	golang.org/x/net v0.40.0
 	golang.org/x/text v0.25.0
-	golang.org/x/time v0.11.0
+	golang.org/x/time v0.12.0
 	google.golang.org/genai v1.7.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gorm.io/gen v0.3.27
