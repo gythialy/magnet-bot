@@ -12,11 +12,11 @@ const (
 	defaultDays
 )
 
-func (h *history) IsUrlExist(userId int64, url string) bool {
+func (h *history) IsUrlExist(userId int64, url string) (bool, error) {
 	if count, err := h.Where(h.UserID.Eq(userId), h.URL.Eq(url)).Count(); err == nil {
-		return count > 0
+		return count > 0, nil
 	} else {
-		return false
+		return false, err
 	}
 }
 
@@ -42,7 +42,7 @@ func (h *history) GetByUserId(userId int64) ([]*model.History, error) {
 func (h *history) Insert(data []*model.History) error {
 	if err := h.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: h.UserID.ColumnName().String()}, {Name: h.URL.ColumnName().String()}},
-		DoUpdates: clause.AssignmentColumns([]string{"updated_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{h.Title.ColumnName().String(), h.UpdatedAt.ColumnName().String()}),
 	}).CreateInBatches(data, batchSize); err == nil {
 		return nil
 	} else {

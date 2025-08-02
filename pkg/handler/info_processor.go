@@ -26,8 +26,8 @@ import (
 const (
 	poolSize = 10
 
-	requestsPerDay    = 1500
-	requestsPerMinute = 15
+	requestsPerDay    = 1200
+	requestsPerMinute = 8
 	systemPrompt      = `将下列 HTML 转换为纯文本:
 - 使用纯文本显示，不能包含任何 html 标签
 - "申领时间"和"申领地址"之间应该去除多余的换行和空格转为一行，如: "2024年11月07日 至 2024年11月12日，每天上午 08:30 至 11:30，下午13:00至16:30(北京时间,工作日)"
@@ -151,7 +151,12 @@ func (r *InfoProcessor) Handler(i interface{}) {
 			title := project.Title
 			pageURL := project.Pageurl
 			shortTitle := project.ShortTitle
-			if historyDao.IsUrlExist(userId, pageURL) && !pd.IsForced {
+			isUrlExist, err := historyDao.IsUrlExist(userId, pageURL)
+			if err != nil {
+				logger.Error().Stack().Err(err).Msg("check url exist failed")
+			}
+
+			if isUrlExist && !pd.IsForced {
 				logger.Debug().Msgf("%s already processed", shortTitle)
 				continue
 			}
@@ -185,7 +190,7 @@ func (r *InfoProcessor) Handler(i interface{}) {
 				time.Sleep(500 * time.Millisecond)
 			}
 
-			if total > 0 {
+			if isSuccessful && total > 0 {
 				processedURL = append(processedURL, &model.History{
 					UserID:    userId,
 					URL:       pageURL,
@@ -316,6 +321,7 @@ func cleanContent(content string) string {
 	// Remove markdown style bold and any remaining < or > characters
 	content = strings.NewReplacer(
 		"**", "",
+		"__", "",
 	).Replace(content)
 
 	return content

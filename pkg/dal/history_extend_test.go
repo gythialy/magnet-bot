@@ -215,7 +215,10 @@ func TestHistoryDao_IsUrlExist(t *testing.T) {
 	// Run test cases
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := History.IsUrlExist(tt.userId, tt.url)
+			result, err := History.IsUrlExist(tt.userId, tt.url)
+			if err != nil {
+				t.Fatalf("IsUrlExist failed: %v", err)
+			}
 			if result != tt.expected {
 				t.Errorf("IsUrlExist(%d, %s) = %v, want %v", tt.userId, tt.url, result, tt.expected)
 			}

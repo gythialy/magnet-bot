@@ -11,7 +11,7 @@ import (
 
 const (
 	defaultScheduleInterval = 1
-	defaultModelName        = "gemini-1.5-flash"
+	defaultModelName        = "gemini-2.0-flash-lite"
 )
 
 func ManagerId() int64 {
