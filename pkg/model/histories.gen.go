@@ -12,10 +12,11 @@ const TableNameHistory = "histories"
 
 // History mapped from table <histories>
 type History struct {
-	UserID    int64     `gorm:"column:user_id;primaryKey;autoIncrement:false" json:"userId"`
-	URL       string    `gorm:"column:url;primaryKey;not null" json:"url"`
-	UpdatedAt time.Time `gorm:"column:updated_at;not null" json:"updatedAt"`
-	Title     string    `gorm:"column:title;not null" json:"title"`
+	UserID        int64     `gorm:"column:user_id;primaryKey;autoIncrement:false" json:"userId"`
+	URL           string    `gorm:"column:url;primaryKey;not null" json:"url"`
+	UpdatedAt     time.Time `gorm:"column:updated_at;not null" json:"updatedAt"`
+	Title         string    `gorm:"column:title;not null" json:"title"`
+	HasTenderCode int32     `gorm:"column:has_tender_code;not null;default:0" json:"hasTenderCode"`
 }
 
 // TableName History's table name

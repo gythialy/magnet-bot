@@ -70,3 +70,17 @@ func (h *history) CountByUserId(userId int64) int64 {
 		return 0
 	}
 }
+
+func (h *history) GetTodayByUserId(userId int64, page, pageSize int) ([]*model.History, int64) {
+	now := time.Now()
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+
+	query := h.Where(h.UserID.Eq(userId), h.UpdatedAt.Gte(startOfDay))
+
+	offset := (page - 1) * pageSize
+	if result, total, err := query.Order(h.UpdatedAt.Desc()).FindByPage(offset, pageSize); err == nil {
+		return result, total
+	} else {
+		return nil, 0
+	}
+}

@@ -5,7 +5,6 @@ import (
 	"html/template"
 	"strings"
 	"sync"
-	"unicode"
 
 	"github.com/gythialy/magnet/pkg/utils"
 
@@ -56,8 +55,9 @@ func (p *Project) SplitMessage() ([]string, int) {
 
 	for len(message) > 0 {
 		if len(message) <= maxMessageLength {
-			if len(message) > 0 {
-				chunks = append(chunks, message)
+			chunk := strings.TrimSpace(message)
+			if chunk != "" {
+				chunks = append(chunks, chunk)
 			}
 			break
 		}
@@ -76,13 +76,21 @@ func (p *Project) SplitMessage() ([]string, int) {
 
 		chunk = strings.TrimSpace(chunk)
 
-		// Only add a chunk if it contains visible characters
-		if chunk != "" || strings.IndexFunc(chunk, func(r rune) bool {
-			return !unicode.IsSpace(r) && unicode.IsPrint(r)
-		}) >= 0 {
+		// 只添加非空chunk
+		if chunk != "" {
 			chunks = append(chunks, chunk)
+			// 正确计算已处理的字符数（使用rune长度）
+			processedRunes := len([]rune(chunk))
+			message = string(runes[processedRunes:])
+		} else {
+			// 如果chunk为空，直接跳过这部分
+			message = string(runes[end:])
 		}
-		message = message[len(chunk):]
+
+		// 避免无限循环
+		if len(message) > 0 && strings.TrimSpace(message) == "" {
+			break
+		}
 	}
 
 	return chunks, len(chunks)

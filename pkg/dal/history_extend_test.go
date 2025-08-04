@@ -254,3 +254,100 @@ func TestHistoryDao_CountHistory(t *testing.T) {
 func containsInsensitive(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
+
+func TestHistoryDao_GetTodayByUserId(t *testing.T) {
+	cleanup := setupTestDB(t)
+	defer cleanup()
+
+	userId := int64(1)
+	now := time.Now()
+	yesterday := now.AddDate(0, 0, -1)
+	twoDaysAgo := now.AddDate(0, 0, -2)
+
+	// Insert test data with different dates
+	testData := []*model.History{
+		{UserID: userId, URL: "https://test.com/today1", Title: "Today Record 1", UpdatedAt: now},
+		{UserID: userId, URL: "https://test.com/today2", Title: "Today Record 2", UpdatedAt: now},
+		{UserID: userId, URL: "https://test.com/today3", Title: "Today Record 3", UpdatedAt: now},
+		{UserID: userId, URL: "https://test.com/yesterday1", Title: "Yesterday Record 1", UpdatedAt: yesterday},
+		{UserID: userId, URL: "https://test.com/yesterday2", Title: "Yesterday Record 2", UpdatedAt: yesterday},
+		{UserID: userId, URL: "https://test.com/twodaysago", Title: "Two Days Ago Record", UpdatedAt: twoDaysAgo},
+		{UserID: userId + 1, URL: "https://test.com/otheruser", Title: "Other User Today", UpdatedAt: now},
+	}
+
+	if err := History.Insert(testData); err != nil {
+		t.Fatalf("Failed to insert test data: %v", err)
+	}
+
+	// Test cases
+	t.Run("Get today's records for user", func(t *testing.T) {
+		results, total := History.GetTodayByUserId(userId, 1, 10)
+		expectedTotal := int64(3)
+
+		if total != expectedTotal {
+			t.Errorf("Expected %d total results, got %d", expectedTotal, total)
+		}
+
+		if len(results) != int(expectedTotal) {
+			t.Errorf("Expected %d results, got %d", expectedTotal, len(results))
+		}
+
+		// Verify all results are from today
+		startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		for _, result := range results {
+			if result.UpdatedAt.Before(startOfDay) {
+				t.Errorf("Result with URL %s is not from today (updated at: %v)", result.URL, result.UpdatedAt)
+			}
+			if result.UserID != userId {
+				t.Errorf("Result with URL %s belongs to wrong user (userID: %d, expected: %d)", result.URL, result.UserID, userId)
+			}
+		}
+	})
+
+	t.Run("Test pagination", func(t *testing.T) {
+		pageSize := 2
+
+		// First page
+		results1, total := History.GetTodayByUserId(userId, 1, pageSize)
+		if total != 3 {
+			t.Errorf("Expected 3 total results, got %d", total)
+		}
+		if len(results1) != pageSize {
+			t.Errorf("Expected %d results on first page, got %d", pageSize, len(results1))
+		}
+
+		// Second page
+		results2, _ := History.GetTodayByUserId(userId, 2, pageSize)
+		if len(results2) != 1 {
+			t.Errorf("Expected 1 result on second page, got %d", len(results2))
+		}
+
+		// Third page should be empty
+		results3, _ := History.GetTodayByUserId(userId, 3, pageSize)
+		if len(results3) != 0 {
+			t.Errorf("Expected 0 results on third page, got %d", len(results3))
+		}
+	})
+
+	t.Run("Get today's records for non-existent user", func(t *testing.T) {
+		results, total := History.GetTodayByUserId(userId+100, 1, 10)
+		if total != 0 {
+			t.Errorf("Expected 0 total results for non-existent user, got %d", total)
+		}
+		if len(results) != 0 {
+			t.Errorf("Expected 0 results for non-existent user, got %d", len(results))
+		}
+	})
+
+	t.Run("Verify no yesterday records returned", func(t *testing.T) {
+		results, total := History.GetTodayByUserId(userId, 1, 10)
+
+		for _, result := range results {
+			if strings.Contains(result.Title, "Yesterday") || strings.Contains(result.Title, "Two Days Ago") {
+				t.Errorf("Found non-today record: %s", result.Title)
+			}
+		}
+
+		t.Logf("Today's records for user %d: %s, total: %d", userId, utils.ToString(results), total)
+	})
+}

@@ -162,11 +162,13 @@ func (ctx *BotContext) initBot() error {
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.SearchAlarmRecords, bot.MatchTypePrefix, cmdHandler.SearchAlarmRecordHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Alarm, bot.MatchTypePrefix, cmdHandler.AlarmRecordHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.SearchHistory, bot.MatchTypePrefix, cmdHandler.SearchHistoryHandler)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.SearchToday, bot.MatchTypePrefix, cmdHandler.SearchTodayHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.ConvertPDF, bot.MatchTypePrefix, cmdHandler.ConvertURLToPDFHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.ConvertIMG, bot.MatchTypePrefix, cmdHandler.ConvertURLToIMGHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Statistics, bot.MatchTypePrefix, cmdHandler.StaticHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeCallbackQueryData, constant.SearchCallback, bot.MatchTypePrefix, cmdHandler.HandleCallbackQuery)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeCallbackQueryData, constant.AlarmCallback, bot.MatchTypePrefix, cmdHandler.HandleCallbackQuery)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeCallbackQueryData, constant.TodayCallback, bot.MatchTypePrefix, cmdHandler.HandleCallbackQuery)
 
 	managerHandler := NewManagerHandler(ctx)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Retry, bot.MatchTypePrefix, managerHandler.Retry)
@@ -205,6 +207,10 @@ func (ctx *BotContext) initBot() error {
 			{
 				Command:     constant.SearchHistory,
 				Description: "Search history data by title",
+			},
+			{
+				Command:     constant.SearchToday,
+				Description: "List all today data",
 			},
 			{
 				Command:     constant.Statistics,

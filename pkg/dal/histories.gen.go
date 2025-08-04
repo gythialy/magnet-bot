@@ -6,6 +6,7 @@ package dal
 
 import (
 	"context"
+	"database/sql"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -31,6 +32,7 @@ func newHistory(db *gorm.DB, opts ...gen.DOOption) history {
 	_history.URL = field.NewString(tableName, "url")
 	_history.UpdatedAt = field.NewTime(tableName, "updated_at")
 	_history.Title = field.NewString(tableName, "title")
+	_history.HasTenderCode = field.NewInt32(tableName, "has_tender_code")
 
 	_history.fillFieldMap()
 
@@ -40,11 +42,12 @@ func newHistory(db *gorm.DB, opts ...gen.DOOption) history {
 type history struct {
 	historyDo
 
-	ALL       field.Asterisk
-	UserID    field.Int64
-	URL       field.String
-	UpdatedAt field.Time
-	Title     field.String
+	ALL           field.Asterisk
+	UserID        field.Int64
+	URL           field.String
+	UpdatedAt     field.Time
+	Title         field.String
+	HasTenderCode field.Int32
 
 	fieldMap map[string]field.Expr
 }
@@ -65,6 +68,7 @@ func (h *history) updateTableName(table string) *history {
 	h.URL = field.NewString(table, "url")
 	h.UpdatedAt = field.NewTime(table, "updated_at")
 	h.Title = field.NewString(table, "title")
+	h.HasTenderCode = field.NewInt32(table, "has_tender_code")
 
 	h.fillFieldMap()
 
@@ -81,11 +85,12 @@ func (h *history) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (h *history) fillFieldMap() {
-	h.fieldMap = make(map[string]field.Expr, 4)
+	h.fieldMap = make(map[string]field.Expr, 5)
 	h.fieldMap["user_id"] = h.UserID
 	h.fieldMap["url"] = h.URL
 	h.fieldMap["updated_at"] = h.UpdatedAt
 	h.fieldMap["title"] = h.Title
+	h.fieldMap["has_tender_code"] = h.HasTenderCode
 }
 
 func (h history) clone(db *gorm.DB) history {
@@ -155,6 +160,8 @@ type IHistoryDo interface {
 	FirstOrCreate() (*model.History, error)
 	FindByPage(offset int, limit int) (result []*model.History, count int64, err error)
 	ScanByPage(result interface{}, offset int, limit int) (count int64, err error)
+	Rows() (*sql.Rows, error)
+	Row() *sql.Row
 	Scan(result interface{}) (err error)
 	Returning(value interface{}, columns ...string) IHistoryDo
 	UnderlyingDB() *gorm.DB

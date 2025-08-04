@@ -21,7 +21,7 @@ func NewManagerHandler(ctx *BotContext) *ManagerHandler {
 func (h *ManagerHandler) Retry(ctx context.Context, b *bot.Bot, update *models.Update) {
 	userId := update.Message.Chat.ID
 	if userId == h.ctx.Config.ManagerId {
-		// Send initial processing message
+		// Send an initial processing message
 		sentMsg, err := b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: userId,
 			Text:   "Processing, please wait...",

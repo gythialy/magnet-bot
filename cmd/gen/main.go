@@ -59,7 +59,8 @@ func main() {
 				return tag
 			}),
 			gen.FieldGORMTag("credit_code", func(tag field.GormTag) field.GormTag {
-				tag.Set("primaryKey", "").Append("autoIncrement", "false")
+				tag.Set("primaryKey", "").Append("autoIncrement", "false").
+					Append("not null")
 				return tag
 			}),
 			tagWithNS),
@@ -69,6 +70,10 @@ func main() {
 				return tag
 			}), gen.FieldGORMTag("url", func(tag field.GormTag) field.GormTag {
 				tag.Set("primaryKey", "")
+				return tag
+			}),
+			gen.FieldGORMTag("has_tender_code", func(tag field.GormTag) field.GormTag {
+				tag.Append("not null").Append("default", "0")
 				return tag
 			}),
 			tagWithNS),

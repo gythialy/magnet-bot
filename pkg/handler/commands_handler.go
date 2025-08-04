@@ -280,6 +280,10 @@ func (c *CommandsHandler) HandleCallbackQuery(ctx context.Context, b *bot.Bot, u
 	case strings.HasPrefix(constant.AlarmCallback, queryType):
 		term := parts[2]
 		c.paginatedAlarms(ctx, b, update.CallbackQuery.From.ID, term, page, messageId)
+	case strings.HasPrefix(constant.TodayCallback, queryType):
+		c.paginatedTodayResult(ctx, b, &models.Update{
+			Message: update.CallbackQuery.Message.Message,
+		}, page, messageId)
 	}
 
 	// Answer the callback query to remove the loading indicator
@@ -547,4 +551,69 @@ func extractURL(update *models.Update, cmd string) (int, *url.URL, error) {
 
 	parse, err := url.Parse(message)
 	return update.Message.ID, parse, err
+}
+
+func (c *CommandsHandler) SearchTodayHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	// Get the first page of today's results
+	c.paginatedTodayResult(ctx, b, update, 1, defaultMessageId)
+}
+
+func (c *CommandsHandler) paginatedTodayResult(ctx context.Context, b *bot.Bot, update *models.Update,
+	page, messageId int,
+) {
+	id := update.Message.Chat.ID
+	results, total := dal.History.GetTodayByUserId(id, page, historyPageSize)
+
+	if total == 0 {
+		text := "No records found for today."
+		c.sendOrEditMessage(ctx, b, id, messageId, text, nil)
+		return
+	}
+
+	totalPages := (int(total) + historyPageSize - 1) / historyPageSize
+
+	var response strings.Builder
+	for i, history := range results {
+		// 添加🔥标记如果HasTenderCode为1
+		fireEmoji := ""
+		if history.HasTenderCode == 1 {
+			fireEmoji = "🔥"
+		}
+
+		response.WriteString(fmt.Sprintf("%d. <a href=\"%s\">%s%s</a> @ %s\n",
+			(page-1)*historyPageSize+i+1,
+			history.URL,
+			fireEmoji,
+			history.Title,
+			history.UpdatedAt.Format("2006-01-02 15:04:05")))
+	}
+
+	var keyboard [][]models.InlineKeyboardButton
+	var row []models.InlineKeyboardButton
+
+	if page > 1 {
+		row = append(row, models.InlineKeyboardButton{
+			Text:         fmt.Sprintf("« Previous (%d)", page-1),
+			CallbackData: fmt.Sprintf("today:%d:", page-1),
+		})
+	}
+
+	if page < totalPages {
+		row = append(row, models.InlineKeyboardButton{
+			Text:         fmt.Sprintf("Next (%d) »", page+1),
+			CallbackData: fmt.Sprintf("today:%d:", page+1),
+		})
+	}
+
+	var replyMarkup *models.InlineKeyboardMarkup
+
+	if len(row) > 0 {
+		keyboard = append(keyboard, row)
+
+		replyMarkup = &models.InlineKeyboardMarkup{
+			InlineKeyboard: keyboard,
+		}
+	}
+
+	c.sendOrEditMessage(ctx, b, id, messageId, response.String(), replyMarkup)
 }

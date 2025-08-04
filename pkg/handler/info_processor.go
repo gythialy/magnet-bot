@@ -167,11 +167,11 @@ func (r *InfoProcessor) Handler(i interface{}) {
 			// only save all parts failed to the failed list
 			isSuccessful := false
 			for idx, chunk := range chunks {
-				if _, err := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
+				if _, errSend := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
 					ChatID:    userId,
 					Text:      chunk,
 					ParseMode: models.ParseModeHTML,
-				}); err != nil {
+				}); errSend != nil {
 					if !isSuccessful {
 						if _, ok := filterFailed[pageURL]; !ok {
 							filterFailed[pageURL] = project
@@ -179,7 +179,7 @@ func (r *InfoProcessor) Handler(i interface{}) {
 								len(failed), project.Keyword, pageURL, title))
 						}
 					}
-					logger.Error().Stack().Err(err).Msgf("content: %s", chunk)
+					logger.Error().Stack().Err(errSend).Msgf("content: %s", chunk)
 					if idx == 0 {
 						continue projectLoop
 					}
@@ -192,10 +192,11 @@ func (r *InfoProcessor) Handler(i interface{}) {
 
 			if isSuccessful && total > 0 {
 				processedURL = append(processedURL, &model.History{
-					UserID:    userId,
-					URL:       pageURL,
-					Title:     shortTitle,
-					UpdatedAt: now,
+					UserID:        userId,
+					URL:           pageURL,
+					Title:         shortTitle,
+					UpdatedAt:     now,
+					HasTenderCode: btoi(project.HasTenderCode),
 				})
 			}
 		}
@@ -210,10 +211,11 @@ func (r *InfoProcessor) Handler(i interface{}) {
 			} else {
 				for _, v := range filterFailed {
 					processedURL = append(processedURL, &model.History{
-						UserID:    userId,
-						URL:       v.Pageurl,
-						Title:     v.ShortTitle,
-						UpdatedAt: now,
+						UserID:        userId,
+						URL:           v.Pageurl,
+						Title:         v.ShortTitle,
+						HasTenderCode: btoi(v.HasTenderCode),
+						UpdatedAt:     now,
 					})
 				}
 			}
@@ -264,7 +266,7 @@ func (r *InfoProcessor) Handler(i interface{}) {
 			}
 		}
 
-		// Batch insert only the alarms that were successfully sent
+		// Batch inserts only the alarms that were successfully sent
 		if len(successfulAlarms) > 0 {
 			if err := alarmDao.Insert(successfulAlarms); err != nil {
 				logger.Error().Stack().Err(err).Msg("batch insert alarms")
@@ -274,7 +276,7 @@ func (r *InfoProcessor) Handler(i interface{}) {
 }
 
 func (r *InfoProcessor) ToMessage(project *Project) ([]string, int) {
-	// Reset daily counter if needed
+	// Reset the daily counter if needed
 	if time.Now().After(r.dailyResetTime) {
 		r.dailyCount = 0
 		r.dailyResetTime = nextMidnight()
@@ -331,6 +333,13 @@ func nextMidnight() time.Time {
 	now := time.Now()
 	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0,
 		now.Location()).Add(24 * time.Hour)
+}
+
+func btoi(b bool) int32 {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 type ProcessData struct {
