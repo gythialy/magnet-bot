@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # Build stage
-FROM --platform=$BUILDPLATFORM golang:1.24.5 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.24.6 AS builder
 
 # Set build arguments and environment variables
 ARG TARGET_GOOS
