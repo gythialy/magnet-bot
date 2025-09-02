@@ -553,7 +553,7 @@ func extractURL(update *models.Update, cmd string) (int, *url.URL, error) {
 	return update.Message.ID, parse, err
 }
 
-func (c *CommandsHandler) SearchTodayHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+func (c *CommandsHandler) ListTodayHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	// Get the first page of today's results
 	c.paginatedTodayResult(ctx, b, update, 1, defaultMessageId)
 }

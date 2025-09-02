@@ -11,7 +11,7 @@ const (
 	AddAlarmKeyword    = "/add_alarm_keywords"
 	SearchAlarmRecords = "/search_alarm_records"
 	SearchHistory      = "/search_history_title"
-	SearchToday        = "/search_today"
+	ListToday          = "/list_today"
 	TodayCallback      = "today:"
 	ConvertPDF         = "/convertpdf"
 	ConvertIMG         = "/convertimg"

@@ -162,7 +162,7 @@ func (ctx *BotContext) initBot() error {
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.SearchAlarmRecords, bot.MatchTypePrefix, cmdHandler.SearchAlarmRecordHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Alarm, bot.MatchTypePrefix, cmdHandler.AlarmRecordHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.SearchHistory, bot.MatchTypePrefix, cmdHandler.SearchHistoryHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.SearchToday, bot.MatchTypePrefix, cmdHandler.SearchTodayHandler)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.ListToday, bot.MatchTypePrefix, cmdHandler.ListTodayHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.ConvertPDF, bot.MatchTypePrefix, cmdHandler.ConvertURLToPDFHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.ConvertIMG, bot.MatchTypePrefix, cmdHandler.ConvertURLToIMGHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Statistics, bot.MatchTypePrefix, cmdHandler.StaticHandler)
@@ -178,43 +178,43 @@ func (ctx *BotContext) initBot() error {
 		Commands: []models.BotCommand{
 			{
 				Command:     constant.Me,
-				Description: "Get my user information",
+				Description: "Show user information",
 			},
 			{
 				Command:     constant.Magnet,
-				Description: "Append trackers to torrent",
+				Description: "Add trackers to magnet link",
 			},
 			{
 				Command:     constant.AddKeyword,
-				Description: "Add keywords",
+				Description: "Add project monitoring keywords",
 			},
 			{
 				Command:     constant.DeleteKeyword,
-				Description: "Delete keywords by record ids",
+				Description: "Delete keywords by IDs, separated by commas",
 			},
 			{
 				Command:     constant.EditKeyword,
-				Description: "Edit keywords by record id",
+				Description: "Edit keyword by IDs, eg: 1=keyword1; 2=keyword2",
 			},
 			{
 				Command:     constant.AddAlarmKeyword,
-				Description: "Add tender codes",
+				Description: "Add tender monitoring codes",
 			},
 			{
 				Command:     constant.SearchAlarmRecords,
-				Description: "Search all alarm records",
+				Description: "Search alarm records by keyword",
 			},
 			{
 				Command:     constant.SearchHistory,
-				Description: "Search history data by title",
+				Description: "Search history records by title",
 			},
 			{
-				Command:     constant.SearchToday,
-				Description: "List all today data",
+				Command:     constant.ListToday,
+				Description: "List today's records",
 			},
 			{
 				Command:     constant.Statistics,
-				Description: "Show statistics information",
+				Description: "Show statistics",
 			},
 			{
 				Command:     constant.ConvertPDF,
@@ -222,15 +222,15 @@ func (ctx *BotContext) initBot() error {
 			},
 			{
 				Command:     constant.ConvertIMG,
-				Description: "Convert URL to IMG",
+				Description: "Convert URL to image",
 			},
 			{
 				Command:     constant.Retry,
-				Description: "Retry failed task, only for the Bot master",
+				Description: "Retry failed tasks (admin only)",
 			},
 			{
 				Command:     constant.Clean,
-				Description: "Clean the cache file, only for the Bot master",
+				Description: "Clean cache files (admin only)",
 			},
 		},
 	}); err != nil {
