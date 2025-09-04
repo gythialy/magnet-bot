@@ -20,7 +20,7 @@ require (
 	google.golang.org/genai v1.22.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gorm.io/gen v0.3.27
-	gorm.io/gorm v1.30.2
+	gorm.io/gorm v1.30.3
 	gorm.io/plugin/dbresolver v1.6.2
 )
 
