@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gythialy/magnet/pkg/utils"
@@ -39,6 +40,16 @@ var (
 	htmlAttrRegex = regexp.MustCompile(`\s+\w+\s*=\s*("[^"]*"|'[^']*')`)
 )
 
+// ProcessData holds the data for processing
+type ProcessData struct {
+	UserId       int64
+	ProjectRules []*rule.ComplexRule
+	AlarmKeyword []string
+	Projects     []*Project
+	Alarms       []*model.Alarm
+	IsForced     bool
+}
+
 type InfoProcessor struct {
 	ctx            *BotContext
 	pool           *ants.PoolWithFunc
@@ -47,6 +58,8 @@ type InfoProcessor struct {
 	minuteLimiter  *rate.Limiter
 	dailyCount     int64
 	dailyResetTime time.Time
+	processingLock sync.Mutex
+	processingURLs map[string]bool
 }
 
 func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
@@ -64,6 +77,7 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 		dailyResetTime: nextMidnight(),
 		gemini:         client,
 		crawler:        NewCrawler(ctx),
+		processingURLs: make(map[string]bool),
 	}
 
 	if pool, err := ants.NewPoolWithFunc(poolSize, processor.Handler); err != nil {
@@ -132,6 +146,42 @@ func (r *InfoProcessor) get(id int64) ProcessData {
 	}
 }
 
+// shouldSkipProcessing checks if a URL is already processed in DB or is being processed,
+// returning true if processing should be skipped
+func (r *InfoProcessor) shouldSkipProcessing(userId int64, url string, isForced bool) (skip bool, err error) {
+	lockKey := fmt.Sprintf("%d:%s", userId, url)
+	r.processingLock.Lock()
+	defer r.processingLock.Unlock()
+
+	// Check if URL is already being processed
+	if r.processingURLs[lockKey] {
+		return true, nil // URL is being processed, skip it
+	}
+
+	// If not forced, check if URL exists in the database
+	if !isForced {
+		exists, err := dal.History.IsUrlExist(userId, url)
+		if err != nil {
+			return false, err
+		}
+		if exists {
+			return true, nil // URL already exists in DB, skip it
+		}
+	}
+
+	// Mark as being processed if we're going to process it
+	r.processingURLs[lockKey] = true
+	return false, nil
+}
+
+func (r *InfoProcessor) releaseLock(userId int64, url string) {
+	lockKey := fmt.Sprintf("%d:%s", userId, url)
+	r.processingLock.Lock()
+	defer r.processingLock.Unlock()
+
+	delete(r.processingURLs, lockKey)
+}
+
 func (r *InfoProcessor) Handler(i interface{}) {
 	switch pd := i.(type) {
 	case ProcessData:
@@ -151,13 +201,16 @@ func (r *InfoProcessor) Handler(i interface{}) {
 			title := project.Title
 			pageURL := project.Pageurl
 			shortTitle := project.ShortTitle
-			isUrlExist, err := historyDao.IsUrlExist(userId, pageURL)
+
+			// Check if URL should be skipped (already processed or being processed)
+			shouldSkip, err := r.shouldSkipProcessing(userId, pageURL, pd.IsForced)
 			if err != nil {
-				logger.Error().Stack().Err(err).Msg("check url exist failed")
+				logger.Error().Stack().Err(err).Msg("check url processing failed")
+				continue
 			}
 
-			if isUrlExist && !pd.IsForced {
-				logger.Debug().Msgf("%s already processed", shortTitle)
+			if shouldSkip {
+				logger.Debug().Msgf("URL %s is already processed or being processed, skipping", shortTitle)
 				continue
 			}
 
@@ -181,6 +234,7 @@ func (r *InfoProcessor) Handler(i interface{}) {
 					}
 					logger.Error().Stack().Err(errSend).Msgf("content: %s", chunk)
 					if idx == 0 {
+						r.releaseLock(userId, pageURL)
 						continue projectLoop
 					}
 				} else {
@@ -199,6 +253,9 @@ func (r *InfoProcessor) Handler(i interface{}) {
 					HasTenderCode: btoi(project.HasTenderCode),
 				})
 			}
+
+			// Release the lock for this URL
+			r.releaseLock(userId, pageURL)
 		}
 
 		if len(failed) > 1 {
@@ -340,13 +397,4 @@ func btoi(b bool) int32 {
 		return 1
 	}
 	return 0
-}
-
-type ProcessData struct {
-	UserId       int64
-	ProjectRules []*rule.ComplexRule
-	AlarmKeyword []string
-	Projects     []*Project
-	Alarms       []*model.Alarm
-	IsForced     bool
 }
