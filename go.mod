@@ -14,7 +14,7 @@ require (
 	github.com/nmmh/magneturi v0.0.0-20180607142838-464c677b3fb5
 	github.com/panjf2000/ants/v2 v2.11.3
 	github.com/rs/zerolog v1.34.0
-	golang.org/x/net v0.44.0
+	golang.org/x/net v0.45.0
 	golang.org/x/text v0.29.0
 	golang.org/x/time v0.13.0
 	google.golang.org/genai v1.28.0
