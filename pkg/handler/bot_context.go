@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -22,7 +23,6 @@ import (
 	"github.com/go-co-op/gocron"
 	"github.com/go-telegram/bot"
 	"github.com/gythialy/magnet/pkg/utils"
-	"golang.org/x/net/context"
 	"gorm.io/gorm"
 )
 
