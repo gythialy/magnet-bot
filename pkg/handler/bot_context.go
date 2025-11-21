@@ -73,6 +73,11 @@ type BotContext struct {
 func NewBotContext() (*BotContext, error) {
 	cfg := config.NewServiceConfig()
 	ctx, cancel := context.WithCancel(context.Background())
+	defer func() {
+		if cancel != nil {
+			cancel()
+		}
+	}()
 
 	// init log
 	level := cfg.LogLevel
