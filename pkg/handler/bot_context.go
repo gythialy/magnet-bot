@@ -72,12 +72,6 @@ type BotContext struct {
 
 func NewBotContext() (*BotContext, error) {
 	cfg := config.NewServiceConfig()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer func() {
-		if cancel != nil {
-			cancel()
-		}
-	}()
 
 	// init log
 	level := cfg.LogLevel
@@ -106,13 +100,13 @@ func NewBotContext() (*BotContext, error) {
 		return nil, err
 	}
 	dal.SetDefault(db)
-
 	// init gotenberg
 	client, err := NewGotenbergClient(cfg.PDF.PDFServiceURL, cfg.PDF.WebhookURL())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create gotenberg client: %s", err)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	botContext := &BotContext{
 		ctx:       ctx,
 		cancel:    cancel,
@@ -274,7 +268,9 @@ func (ctx *BotContext) Start() {
 }
 
 func (ctx *BotContext) Stop() {
-	ctx.cancel()
+	if ctx.cancel != nil {
+		ctx.cancel()
+	}
 	ctx.processor.Release()
 	ctx.scheduler.Stop()
 	ctx.scheduler.StopBlockingChan()
