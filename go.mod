@@ -17,7 +17,7 @@ require (
 	golang.org/x/net v0.51.0
 	golang.org/x/text v0.34.0
 	golang.org/x/time v0.14.0
-	google.golang.org/genai v1.47.0
+	google.golang.org/genai v1.48.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gorm.io/gen v0.3.27
 	gorm.io/gorm v1.31.1
