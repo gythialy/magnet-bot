@@ -149,7 +149,6 @@ func NewBotContext() (*BotContext, error) {
 
 func (ctx *BotContext) initBot() error {
 	cmdHandler := ctx.cmdHandler
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Magnet, bot.MatchTypePrefix, NewMagnetHandler(ctx).Handler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Me, bot.MatchTypePrefix, MeHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Debug, bot.MatchTypePrefix, DebugHandler)
 	sHandler := &startHandler{cmdHandler: cmdHandler}
@@ -178,10 +177,6 @@ func (ctx *BotContext) initBot() error {
 			{
 				Command:     constant.Me,
 				Description: "Show user information",
-			},
-			{
-				Command:     constant.Magnet,
-				Description: "Add trackers to magnet link",
 			},
 			{
 				Command:     constant.AddKeyword,

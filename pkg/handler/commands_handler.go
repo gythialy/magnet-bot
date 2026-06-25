@@ -93,7 +93,8 @@ func (c *CommandsHandler) EditKeywordHandler(ctx context.Context, b *bot.Bot, up
 	tmp := strings.TrimSpace(strings.TrimPrefix(text, constant.EditKeyword))
 	split := strings.Split(tmp, ";")
 	if len(split) < 1 {
-		c.sendErrorMessage(ctx, b, update,
+		c.sendErrorMessage(
+			ctx, b, update,
 			fmt.Sprintf(`Invalid format. Please use the following format: %s id1="new_keyword1";id2=new_keyword2`, constant.EditKeyword),
 		)
 		return
@@ -164,9 +165,9 @@ func (c *CommandsHandler) paginatedAlarms(ctx context.Context, b *bot.Bot,
 
 	var response strings.Builder
 	for i, alarm := range alarms {
-		response.WriteString(fmt.Sprintf("%d. <a href=\"%s\">%s @%s</a>\n", (page-1)*alarmPageSize+i+1,
+		fmt.Fprintf(&response, "%d. <a href=\"%s\">%s @%s</a>\n", (page-1)*alarmPageSize+i+1,
 			fmt.Sprintf("https://t.me/%s?start=alarm_%s", config.TelegramName(), alarm.BusinessID),
-			alarm.CreditName, alarm.StartDate.Format("2006-01-02")))
+			alarm.CreditName, alarm.StartDate.Format("2006-01-02"))
 	}
 
 	var keyboard [][]models.InlineKeyboardButton
@@ -219,11 +220,11 @@ func (c *CommandsHandler) paginatedSearchResult(ctx context.Context, b *bot.Bot,
 
 	var response strings.Builder
 	for i, history := range results {
-		response.WriteString(fmt.Sprintf("%d. <a href=\"%s\">%s</a> @ %s\n",
+		fmt.Fprintf(&response, "%d. <a href=\"%s\">%s</a> @ %s\n",
 			(page-1)*historyPageSize+i+1,
 			history.URL,
 			history.Title,
-			history.UpdatedAt.Format("2006-01-02 15:04:05")))
+			history.UpdatedAt.Format("2006-01-02 15:04:05"))
 	}
 
 	var keyboard [][]models.InlineKeyboardButton
@@ -445,21 +446,21 @@ func (c *CommandsHandler) StaticHandler(ctx context.Context, b *bot.Bot, update 
 	historyCount := dal.History.CountByUserId(userId)
 	var alarmStats strings.Builder
 	if len(alarmKeywords) > 0 {
-		alarmStats.WriteString(fmt.Sprintf("\n- Alarm Keywords: %d\n", alarmCount))
+		fmt.Fprintf(&alarmStats, "\n- Alarm Keywords: %d\n", alarmCount)
 		for idx, kw := range alarmKeywords {
-			alarmStats.WriteString(fmt.Sprintf("\n- [%d/%d] %s", idx+1, *kw.ID, kw.Keyword))
+			fmt.Fprintf(&alarmStats, "\n- [%d/%d] %s", idx+1, *kw.ID, kw.Keyword)
 		}
 	}
 	// Get keyword stats
 	keywords := keywordDao.GetByUserIdAndType(userId, model.PROJECT)
 	var keywordStats strings.Builder
 	if len(keywords) > 0 {
-		keywordStats.WriteString(fmt.Sprintf("\n- Keyword Match Counts: %d\n", keywordCount))
+		fmt.Fprintf(&keywordStats, "\n- Keyword Match Counts: %d\n", keywordCount)
 		for idx, kw := range keywords {
 			if cr := rule.NewComplexRule(kw); cr != nil {
-				keywordStats.WriteString(fmt.Sprintf("\n- [%d/%d] %s => [%s]: %d", idx+1, *kw.ID, kw.Keyword, cr.ToString(), kw.Counter))
+				fmt.Fprintf(&keywordStats, "\n- [%d/%d] %s => [%s]: %d", idx+1, *kw.ID, kw.Keyword, cr.ToString(), kw.Counter)
 			} else {
-				keywordStats.WriteString(fmt.Sprintf("\n- [%d/%d] %s: %d", idx+1, *kw.ID, kw.Keyword, kw.Counter))
+				fmt.Fprintf(&keywordStats, "\n- [%d/%d] %s: %d", idx+1, *kw.ID, kw.Keyword, kw.Counter)
 			}
 		}
 	}
@@ -580,12 +581,12 @@ func (c *CommandsHandler) paginatedTodayResult(ctx context.Context, b *bot.Bot, 
 			fireEmoji = "🔥"
 		}
 
-		response.WriteString(fmt.Sprintf("%d. <a href=\"%s\">%s%s</a> @ %s\n",
+		fmt.Fprintf(&response, "%d. <a href=\"%s\">%s%s</a> @ %s\n",
 			(page-1)*historyPageSize+i+1,
 			history.URL,
 			fireEmoji,
 			history.Title,
-			history.UpdatedAt.Format("2006-01-02 15:04:05")))
+			history.UpdatedAt.Format("2006-01-02 15:04:05"))
 	}
 
 	var keyboard [][]models.InlineKeyboardButton

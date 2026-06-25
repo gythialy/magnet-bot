@@ -11,7 +11,7 @@ GOBUILD=CGO_ENABLED=0 $(GO) build -trimpath -ldflags ' \
 		-X "github.com/gythialy/magnet/pkg/constant.Version=$(VERSION)" \
 		-X "github.com/gythialy/magnet/pkg/constant.BuildTime=$(BUILDTIME)" \
 		-w -s -buildid='
-GO_FMT_FILES := $(shell find . -type f -name "*.go" ! -name "generated.*")
+GO_FMT_FILES := $(shell find . -type f -name "*.go" ! -name "*gen.go")
 MAIN=cmd/server/main.go
 
 PLATFORM_LIST = \
@@ -152,7 +152,7 @@ install:
 
 deps:
 	go install mvdan.cc/gofumpt@latest
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
 fmt:
 	gofumpt -l -w $(GO_FMT_FILES)
