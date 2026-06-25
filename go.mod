@@ -18,7 +18,7 @@ require (
 	golang.org/x/time v0.15.0
 	google.golang.org/genai v1.56.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
-	gorm.io/gen v0.3.27
+	gorm.io/gen v0.3.28
 	gorm.io/gorm v1.31.2
 	gorm.io/plugin/dbresolver v1.6.2
 )
