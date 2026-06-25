@@ -11,7 +11,7 @@ require (
 	github.com/go-resty/resty/v2 v2.17.2
 	github.com/go-telegram/bot v1.20.0
 	github.com/google/uuid v1.6.0
-	github.com/panjf2000/ants/v2 v2.12.0
+	github.com/panjf2000/ants/v2 v2.12.1
 	github.com/rs/zerolog v1.35.1
 	golang.org/x/net v0.55.0
 	golang.org/x/text v0.37.0
@@ -34,7 +34,6 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/glebarez/go-sqlite v1.22.0 // indirect
-	github.com/go-bittorrent/magneturi v0.1.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-sql-driver/mysql v1.9.1 // indirect
