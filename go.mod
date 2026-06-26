@@ -9,16 +9,16 @@ require (
 	github.com/glebarez/sqlite v1.11.0
 	github.com/go-co-op/gocron v1.37.0
 	github.com/go-resty/resty/v2 v2.17.2
-	github.com/go-telegram/bot v1.20.0
+	github.com/go-telegram/bot v1.21.0
 	github.com/google/uuid v1.6.0
 	github.com/panjf2000/ants/v2 v2.12.1
 	github.com/rs/zerolog v1.35.1
 	golang.org/x/net v0.56.0
 	golang.org/x/text v0.38.0
 	golang.org/x/time v0.15.0
-	google.golang.org/genai v1.56.0
+	google.golang.org/genai v1.62.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
-	gorm.io/gen v0.3.27
+	gorm.io/gen v0.3.28
 	gorm.io/gorm v1.31.2
 	gorm.io/plugin/dbresolver v1.6.2
 )
