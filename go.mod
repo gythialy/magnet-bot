@@ -9,7 +9,7 @@ require (
 	github.com/glebarez/sqlite v1.11.0
 	github.com/go-co-op/gocron v1.37.0
 	github.com/go-resty/resty/v2 v2.17.2
-	github.com/go-telegram/bot v1.21.0
+	github.com/go-telegram/bot v1.22.0
 	github.com/google/uuid v1.6.0
 	github.com/panjf2000/ants/v2 v2.12.1
 	github.com/rs/zerolog v1.35.1
