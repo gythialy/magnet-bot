@@ -13,7 +13,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/panjf2000/ants/v2 v2.12.1
 	github.com/rs/zerolog v1.35.1
-	golang.org/x/net v0.56.0
+	golang.org/x/net v0.57.0
 	golang.org/x/text v0.40.0
 	golang.org/x/time v0.15.0
 	google.golang.org/genai v1.62.0
@@ -56,11 +56,11 @@ require (
 	go.opentelemetry.io/otel/metric v1.41.0 // indirect
 	go.opentelemetry.io/otel/trace v1.41.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
-	golang.org/x/crypto v0.53.0 // indirect
+	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c // indirect
 	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/tools v0.47.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
 	google.golang.org/grpc v1.79.3 // indirect
