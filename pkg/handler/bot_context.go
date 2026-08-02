@@ -237,7 +237,7 @@ func (ctx *BotContext) initBot() error {
 func (ctx *BotContext) Start() {
 	scheduleInterval := config.ScheduleInterval()
 
-	job, _ := ctx.scheduler.Every(scheduleInterval).Hours().Name("fetch_info").Do(func() error {
+	job, _ := ctx.scheduler.Every(scheduleInterval).Hours().Name("fetch_info").SingletonMode().Do(func() error {
 		ctx.processor.Process()
 		return nil
 	})

@@ -60,6 +60,10 @@ type InfoProcessor struct {
 	dailyResetTime time.Time
 	processingLock sync.Mutex
 	processingURLs map[string]bool
+	// processingAlarms guards the check-send-insert critical section for alarms,
+	// preventing duplicate alarm messages when Process() runs overlap (e.g. a
+	// previous run still in progress when the next scheduled run starts).
+	processingAlarms map[string]bool
 }
 
 func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
@@ -72,12 +76,13 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 	}
 
 	processor := &InfoProcessor{
-		ctx:            ctx,
-		minuteLimiter:  rate.NewLimiter(rate.Every(time.Minute/requestsPerMinute), 1),
-		dailyResetTime: nextMidnight(),
-		gemini:         client,
-		crawler:        NewCrawler(ctx),
-		processingURLs: make(map[string]bool),
+		ctx:              ctx,
+		minuteLimiter:    rate.NewLimiter(rate.Every(time.Minute/requestsPerMinute), 1),
+		dailyResetTime:   nextMidnight(),
+		gemini:           client,
+		crawler:          NewCrawler(ctx),
+		processingURLs:   make(map[string]bool),
+		processingAlarms: make(map[string]bool),
 	}
 
 	if pool, err := ants.NewPoolWithFunc(poolSize, processor.Handler); err != nil {
@@ -180,6 +185,28 @@ func (r *InfoProcessor) releaseLock(userId int64, url string) {
 	defer r.processingLock.Unlock()
 
 	delete(r.processingURLs, lockKey)
+}
+
+// tryLockAlarm marks an alarm (userId:CreditCode) as being processed by the
+// current invocation. It returns false when another concurrent invocation is
+// already handling the same alarm, in which case the caller must skip it to
+// avoid pushing a duplicate message.
+func (r *InfoProcessor) tryLockAlarm(key string) bool {
+	r.processingLock.Lock()
+	defer r.processingLock.Unlock()
+
+	if r.processingAlarms[key] {
+		return false
+	}
+	r.processingAlarms[key] = true
+	return true
+}
+
+func (r *InfoProcessor) unlockAlarm(key string) {
+	r.processingLock.Lock()
+	defer r.processingLock.Unlock()
+
+	delete(r.processingAlarms, key)
 }
 
 func (r *InfoProcessor) Handler(i interface{}) {
@@ -287,12 +314,32 @@ func (r *InfoProcessor) Handler(i interface{}) {
 		// process alarms
 		processedAlarms := make(map[string]struct{})
 		var successfulAlarms []*model.Alarm
+		var lockedAlarms []string
+		defer func() {
+			for _, key := range lockedAlarms {
+				r.unlockAlarm(key)
+			}
+		}()
+
 		for _, alarm := range pd.Alarms {
 			alarmKey := fmt.Sprintf("%d:%s", userId, alarm.CreditCode)
 
 			if _, exists := processedAlarms[alarmKey]; exists {
 				continue
 			}
+			processedAlarms[alarmKey] = struct{}{}
+
+			// Process() hands tasks to the pool asynchronously, so two
+			// invocations for the same user can run concurrently (e.g. a
+			// previous scheduled run's handlers still in flight when the
+			// next run dispatches). Guard the check-send-insert critical
+			// section so both invocations cannot pass IsExist() and push
+			// the same alarm twice.
+			if !r.tryLockAlarm(alarmKey) {
+				logger.Debug().Msgf("alarm %s is being processed by another invocation, skip", alarmKey)
+				continue
+			}
+			lockedAlarms = append(lockedAlarms, alarmKey)
 
 			alarm.UserID = userId
 			isExist, err := dal.Alarm.IsExist(userId, alarm.CreditCode)
@@ -304,8 +351,6 @@ func (r *InfoProcessor) Handler(i interface{}) {
 			if isExist {
 				continue
 			}
-
-			processedAlarms[alarmKey] = struct{}{}
 
 			if msg, err := alarm.ToMessage(); err == nil {
 				if _, msgErr := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
