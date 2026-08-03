@@ -17,17 +17,23 @@ const fname = "index.html"
 type GotenbergClient struct {
 	client  *gotenberg.Client
 	hookURL string
+	token   string
 }
 
-func NewGotenbergClient(host string, hookURL string) (*GotenbergClient, error) {
+func NewGotenbergClient(host string, hookURL string, token string) (*GotenbergClient, error) {
 	if client, err := gotenberg.NewClient(host, http.DefaultClient); err == nil {
 		return &GotenbergClient{
 			client:  client,
 			hookURL: hookURL,
+			token:   token,
 		}, nil
 	} else {
 		return nil, err
 	}
+}
+
+func (g *GotenbergClient) webhookToken() string {
+	return g.token
 }
 
 func (g *GotenbergClient) URLToPDF(u string) (string, error) {
@@ -35,6 +41,9 @@ func (g *GotenbergClient) URLToPDF(u string) (string, error) {
 	req.SetWebhookMethod(http.MethodPost)
 	requestId := uuid.New().String()
 	hookURL := fmt.Sprintf("%s%s%s", g.hookURL, constant.PDFEndPoint, requestId)
+	if token := g.webhookToken(); token != "" {
+		hookURL = fmt.Sprintf("%s?token=%s", hookURL, token)
+	}
 	req.UseWebhook(hookURL, hookURL)
 
 	if resp, err := g.client.Send(context.Background(), req); err == nil {
@@ -58,6 +67,9 @@ func (g *GotenbergClient) HtmlToImage(content string) (string, error) {
 
 	requestId := uuid.New().String()
 	hookURL := fmt.Sprintf("%s%s%s", g.hookURL, constant.PDFEndPoint, requestId)
+	if token := g.webhookToken(); token != "" {
+		hookURL = fmt.Sprintf("%s?token=%s", hookURL, token)
+	}
 	req := gotenberg.NewHTMLRequest(index)
 	req.ScreenshotOptimizeForSpeed()
 	req.SetWebhookMethod(http.MethodPost)
@@ -79,6 +91,9 @@ func (g *GotenbergClient) HtmlToImage(content string) (string, error) {
 func (g *GotenbergClient) URLToImage(u string) (string, error) {
 	requestId := uuid.New().String()
 	hookURL := fmt.Sprintf("%s%s%s", g.hookURL, constant.PDFEndPoint, requestId)
+	if token := g.webhookToken(); token != "" {
+		hookURL = fmt.Sprintf("%s?token=%s", hookURL, token)
+	}
 	req := gotenberg.NewURLRequest(u)
 	req.EmulateScreenMediaType()
 	req.SetWebhookMethod(http.MethodPost)
