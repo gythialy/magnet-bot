@@ -60,6 +60,9 @@ type InfoProcessor struct {
 	dailyResetTime time.Time
 	processingLock sync.Mutex
 	processingURLs map[string]bool
+	// limiterLock guards dailyCount/dailyResetTime, which are read and written
+	// by concurrent pool workers in ToMessage().
+	limiterLock sync.Mutex
 	// processingAlarms guards the check-send-insert critical section for alarms,
 	// preventing duplicate alarm messages when Process() runs overlap (e.g. a
 	// previous run still in progress when the next scheduled run starts).
@@ -379,6 +382,7 @@ func (r *InfoProcessor) Handler(i interface{}) {
 
 func (r *InfoProcessor) ToMessage(project *Project) ([]string, int) {
 	// Reset the daily counter if needed
+	r.limiterLock.Lock()
 	if time.Now().After(r.dailyResetTime) {
 		r.dailyCount = 0
 		r.dailyResetTime = nextMidnight()
@@ -386,12 +390,15 @@ func (r *InfoProcessor) ToMessage(project *Project) ([]string, int) {
 
 	// Use simplified content if we hit API limits or encounter errors
 	if r.dailyCount >= requestsPerDay {
+		r.limiterLock.Unlock()
 		r.ctx.Logger.Error().Msgf("daily API limit (%d) reached", requestsPerDay)
 		project.Content = utils.SimplifyContent(project.Content)
 		return project.SplitMessage()
 	}
 
-	// Try to use Gemini API
+	// Try to use Gemini API. Release the limiter lock before waiting so other
+	// workers can still update dailyCount while this one is blocked.
+	r.limiterLock.Unlock()
 	if err := r.minuteLimiter.Wait(context.Background()); err != nil {
 		r.ctx.Logger.Error().Err(err).Msg("minute rate limiter error")
 		project.Content = utils.SimplifyContent(project.Content)
