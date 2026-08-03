@@ -17,8 +17,6 @@ import (
 
 	"github.com/gythialy/magnet/pkg/constant"
 
-	"github.com/go-telegram/bot/models"
-
 	"github.com/glebarez/sqlite"
 	"github.com/go-co-op/gocron"
 	"github.com/go-telegram/bot"
@@ -173,60 +171,7 @@ func (ctx *BotContext) initBot() error {
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Clean, bot.MatchTypePrefix, managerHandler.Clean)
 
 	if _, err := ctx.Bot.SetMyCommands(context.Background(), &bot.SetMyCommandsParams{
-		Commands: []models.BotCommand{
-			{
-				Command:     constant.Me,
-				Description: "Show user information",
-			},
-			{
-				Command:     constant.AddKeyword,
-				Description: "Add project monitoring keywords",
-			},
-			{
-				Command:     constant.DeleteKeyword,
-				Description: "Delete keywords by IDs, separated by commas",
-			},
-			{
-				Command:     constant.EditKeyword,
-				Description: "Edit keyword by IDs, eg: 1=keyword1; 2=keyword2",
-			},
-			{
-				Command:     constant.AddAlarmKeyword,
-				Description: "Add tender monitoring codes",
-			},
-			{
-				Command:     constant.SearchAlarmRecords,
-				Description: "Search alarm records by keyword",
-			},
-			{
-				Command:     constant.SearchHistory,
-				Description: "Search history records by title",
-			},
-			{
-				Command:     constant.ListToday,
-				Description: "List today's records",
-			},
-			{
-				Command:     constant.Statistics,
-				Description: "Show statistics",
-			},
-			{
-				Command:     constant.ConvertPDF,
-				Description: "Convert URL to PDF",
-			},
-			{
-				Command:     constant.ConvertIMG,
-				Description: "Convert URL to image",
-			},
-			{
-				Command:     constant.Retry,
-				Description: "Retry failed tasks (admin only)",
-			},
-			{
-				Command:     constant.Clean,
-				Description: "Clean cache files (admin only)",
-			},
-		},
+		Commands: TelegramCommands(),
 	}); err != nil {
 		return err
 	} else {
