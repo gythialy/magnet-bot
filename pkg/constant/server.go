@@ -14,6 +14,10 @@ const (
 	LogLevel         = "LOG_LEVEL"
 	CrawlDays        = "CRAWL_DAYS"
 	RestyTrace       = "RESTY_TRACE"
+	// Gemini rate limits are tunable via env so they can match the actual
+	// API tier (free tier RPD is much lower than paid tiers).
+	GeminiRequestsPerMinute = "GEMINI_REQUESTS_PER_MINUTE"
+	GeminiRequestsPerDay    = "GEMINI_REQUESTS_PER_DAY"
 
 	PDFEndPoint       = "/pdf/"
 	WebhookServerURL  = "WEBHOOK_SERVER_URL"

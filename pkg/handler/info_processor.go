@@ -27,9 +27,7 @@ import (
 const (
 	poolSize = 10
 
-	requestsPerDay    = 1200
-	requestsPerMinute = 8
-	systemPrompt      = `将下列 HTML 转换为纯文本:
+	systemPrompt = `将下列 HTML 转换为纯文本:
 - 使用纯文本显示，不能包含任何 html 标签
 - "申领时间"和"申领地址"之间应该去除多余的换行和空格转为一行，如: "2024年11月07日 至 2024年11月12日，每天上午 08:30 至 11:30，下午13:00至16:30(北京时间,工作日)"
 - 对于复杂的表格使用csv格式显示，每个单元格的值删除多余的换行符和空白字符，如果处理后该行所有单元格的内容都为空，则删除，正常数据最终格式显示为"1;cell1value;cell2value"\n%s`
@@ -78,9 +76,10 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 		return nil, err
 	}
 
+	requestsPerMinute := config.GeminiRequestsPerMinute()
 	processor := &InfoProcessor{
 		ctx:              ctx,
-		minuteLimiter:    rate.NewLimiter(rate.Every(time.Minute/requestsPerMinute), 1),
+		minuteLimiter:    rate.NewLimiter(rate.Every(time.Minute/time.Duration(requestsPerMinute)), 1),
 		dailyResetTime:   nextMidnight(),
 		gemini:           client,
 		crawler:          NewCrawler(ctx),
@@ -437,9 +436,9 @@ func (r *InfoProcessor) ToMessage(project *Project) ([]string, int) {
 	}
 
 	// Use simplified content if we hit API limits or encounter errors
-	if r.dailyCount >= requestsPerDay {
+	if r.dailyCount >= int64(config.GeminiRequestsPerDay()) {
 		r.limiterLock.Unlock()
-		r.ctx.Logger.Error().Msgf("daily API limit (%d) reached", requestsPerDay)
+		r.ctx.Logger.Error().Msgf("daily API limit (%d) reached", config.GeminiRequestsPerDay())
 		project.Content = utils.SimplifyContent(project.Content)
 		return project.SplitMessage()
 	}

@@ -10,8 +10,10 @@ import (
 )
 
 const (
-	defaultScheduleInterval = 1
-	defaultModelName        = "gemini-2.0-flash-lite"
+	defaultScheduleInterval   = 1
+	defaultModelName          = "gemini-2.0-flash-lite"
+	defaultRequestsPerMinute  = 8
+	defaultRequestsPerDay     = 200
 )
 
 func ManagerId() int64 {
@@ -83,4 +85,25 @@ func GeminiModel() string {
 		return name
 	}
 	return defaultModelName
+}
+
+func GeminiRequestsPerMinute() int {
+	if v := os.Getenv(constant.GeminiRequestsPerMinute); v != "" {
+		if i, err := strconv.Atoi(v); err == nil && i > 0 {
+			return i
+		}
+	}
+	// Safe default: below the free tier RPM of every Flash model (10+).
+	return defaultRequestsPerMinute
+}
+
+func GeminiRequestsPerDay() int {
+	if v := os.Getenv(constant.GeminiRequestsPerDay); v != "" {
+		if i, err := strconv.Atoi(v); err == nil && i > 0 {
+			return i
+		}
+	}
+	// Free tier RPD is ~250; keep a margin so the daily budget is never
+	// exhausted by a single batch of notifications.
+	return defaultRequestsPerDay
 }
