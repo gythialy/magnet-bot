@@ -10,18 +10,26 @@ import (
 
 	"github.com/gythialy/magnet/pkg/dal"
 	"github.com/gythialy/magnet/pkg/model"
+	"github.com/gythialy/magnet/pkg/utils"
 
 	"github.com/glebarez/sqlite"
+	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
 
-func TestCrawler_Get(t *testing.T) {
-	crawler := NewCrawler(&BotContext{
+func testBotContext(serverUrl string) *BotContext {
+	nopLogger := zerolog.Nop()
+	return &BotContext{
+		Logger: &utils.Logger{Logger: &nopLogger},
 		Config: &config.ServiceConfig{
-			MessageServerUrl: os.Getenv("SERVER_URL"),
+			MessageServerUrl: serverUrl,
 		},
-	})
+	}
+}
+
+func TestCrawler_Get(t *testing.T) {
+	crawler := NewCrawler(testBotContext(os.Getenv("SERVER_URL")))
 
 	results := crawler.Projects()
 	t.Log(len(results))
@@ -43,11 +51,7 @@ func TestCrawler_Fetch(t *testing.T) {
 	db.Debug()
 	dal.SetDefault(db)
 
-	crawler := NewCrawler(&BotContext{
-		Config: &config.ServiceConfig{
-			MessageServerUrl: config.MessageServerUrl(),
-		},
-	})
+	crawler := NewCrawler(testBotContext(config.MessageServerUrl()))
 
 	userId := int64(1111)
 	result := crawler.Alarms([]string{"中国"}, userId)
