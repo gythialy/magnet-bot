@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gythialy/magnet/pkg/utils"
@@ -103,17 +104,29 @@ func (c *Crawler) Projects() []*Project {
 }
 
 func (c *Crawler) alarmListByKeywords(keywords []string, alarmType constant.CreditType) []*model.Alarm {
-	var result []*model.Alarm
-	for _, keyword := range keywords {
-		params := map[string]string{
-			"creditName": keyword,
-			"channel":    alarmType.String(),
-			"siteId":     siteId,
-		}
-		if list, err := c.alarmList(params); err == nil {
-			result = append(result, list...)
-		}
+	if len(keywords) == 0 {
+		return nil
 	}
+	result := make([]*model.Alarm, 0, len(keywords)*10)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for _, keyword := range keywords {
+		wg.Add(1)
+		go func(kw string) {
+			defer wg.Done()
+			params := map[string]string{
+				"creditName": kw,
+				"channel":    alarmType.String(),
+				"siteId":     siteId,
+			}
+			if list, err := c.alarmList(params); err == nil {
+				mu.Lock()
+				result = append(result, list...)
+				mu.Unlock()
+			}
+		}(keyword)
+	}
+	wg.Wait()
 	return result
 }
 
