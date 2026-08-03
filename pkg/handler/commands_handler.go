@@ -104,7 +104,7 @@ func (c *CommandsHandler) EditKeywordHandler(ctx context.Context, b *bot.Bot, up
 			ChatID: update.Message.Chat.ID,
 			Text:   fmt.Sprintf("%s: successful.", constant.EditKeyword),
 		}); msgErr != nil {
-			c.ctx.Logger.Error().Err(msgErr)
+			c.ctx.Logger.Error().Stack().Err(msgErr).Msg("send edit keyword message failed")
 		}
 	} else {
 		if _, msgErr := b.SendMessage(ctx, &bot.SendMessageParams{
