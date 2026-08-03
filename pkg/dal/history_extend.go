@@ -9,7 +9,9 @@ import (
 
 const (
 	batchSize = 30
-	defaultDays
+	// defaultDays is the cleanup window (in days) for history records when
+	// Clean is invoked without an explicit value.
+	defaultDays = 30
 )
 
 func (h *history) IsUrlExist(userId int64, url string) (bool, error) {

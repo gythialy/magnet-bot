@@ -226,17 +226,24 @@ const projectContentSem = 5
 func (r *InfoProcessor) Handler(i interface{}) {
 	switch pd := i.(type) {
 	case ProcessData:
-		// process projects
-		historyDao := dal.History
-		alarmDao := dal.Alarm
-		projects := NewProjects(r.ctx, pd.Projects, pd.ProjectRules).Filter()
-		failed := []string{"failed:"}
-		filterFailed := make(map[string]*Project)
-		userId := pd.UserId
-		var processedURL []*model.History
-		now := time.Now()
+		r.processProjects(pd)
+		r.processAlarms(pd)
+	}
+}
 
-		logger := r.ctx.Logger
+// processProjects handles the project-notice pipeline for one user: filter by
+// keyword rules, render matched content (rate-limited Gemini), send messages
+// and record history.
+func (r *InfoProcessor) processProjects(pd ProcessData) {
+	historyDao := dal.History
+	projects := NewProjects(r.ctx, pd.Projects, pd.ProjectRules).Filter()
+	failed := []string{"failed:"}
+	filterFailed := make(map[string]*Project)
+	userId := pd.UserId
+	var processedURL []*model.History
+	now := time.Now()
+
+	logger := r.ctx.Logger
 	// Filter out URLs that were already processed or are being processed by
 	// another worker, so we only spend Gemini quota on new content.
 	var pending []*Project
@@ -271,145 +278,152 @@ func (r *InfoProcessor) Handler(i interface{}) {
 	}
 	wg.Wait()
 
-	projectLoop:
-		for j, project := range pending {
-			title := project.Title
-			pageURL := project.Pageurl
-			shortTitle := project.ShortTitle
+projectLoop:
+	for j, project := range pending {
+		title := project.Title
+		pageURL := project.Pageurl
+		shortTitle := project.ShortTitle
 
-			chunks := results[j].chunks
-			total := results[j].total
-			logger.Debug().Msgf("split content to %d parts", total)
+		chunks := results[j].chunks
+		total := results[j].total
+		logger.Debug().Msgf("split content to %d parts", total)
 
-			// only save all parts failed to the failed list
-			isSuccessful := false
-			for idx, chunk := range chunks {
-				if _, errSend := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
-					ChatID:    userId,
-					Text:      chunk,
-					ParseMode: models.ParseModeHTML,
-				}); errSend != nil {
-					if !isSuccessful {
-						if _, ok := filterFailed[pageURL]; !ok {
-							filterFailed[pageURL] = project
-							failed = append(failed, fmt.Sprintf("%d. <b>[%s]</b> <a href=\"%s\">%s</a>",
-								len(failed), project.Keyword, pageURL, title))
-						}
+		// only save all parts failed to the failed list
+		isSuccessful := false
+		for idx, chunk := range chunks {
+			if _, errSend := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
+				ChatID:    userId,
+				Text:      chunk,
+				ParseMode: models.ParseModeHTML,
+			}); errSend != nil {
+				if !isSuccessful {
+					if _, ok := filterFailed[pageURL]; !ok {
+						filterFailed[pageURL] = project
+						failed = append(failed, fmt.Sprintf("%d. <b>[%s]</b> <a href=\"%s\">%s</a>",
+							len(failed), project.Keyword, pageURL, title))
 					}
-					logger.Error().Stack().Err(errSend).Msgf("content: %s", chunk)
-					if idx == 0 {
-						r.releaseLock(userId, pageURL)
-						continue projectLoop
-					}
-				} else {
-					isSuccessful = true
-					logger.Info().Msgf("notify: %s[%s]-%d", shortTitle, project.OpenTenderCode, idx)
 				}
-				time.Sleep(500 * time.Millisecond)
+				logger.Error().Stack().Err(errSend).Msgf("content: %s", chunk)
+				if idx == 0 {
+					r.releaseLock(userId, pageURL)
+					continue projectLoop
+				}
+			} else {
+				isSuccessful = true
+				logger.Info().Msgf("notify: %s[%s]-%d", shortTitle, project.OpenTenderCode, idx)
 			}
+			time.Sleep(500 * time.Millisecond)
+		}
 
-			if isSuccessful && total > 0 {
+		if isSuccessful && total > 0 {
+			processedURL = append(processedURL, &model.History{
+				UserID:        userId,
+				URL:           pageURL,
+				Title:         shortTitle,
+				UpdatedAt:     now,
+				HasTenderCode: btoi(project.HasTenderCode),
+			})
+		}
+
+		// Release the lock for this URL
+		r.releaseLock(userId, pageURL)
+	}
+
+	if len(failed) > 1 {
+		if _, err := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
+			ChatID:    userId,
+			Text:      strings.Join(failed, "\n"),
+			ParseMode: models.ParseModeHTML,
+		}); err != nil {
+			logger.Error().Stack().Err(err).Msg("")
+		} else {
+			for _, v := range filterFailed {
 				processedURL = append(processedURL, &model.History{
 					UserID:        userId,
-					URL:           pageURL,
-					Title:         shortTitle,
+					URL:           v.Pageurl,
+					Title:         v.ShortTitle,
+					HasTenderCode: btoi(v.HasTenderCode),
 					UpdatedAt:     now,
-					HasTenderCode: btoi(project.HasTenderCode),
 				})
 			}
+		}
+	}
 
-			// Release the lock for this URL
-			r.releaseLock(userId, pageURL)
+	if len(processedURL) > 0 {
+		if err := historyDao.Insert(processedURL); err != nil {
+			logger.Error().Stack().Err(err).Msg("")
+		}
+	}
+
+}
+
+// processAlarms handles the alarm-notice pipeline for one user: dedupe alarms
+// per run, guard the check-send-insert critical section against concurrent
+// invocations, push new alarms and batch-insert only the ones that were sent.
+func (r *InfoProcessor) processAlarms(pd ProcessData) {
+	alarmDao := dal.Alarm
+	userId := pd.UserId
+	logger := r.ctx.Logger
+	processedAlarms := make(map[string]struct{})
+	var successfulAlarms []*model.Alarm
+	var lockedAlarms []string
+	defer func() {
+		for _, key := range lockedAlarms {
+			r.unlockAlarm(key)
+		}
+	}()
+
+	for _, alarm := range pd.Alarms {
+		alarmKey := fmt.Sprintf("%d:%s", userId, alarm.CreditCode)
+
+		if _, exists := processedAlarms[alarmKey]; exists {
+			continue
+		}
+		processedAlarms[alarmKey] = struct{}{}
+
+		// Process() hands tasks to the pool asynchronously, so two
+		// invocations for the same user can run concurrently (e.g. a
+		// previous scheduled run's handlers still in flight when the
+		// next run dispatches). Guard the check-send-insert critical
+		// section so both invocations cannot pass IsExist() and push
+		// the same alarm twice.
+		if !r.tryLockAlarm(alarmKey) {
+			logger.Debug().Msgf("alarm %s is being processed by another invocation, skip", alarmKey)
+			continue
+		}
+		lockedAlarms = append(lockedAlarms, alarmKey)
+
+		alarm.UserID = userId
+		isExist, err := dal.Alarm.IsExist(userId, alarm.CreditCode)
+		if err != nil {
+			logger.Error().Err(err).Msg("failed to check alarm existence")
+			continue
 		}
 
-		if len(failed) > 1 {
-			if _, err := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
+		if isExist {
+			continue
+		}
+
+		if msg, err := alarm.ToMessage(); err == nil {
+			if _, msgErr := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
 				ChatID:    userId,
-				Text:      strings.Join(failed, "\n"),
+				Text:      msg,
 				ParseMode: models.ParseModeHTML,
-			}); err != nil {
-				logger.Error().Stack().Err(err).Msg("")
-			} else {
-				for _, v := range filterFailed {
-					processedURL = append(processedURL, &model.History{
-						UserID:        userId,
-						URL:           v.Pageurl,
-						Title:         v.ShortTitle,
-						HasTenderCode: btoi(v.HasTenderCode),
-						UpdatedAt:     now,
-					})
-				}
+			}); msgErr != nil {
+				logger.Error().Stack().Err(msgErr).Msg("send alarm")
+				continue
 			}
+
+			successfulAlarms = append(successfulAlarms, alarm)
+		} else {
+			logger.Error().Stack().Err(err).Msg("alarm to msg")
 		}
+	}
 
-		if len(processedURL) > 0 {
-			if err := historyDao.Insert(processedURL); err != nil {
-				logger.Error().Stack().Err(err).Msg("")
-			}
-		}
-
-		// process alarms
-		processedAlarms := make(map[string]struct{})
-		var successfulAlarms []*model.Alarm
-		var lockedAlarms []string
-		defer func() {
-			for _, key := range lockedAlarms {
-				r.unlockAlarm(key)
-			}
-		}()
-
-		for _, alarm := range pd.Alarms {
-			alarmKey := fmt.Sprintf("%d:%s", userId, alarm.CreditCode)
-
-			if _, exists := processedAlarms[alarmKey]; exists {
-				continue
-			}
-			processedAlarms[alarmKey] = struct{}{}
-
-			// Process() hands tasks to the pool asynchronously, so two
-			// invocations for the same user can run concurrently (e.g. a
-			// previous scheduled run's handlers still in flight when the
-			// next run dispatches). Guard the check-send-insert critical
-			// section so both invocations cannot pass IsExist() and push
-			// the same alarm twice.
-			if !r.tryLockAlarm(alarmKey) {
-				logger.Debug().Msgf("alarm %s is being processed by another invocation, skip", alarmKey)
-				continue
-			}
-			lockedAlarms = append(lockedAlarms, alarmKey)
-
-			alarm.UserID = userId
-			isExist, err := dal.Alarm.IsExist(userId, alarm.CreditCode)
-			if err != nil {
-				logger.Error().Err(err).Msg("failed to check alarm existence")
-				continue
-			}
-
-			if isExist {
-				continue
-			}
-
-			if msg, err := alarm.ToMessage(); err == nil {
-				if _, msgErr := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
-					ChatID:    userId,
-					Text:      msg,
-					ParseMode: models.ParseModeHTML,
-				}); msgErr != nil {
-					logger.Error().Stack().Err(msgErr).Msg("send alarm")
-					continue
-				}
-
-				successfulAlarms = append(successfulAlarms, alarm)
-			} else {
-				logger.Error().Stack().Err(err).Msg("alarm to msg")
-			}
-		}
-
-		// Batch inserts only the alarms that were successfully sent
-		if len(successfulAlarms) > 0 {
-			if err := alarmDao.Insert(successfulAlarms); err != nil {
-				logger.Error().Stack().Err(err).Msg("batch insert alarms")
-			}
+	// Batch inserts only the alarms that were successfully sent
+	if len(successfulAlarms) > 0 {
+		if err := alarmDao.Insert(successfulAlarms); err != nil {
+			logger.Error().Stack().Err(err).Msg("batch insert alarms")
 		}
 	}
 }
