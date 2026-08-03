@@ -9,10 +9,6 @@ import (
 	"time"
 
 	"github.com/gythialy/magnet/pkg/utils"
-	"golang.org/x/time/rate"
-
-	"github.com/gythialy/magnet/pkg/config"
-	"google.golang.org/genai"
 
 	"github.com/gythialy/magnet/pkg/dal"
 	"github.com/gythialy/magnet/pkg/model"
@@ -26,13 +22,6 @@ import (
 
 const (
 	poolSize = 10
-
-	requestsPerDay    = 1200
-	requestsPerMinute = 8
-	systemPrompt      = `将下列 HTML 转换为纯文本:
-- 使用纯文本显示，不能包含任何 html 标签
-- "申领时间"和"申领地址"之间应该去除多余的换行和空格转为一行，如: "2024年11月07日 至 2024年11月12日，每天上午 08:30 至 11:30，下午13:00至16:30(北京时间,工作日)"
-- 对于复杂的表格使用csv格式显示，每个单元格的值删除多余的换行符和空白字符，如果处理后该行所有单元格的内容都为空，则删除，正常数据最终格式显示为"1;cell1value;cell2value"\n%s`
 )
 
 var (
@@ -53,16 +42,9 @@ type ProcessData struct {
 type InfoProcessor struct {
 	ctx            *BotContext
 	pool           *ants.PoolWithFunc
-	gemini         *genai.Client
 	crawler        *Crawler
-	minuteLimiter  *rate.Limiter
-	dailyCount     int64
-	dailyResetTime time.Time
 	processingLock sync.Mutex
 	processingURLs map[string]bool
-	// limiterLock guards dailyCount/dailyResetTime, which are read and written
-	// by concurrent pool workers in ToMessage().
-	limiterLock sync.Mutex
 	// processingAlarms guards the check-send-insert critical section for alarms,
 	// preventing duplicate alarm messages when Process() runs overlap (e.g. a
 	// previous run still in progress when the next scheduled run starts).
@@ -70,19 +52,8 @@ type InfoProcessor struct {
 }
 
 func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
-	client, err := genai.NewClient(context.Background(), &genai.ClientConfig{
-		APIKey:  config.GeminiAPIKey(),
-		Backend: genai.BackendGeminiAPI,
-	})
-	if err != nil {
-		return nil, err
-	}
-
 	processor := &InfoProcessor{
 		ctx:              ctx,
-		minuteLimiter:    rate.NewLimiter(rate.Every(time.Minute/requestsPerMinute), 1),
-		dailyResetTime:   nextMidnight(),
-		gemini:           client,
 		crawler:          NewCrawler(ctx),
 		processingURLs:   make(map[string]bool),
 		processingAlarms: make(map[string]bool),
@@ -218,27 +189,33 @@ type contentResult struct {
 	total  int
 }
 
-// projectContentSem limits how many per-project Gemini calls run at once.
-// The Gemini API is rate limited anyway, so a small cap keeps the fan-out
-// bounded instead of spawning one goroutine per project.
+// projectContentSem limits how many per-project content renderings run at
+// once, keeping the fan-out bounded instead of spawning one goroutine per
+// project.
 const projectContentSem = 5
 
 func (r *InfoProcessor) Handler(i interface{}) {
 	switch pd := i.(type) {
 	case ProcessData:
-		// process projects
-		historyDao := dal.History
-		alarmDao := dal.Alarm
-		projects := NewProjects(r.ctx, pd.Projects, pd.ProjectRules).Filter()
-		failed := []string{"failed:"}
-		filterFailed := make(map[string]*Project)
-		userId := pd.UserId
-		var processedURL []*model.History
-		now := time.Now()
+		r.processProjects(pd)
+		r.processAlarms(pd)
+	}
+}
 
-		logger := r.ctx.Logger
+// processProjects handles the project-notice pipeline for one user: filter by
+// keyword rules, render matched content, send messages and record history.
+func (r *InfoProcessor) processProjects(pd ProcessData) {
+	historyDao := dal.History
+	projects := NewProjects(r.ctx, pd.Projects, pd.ProjectRules).Filter()
+	failed := []string{"failed:"}
+	filterFailed := make(map[string]*Project)
+	userId := pd.UserId
+	var processedURL []*model.History
+	now := time.Now()
+
+	logger := r.ctx.Logger
 	// Filter out URLs that were already processed or are being processed by
-	// another worker, so we only spend Gemini quota on new content.
+	// another worker, so we only render new content.
 	var pending []*Project
 	for _, project := range projects {
 		shouldSkip, err := r.shouldSkipProcessing(userId, project.Pageurl, pd.IsForced)
@@ -253,9 +230,8 @@ func (r *InfoProcessor) Handler(i interface{}) {
 		pending = append(pending, project)
 	}
 
-	// ToMessage() performs a rate-limited Gemini call per project. Rendering
-	// is CPU/IO heavy, so render the pending projects concurrently with a
-	// bounded fan-out instead of blocking on each project in turn.
+	// Rendering is CPU heavy, so render the pending projects concurrently
+	// with a bounded fan-out instead of blocking on each project in turn.
 	results := make([]contentResult, len(pending))
 	sem := make(chan struct{}, projectContentSem)
 	var wg sync.WaitGroup
@@ -271,190 +247,158 @@ func (r *InfoProcessor) Handler(i interface{}) {
 	}
 	wg.Wait()
 
-	projectLoop:
-		for j, project := range pending {
-			title := project.Title
-			pageURL := project.Pageurl
-			shortTitle := project.ShortTitle
+projectLoop:
+	for j, project := range pending {
+		title := project.Title
+		pageURL := project.Pageurl
+		shortTitle := project.ShortTitle
 
-			chunks := results[j].chunks
-			total := results[j].total
-			logger.Debug().Msgf("split content to %d parts", total)
+		chunks := results[j].chunks
+		total := results[j].total
+		logger.Debug().Msgf("split content to %d parts", total)
 
-			// only save all parts failed to the failed list
-			isSuccessful := false
-			for idx, chunk := range chunks {
-				if _, errSend := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
-					ChatID:    userId,
-					Text:      chunk,
-					ParseMode: models.ParseModeHTML,
-				}); errSend != nil {
-					if !isSuccessful {
-						if _, ok := filterFailed[pageURL]; !ok {
-							filterFailed[pageURL] = project
-							failed = append(failed, fmt.Sprintf("%d. <b>[%s]</b> <a href=\"%s\">%s</a>",
-								len(failed), project.Keyword, pageURL, title))
-						}
+		// only save all parts failed to the failed list
+		isSuccessful := false
+		for idx, chunk := range chunks {
+			if _, errSend := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
+				ChatID:    userId,
+				Text:      chunk,
+				ParseMode: models.ParseModeHTML,
+			}); errSend != nil {
+				if !isSuccessful {
+					if _, ok := filterFailed[pageURL]; !ok {
+						filterFailed[pageURL] = project
+						failed = append(failed, fmt.Sprintf("%d. <b>[%s]</b> <a href=\"%s\">%s</a>",
+							len(failed), project.Keyword, pageURL, title))
 					}
-					logger.Error().Stack().Err(errSend).Msgf("content: %s", chunk)
-					if idx == 0 {
-						r.releaseLock(userId, pageURL)
-						continue projectLoop
-					}
-				} else {
-					isSuccessful = true
-					logger.Info().Msgf("notify: %s[%s]-%d", shortTitle, project.OpenTenderCode, idx)
 				}
-				time.Sleep(500 * time.Millisecond)
+				logger.Error().Stack().Err(errSend).Msgf("content: %s", chunk)
+				if idx == 0 {
+					r.releaseLock(userId, pageURL)
+					continue projectLoop
+				}
+			} else {
+				isSuccessful = true
+				logger.Info().Msgf("notify: %s[%s]-%d", shortTitle, project.OpenTenderCode, idx)
 			}
+			time.Sleep(500 * time.Millisecond)
+		}
 
-			if isSuccessful && total > 0 {
+		if isSuccessful && total > 0 {
+			processedURL = append(processedURL, &model.History{
+				UserID:        userId,
+				URL:           pageURL,
+				Title:         shortTitle,
+				UpdatedAt:     now,
+				HasTenderCode: btoi(project.HasTenderCode),
+			})
+		}
+
+		// Release the lock for this URL
+		r.releaseLock(userId, pageURL)
+	}
+
+	if len(failed) > 1 {
+		if _, err := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
+			ChatID:    userId,
+			Text:      strings.Join(failed, "\n"),
+			ParseMode: models.ParseModeHTML,
+		}); err != nil {
+			logger.Error().Stack().Err(err).Msg("")
+		} else {
+			for _, v := range filterFailed {
 				processedURL = append(processedURL, &model.History{
 					UserID:        userId,
-					URL:           pageURL,
-					Title:         shortTitle,
+					URL:           v.Pageurl,
+					Title:         v.ShortTitle,
+					HasTenderCode: btoi(v.HasTenderCode),
 					UpdatedAt:     now,
-					HasTenderCode: btoi(project.HasTenderCode),
 				})
 			}
+		}
+	}
 
-			// Release the lock for this URL
-			r.releaseLock(userId, pageURL)
+	if len(processedURL) > 0 {
+		if err := historyDao.Insert(processedURL); err != nil {
+			logger.Error().Stack().Err(err).Msg("")
+		}
+	}
+
+}
+
+// processAlarms handles the alarm-notice pipeline for one user: dedupe alarms
+// per run, guard the check-send-insert critical section against concurrent
+// invocations, push new alarms and batch-insert only the ones that were sent.
+func (r *InfoProcessor) processAlarms(pd ProcessData) {
+	alarmDao := dal.Alarm
+	userId := pd.UserId
+	logger := r.ctx.Logger
+	processedAlarms := make(map[string]struct{})
+	var successfulAlarms []*model.Alarm
+	var lockedAlarms []string
+	defer func() {
+		for _, key := range lockedAlarms {
+			r.unlockAlarm(key)
+		}
+	}()
+
+	for _, alarm := range pd.Alarms {
+		alarmKey := fmt.Sprintf("%d:%s", userId, alarm.CreditCode)
+
+		if _, exists := processedAlarms[alarmKey]; exists {
+			continue
+		}
+		processedAlarms[alarmKey] = struct{}{}
+
+		// Process() hands tasks to the pool asynchronously, so two
+		// invocations for the same user can run concurrently (e.g. a
+		// previous scheduled run's handlers still in flight when the
+		// next run dispatches). Guard the check-send-insert critical
+		// section so both invocations cannot pass IsExist() and push
+		// the same alarm twice.
+		if !r.tryLockAlarm(alarmKey) {
+			logger.Debug().Msgf("alarm %s is being processed by another invocation, skip", alarmKey)
+			continue
+		}
+		lockedAlarms = append(lockedAlarms, alarmKey)
+
+		alarm.UserID = userId
+		isExist, err := dal.Alarm.IsExist(userId, alarm.CreditCode)
+		if err != nil {
+			logger.Error().Err(err).Msg("failed to check alarm existence")
+			continue
 		}
 
-		if len(failed) > 1 {
-			if _, err := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
+		if isExist {
+			continue
+		}
+
+		if msg, err := alarm.ToMessage(); err == nil {
+			if _, msgErr := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
 				ChatID:    userId,
-				Text:      strings.Join(failed, "\n"),
+				Text:      msg,
 				ParseMode: models.ParseModeHTML,
-			}); err != nil {
-				logger.Error().Stack().Err(err).Msg("")
-			} else {
-				for _, v := range filterFailed {
-					processedURL = append(processedURL, &model.History{
-						UserID:        userId,
-						URL:           v.Pageurl,
-						Title:         v.ShortTitle,
-						HasTenderCode: btoi(v.HasTenderCode),
-						UpdatedAt:     now,
-					})
-				}
+			}); msgErr != nil {
+				logger.Error().Stack().Err(msgErr).Msg("send alarm")
+				continue
 			}
+
+			successfulAlarms = append(successfulAlarms, alarm)
+		} else {
+			logger.Error().Stack().Err(err).Msg("alarm to msg")
 		}
+	}
 
-		if len(processedURL) > 0 {
-			if err := historyDao.Insert(processedURL); err != nil {
-				logger.Error().Stack().Err(err).Msg("")
-			}
-		}
-
-		// process alarms
-		processedAlarms := make(map[string]struct{})
-		var successfulAlarms []*model.Alarm
-		var lockedAlarms []string
-		defer func() {
-			for _, key := range lockedAlarms {
-				r.unlockAlarm(key)
-			}
-		}()
-
-		for _, alarm := range pd.Alarms {
-			alarmKey := fmt.Sprintf("%d:%s", userId, alarm.CreditCode)
-
-			if _, exists := processedAlarms[alarmKey]; exists {
-				continue
-			}
-			processedAlarms[alarmKey] = struct{}{}
-
-			// Process() hands tasks to the pool asynchronously, so two
-			// invocations for the same user can run concurrently (e.g. a
-			// previous scheduled run's handlers still in flight when the
-			// next run dispatches). Guard the check-send-insert critical
-			// section so both invocations cannot pass IsExist() and push
-			// the same alarm twice.
-			if !r.tryLockAlarm(alarmKey) {
-				logger.Debug().Msgf("alarm %s is being processed by another invocation, skip", alarmKey)
-				continue
-			}
-			lockedAlarms = append(lockedAlarms, alarmKey)
-
-			alarm.UserID = userId
-			isExist, err := dal.Alarm.IsExist(userId, alarm.CreditCode)
-			if err != nil {
-				logger.Error().Err(err).Msg("failed to check alarm existence")
-				continue
-			}
-
-			if isExist {
-				continue
-			}
-
-			if msg, err := alarm.ToMessage(); err == nil {
-				if _, msgErr := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
-					ChatID:    userId,
-					Text:      msg,
-					ParseMode: models.ParseModeHTML,
-				}); msgErr != nil {
-					logger.Error().Stack().Err(msgErr).Msg("send alarm")
-					continue
-				}
-
-				successfulAlarms = append(successfulAlarms, alarm)
-			} else {
-				logger.Error().Stack().Err(err).Msg("alarm to msg")
-			}
-		}
-
-		// Batch inserts only the alarms that were successfully sent
-		if len(successfulAlarms) > 0 {
-			if err := alarmDao.Insert(successfulAlarms); err != nil {
-				logger.Error().Stack().Err(err).Msg("batch insert alarms")
-			}
+	// Batch inserts only the alarms that were successfully sent
+	if len(successfulAlarms) > 0 {
+		if err := alarmDao.Insert(successfulAlarms); err != nil {
+			logger.Error().Stack().Err(err).Msg("batch insert alarms")
 		}
 	}
 }
 
 func (r *InfoProcessor) ToMessage(project *Project) ([]string, int) {
-	// Reset the daily counter if needed
-	r.limiterLock.Lock()
-	if time.Now().After(r.dailyResetTime) {
-		r.dailyCount = 0
-		r.dailyResetTime = nextMidnight()
-	}
-
-	// Use simplified content if we hit API limits or encounter errors
-	if r.dailyCount >= requestsPerDay {
-		r.limiterLock.Unlock()
-		r.ctx.Logger.Error().Msgf("daily API limit (%d) reached", requestsPerDay)
-		project.Content = utils.SimplifyContent(project.Content)
-		return project.SplitMessage()
-	}
-
-	// Try to use Gemini API. Release the limiter lock before waiting so other
-	// workers can still update dailyCount while this one is blocked.
-	r.limiterLock.Unlock()
-	if err := r.minuteLimiter.Wait(context.Background()); err != nil {
-		r.ctx.Logger.Error().Err(err).Msg("minute rate limiter error")
-		project.Content = utils.SimplifyContent(project.Content)
-		return project.SplitMessage()
-	}
-
-	// Generate content using Gemini
-	ctx := context.Background()
-	prompt := genai.Text(fmt.Sprintf(systemPrompt, project.Content))
-	resp, err := r.gemini.Models.GenerateContent(ctx, config.GeminiModel(), prompt, nil)
-	if err != nil {
-		r.ctx.Logger.Error().Stack().Err(err).Msg("Gemini API error")
-		project.Content = utils.SimplifyContent(project.Content)
-		return project.SplitMessage()
-	}
-
-	if content := resp.Text(); content != "" {
-		project.Content = content
-	} else {
-		project.Content = utils.SimplifyContent(project.Content)
-	}
-
+	project.Content = utils.SimplifyContent(project.Content)
 	return project.SplitMessage()
 }
 
@@ -470,12 +414,6 @@ func cleanContent(content string) string {
 	).Replace(content)
 
 	return content
-}
-
-func nextMidnight() time.Time {
-	now := time.Now()
-	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0,
-		now.Location()).Add(24 * time.Hour)
 }
 
 func btoi(b bool) int32 {

@@ -1,13 +1,8 @@
 package utils
 
 import (
-	"context"
 	"fmt"
 	"testing"
-
-	"github.com/gythialy/magnet/pkg/config"
-
-	"google.golang.org/genai"
 )
 
 const input = `<h2 style="margin-top: 0pt; margin-bottom: 0pt; text-align: center; line-height: 28pt; break-after: avoid; font-family:
@@ -981,32 +976,8 @@ const input = `<h2 style="margin-top: 0pt; margin-bottom: 0pt; text-align: cente
 
 func Test_SimplifyHTML_TableWithoutBorder(t *testing.T) {
 	content := SimplifyHTML(input)
-	ctx := context.Background()
-	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  config.GeminiAPIKey(),
-		Backend: genai.BackendGeminiAPI,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp, err := client.Models.GenerateContent(ctx, "gemini-2.0-flash",
-		genai.Text(fmt.Sprintf(`将下列 HTML 转换为 Telegram message:
-- 尽可能使用文本显示
-- telegram html 支持的标签有<b>bold</b>,<i>italic</i>,<em>italic</em>,<code>code</code>，不支持的标签做删除处理
-- 对于复杂的表格使用csv格式显示，每个单元格的值删除多余的换行符和空白字符，最终格式显示为"1;cell1value;cell2value"\n%s`, content)), nil); err == nil {
-		printResponse(resp)
-	} else {
-		t.Fatal(err)
-	}
-}
-
-func printResponse(resp *genai.GenerateContentResponse) {
-	for _, cand := range resp.Candidates {
-		if cand.Content != nil {
-			for _, part := range cand.Content.Parts {
-				fmt.Println(part)
-			}
-		}
+	if content == "" {
+		t.Error("SimplifyHTML returned empty content")
 	}
 }
 

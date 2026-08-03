@@ -11,7 +11,6 @@ import (
 
 const (
 	defaultScheduleInterval = 1
-	defaultModelName        = "gemini-2.0-flash-lite"
 )
 
 func ManagerId() int64 {
@@ -74,13 +73,4 @@ func ScheduleInterval() int {
 	return result
 }
 
-func GeminiAPIKey() string {
-	return os.Getenv(constant.GeminiAPIKey)
-}
 
-func GeminiModel() string {
-	if name := os.Getenv(constant.GeminiModel); name != "" {
-		return name
-	}
-	return defaultModelName
-}

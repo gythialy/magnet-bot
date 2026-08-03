@@ -32,10 +32,7 @@ func (s *startHandler) Handler(ctx context.Context, b *bot.Bot, update *models.U
 }
 
 func (s *startHandler) sendHelpMessage(ctx context.Context, b *bot.Bot, update *models.Update) {
-	helpText := "Here are the commands you can use:\n" +
-		"/start - Start interacting with the bot\n" +
-		"/alarm - Get alarm details\n" +
-		"... (other commands)"
+	helpText := HelpText()
 
 	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:    update.Message.Chat.ID,
