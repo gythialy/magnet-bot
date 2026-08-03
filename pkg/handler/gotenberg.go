@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/dcaraxes/gotenberg-go-client/v8"
 	"github.com/dcaraxes/gotenberg-go-client/v8/document"
@@ -14,6 +15,11 @@ import (
 
 const fname = "index.html"
 
+// gotenbergHTTPTimeout bounds the HTTP client used for PDF/IMG conversion
+// requests. Without a timeout a hung Gotenberg instance would leave the
+// conversion goroutine and its webhook request state stuck forever.
+const gotenbergHTTPTimeout = 2 * time.Minute
+
 type GotenbergClient struct {
 	client  *gotenberg.Client
 	hookURL string
@@ -21,7 +27,8 @@ type GotenbergClient struct {
 }
 
 func NewGotenbergClient(host string, hookURL string, token string) (*GotenbergClient, error) {
-	if client, err := gotenberg.NewClient(host, http.DefaultClient); err == nil {
+	httpClient := &http.Client{Timeout: gotenbergHTTPTimeout}
+	if client, err := gotenberg.NewClient(host, httpClient); err == nil {
 		return &GotenbergClient{
 			client:  client,
 			hookURL: hookURL,
