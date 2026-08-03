@@ -209,6 +209,17 @@ func (r *InfoProcessor) unlockAlarm(key string) {
 	delete(r.processingAlarms, key)
 }
 
+// contentResult holds the outcome of a single project's message rendering.
+type contentResult struct {
+	chunks []string
+	total  int
+}
+
+// projectContentSem limits how many per-project Gemini calls run at once.
+// The Gemini API is rate limited anyway, so a small cap keeps the fan-out
+// bounded instead of spawning one goroutine per project.
+const projectContentSem = 5
+
 func (r *InfoProcessor) Handler(i interface{}) {
 	switch pd := i.(type) {
 	case ProcessData:
@@ -223,25 +234,48 @@ func (r *InfoProcessor) Handler(i interface{}) {
 		now := time.Now()
 
 		logger := r.ctx.Logger
+	// Filter out URLs that were already processed or are being processed by
+	// another worker, so we only spend Gemini quota on new content.
+	var pending []*Project
+	for _, project := range projects {
+		shouldSkip, err := r.shouldSkipProcessing(userId, project.Pageurl, pd.IsForced)
+		if err != nil {
+			logger.Error().Stack().Err(err).Msg("check url processing failed")
+			continue
+		}
+		if shouldSkip {
+			logger.Debug().Msgf("URL %s is already processed or being processed, skipping", project.ShortTitle)
+			continue
+		}
+		pending = append(pending, project)
+	}
+
+	// ToMessage() performs a rate-limited Gemini call per project. Rendering
+	// is CPU/IO heavy, so render the pending projects concurrently with a
+	// bounded fan-out instead of blocking on each project in turn.
+	results := make([]contentResult, len(pending))
+	sem := make(chan struct{}, projectContentSem)
+	var wg sync.WaitGroup
+	for i, pj := range pending {
+		wg.Add(1)
+		go func(idx int, pj *Project) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			chunks, total := r.ToMessage(pj)
+			results[idx] = contentResult{chunks: chunks, total: total}
+		}(i, pj)
+	}
+	wg.Wait()
+
 	projectLoop:
-		for _, project := range projects {
+		for j, project := range pending {
 			title := project.Title
 			pageURL := project.Pageurl
 			shortTitle := project.ShortTitle
 
-			// Check if URL should be skipped (already processed or being processed)
-			shouldSkip, err := r.shouldSkipProcessing(userId, pageURL, pd.IsForced)
-			if err != nil {
-				logger.Error().Stack().Err(err).Msg("check url processing failed")
-				continue
-			}
-
-			if shouldSkip {
-				logger.Debug().Msgf("URL %s is already processed or being processed, skipping", shortTitle)
-				continue
-			}
-
-			chunks, total := r.ToMessage(project)
+			chunks := results[j].chunks
+			total := results[j].total
 			logger.Debug().Msgf("split content to %d parts", total)
 
 			// only save all parts failed to the failed list
