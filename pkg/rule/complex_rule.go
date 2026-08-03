@@ -88,16 +88,21 @@ var slicePool = sync.Pool{
 }
 
 func (cr *ComplexRule) MarshalJSON() ([]byte, error) {
+	include := keysToSlice(cr.IncludeTerms)
+	exclude := keysToSlice(cr.ExcludeTerms)
+	// Put the exact same slices back that were used for marshaling, otherwise
+	// the pooled slices are never reused and concurrent MarshalJSON calls can
+	// race on the same underlying slice.
+	defer slicePool.Put(include)
+	defer slicePool.Put(exclude)
+
 	temp := struct {
 		IncludeTerms []string `json:"includeTerms"`
 		ExcludeTerms []string `json:"excludeTerms"`
 	}{
-		IncludeTerms: *keysToSlice(cr.IncludeTerms),
-		ExcludeTerms: *keysToSlice(cr.ExcludeTerms),
+		IncludeTerms: *include,
+		ExcludeTerms: *exclude,
 	}
-
-	defer slicePool.Put(keysToSlice(cr.IncludeTerms))
-	defer slicePool.Put(keysToSlice(cr.ExcludeTerms))
 
 	return json.Marshal(temp)
 }
