@@ -101,7 +101,7 @@ func NewBotContext() (*BotContext, error) {
 	}
 	dal.SetDefault(db)
 	// init gotenberg
-	client, err := NewGotenbergClient(cfg.PDF.PDFServiceURL, cfg.PDF.WebhookURL())
+	client, err := NewGotenbergClient(cfg.PDF.PDFServiceURL, cfg.PDF.WebhookURL(), cfg.PDF.WebhookToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create gotenberg client: %s", err)
 	}

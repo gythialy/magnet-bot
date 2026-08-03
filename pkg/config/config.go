@@ -13,6 +13,7 @@ import (
 type PDFServiceConfig struct {
 	WebhookServer     string
 	WebhookServerPort int
+	WebhookToken      string
 	PDFServiceURL     string
 }
 
@@ -27,6 +28,7 @@ func (c *PDFServiceConfig) Init() *PDFServiceConfig {
 	if v := os.Getenv(constant.WebhookServerPort); v != "" {
 		c.WebhookServerPort, _ = strconv.Atoi(v)
 	}
+	c.WebhookToken = os.Getenv(constant.WebhookToken)
 	return c
 }
 
