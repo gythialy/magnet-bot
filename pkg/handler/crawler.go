@@ -171,12 +171,16 @@ func (c *Crawler) alarm(noticeId string) (*model.AlarmDetail, error) {
 
 func (c *Crawler) Alarms(keywords []string, userId int64) []*model.Alarm {
 	result := make([]*model.Alarm, 0)
+	// Cache alarm detail fetches by noticeId. Multiple alarms often share the
+	// same notice (origin notice id), and breakFaith/suspend lists overlap,
+	// so without a cache the same detail endpoint gets hit N+1 times.
+	detailCache := make(map[string]*model.AlarmDetail)
 	r1 := c.alarmListByKeywords(keywords, constant.CreditTypeBreakFaith)
 	cache := make(map[string]interface{})
 	for _, alarm := range r1 {
 		if _, ok := cache[alarm.CreditCode]; !ok {
 			alarm.UserID = userId
-			c.alarmTitle(alarm)
+			c.alarmTitle(alarm, detailCache)
 			cache[alarm.CreditCode] = alarm
 			result = append(result, alarm)
 		}
@@ -185,7 +189,7 @@ func (c *Crawler) Alarms(keywords []string, userId int64) []*model.Alarm {
 	for _, alarm := range r2 {
 		if _, ok := cache[alarm.CreditCode]; !ok {
 			alarm.UserID = userId
-			c.alarmTitle(alarm)
+			c.alarmTitle(alarm, detailCache)
 			cache[alarm.CreditCode] = alarm
 			result = append(result, alarm)
 		}
@@ -193,8 +197,8 @@ func (c *Crawler) Alarms(keywords []string, userId int64) []*model.Alarm {
 	return result
 }
 
-func (c *Crawler) alarmTitle(alarm *model.Alarm) {
-	if detail, err := c.alarm(alarm.NoticeID); err == nil {
+func (c *Crawler) alarmTitle(alarm *model.Alarm, detailCache map[string]*model.AlarmDetail) {
+	if detail, err := c.alarmCached(alarm.NoticeID, detailCache); err == nil {
 		alarm.Title = &detail.Data.Title
 		u := fmt.Sprintf("https://%s%s", c.ctx.Config.MessageServerUrl, detail.Data.Pageurl)
 		alarm.PageUrl1 = u
@@ -202,13 +206,27 @@ func (c *Crawler) alarmTitle(alarm *model.Alarm) {
 		c.ctx.Logger.Error().Stack().Err(err).Msg("")
 	}
 	if alarm.OriginNoticeID != nil && *alarm.OriginNoticeID != "" {
-		if detail, err := c.alarm(*alarm.OriginNoticeID); err == nil {
+		if detail, err := c.alarmCached(*alarm.OriginNoticeID, detailCache); err == nil {
 			u := fmt.Sprintf("https://%s%s", c.ctx.Config.MessageServerUrl, detail.Data.Pageurl)
 			alarm.PageUrl2 = &u
 		} else {
 			c.ctx.Logger.Error().Stack().Err(err).Msg("")
 		}
 	}
+}
+
+// alarmCached fetches an alarm detail once per Process() run and reuses it
+// for every alarm that references the same noticeId.
+func (c *Crawler) alarmCached(noticeId string, detailCache map[string]*model.AlarmDetail) (*model.AlarmDetail, error) {
+	if detail, ok := detailCache[noticeId]; ok {
+		return detail, nil
+	}
+	detail, err := c.alarm(noticeId)
+	if err != nil {
+		return nil, err
+	}
+	detailCache[noticeId] = detail
+	return detail, nil
 }
 
 func (c *Crawler) format(time time.Time) string {
