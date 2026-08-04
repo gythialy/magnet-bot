@@ -1,6 +1,6 @@
 # magnet-bot 推送管线重构方案
 
-> 状态：方案 v1（2026-08-04），**Step 1-3 已在 PR #362 落地，Step 4-5 待评估**
+> 状态：方案 v1（2026-08-04），**全部步骤已在 PR #362 落地**
 > 背景：PR #361 落地了"DB 原子抢占 + KeyedLock"修复后，alarm/project 两条推送管线仍有大量重复与状态交织，本方案目标是简化实现、消除重复，且不改变外部行为。
 
 ---
@@ -126,12 +126,12 @@ func (p *PushPipeline) Run(handles []ClaimHandle) {
 
 **验收**：跨实例并发测试 + 过期记录单元测试。
 
-### Step 4：消除双重检查（可选，收益评估后决定）
+✅ ### Step 4：消除双重检查（保留预筛，明确分工）
 
 - 保留 `shouldSkipProcessing` 作为渲染前的快速过滤（省 CPU），但明确注释其与 claim 的分工：**预筛 vs 权威**。
 - 或：删掉内存锁只留 DB claim（渲染浪费可接受时）。**倾向保留**——预筛能避免大量白渲染。
 
-### Step 5：Pipeline 并行化（独立 PR，性能向）
+✅ ### Step 5：Pipeline 并行化
 
 - `Handler` 里 projects 与 alarms 改为并发执行（两个 goroutine + WaitGroup），互不拖慢。
 - 注意：两者共用同一 SQLite，写并发本身有锁；收益需实测。此步不做也无损正确性。
