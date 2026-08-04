@@ -121,8 +121,16 @@ func (r *InfoProcessor) get(id int64) ProcessData {
 	}
 }
 
-// shouldSkipProcessing checks if a URL is already processed in DB or is being processed,
-// returning true if processing should be skipped
+// shouldSkipProcessing is the render-time pre-filter for project URLs. It is
+// deliberately NOT the authority: its checks (in-process lock + IsUrlExist)
+// only avoid spending CPU on rendering something that is already handled or
+// in flight. The actual at-most-once guarantee comes from the DB claim
+// (InsertIfAbsent) performed later by the PushPipeline — a stale pre-filter
+// pass can only waste a render, never cause a duplicate push.
+//
+// On success (skip=false) the in-process lock is held until the caller
+// finishes with the URL (see releaseLock), so a concurrent invocation in the
+// same process cannot double-render.
 func (r *InfoProcessor) shouldSkipProcessing(userId int64, url string, isForced bool) (skip bool, err error) {
 	lockKey := fmt.Sprintf("%d:%s", userId, url)
 
@@ -166,8 +174,22 @@ const projectContentSem = 5
 func (r *InfoProcessor) Handler(i interface{}) {
 	switch pd := i.(type) {
 	case ProcessData:
-		r.processProjects(pd)
-		r.processAlarms(pd)
+		// Run the two pipelines concurrently so alarm notifications do not
+		// wait behind a large project batch. Both pipelines are safe to run
+		// in parallel: the PushPipeline's keyed lock is concurrent-safe, and
+		// the two handle sets never share a key (projects carry no Key, the
+		// pre-filter lock only guards project URLs).
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			r.processProjects(pd)
+		}()
+		go func() {
+			defer wg.Done()
+			r.processAlarms(pd)
+		}()
+		wg.Wait()
 	}
 }
 
