@@ -63,3 +63,19 @@ func (a *alarm) Insert(data []*model.Alarm) error {
 		UpdateAll: true,
 	}).CreateInBatches(data, batchSize)
 }
+
+// InsertIfAbsent claims an alarm via the (user_id, credit_code) unique
+// constraint: it inserts the row only when none exists and reports whether
+// this call created it, so concurrent callers can never both push the same
+// alarm. See dal.InsertIfAbsent.
+func (a *alarm) InsertIfAbsent(alarm *model.Alarm) (bool, error) {
+	return InsertIfAbsent(a.UnderlyingDB(), alarm,
+		a.UserID.ColumnName().String(), a.CreditCode.ColumnName().String())
+}
+
+// Remove deletes an alarm record. It is used to roll back a claim when the
+// message failed to send, so the next run can retry it.
+func (a *alarm) Remove(userId int64, creditCode string) error {
+	_, err := a.Where(a.UserID.Eq(userId), a.CreditCode.Eq(creditCode)).Delete()
+	return err
+}
