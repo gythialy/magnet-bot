@@ -44,7 +44,6 @@ type InfoProcessor struct {
 	pool         *ants.PoolWithFunc
 	crawler      *Crawler
 	urlLocks     *KeyedLock // in-process guard for project URLs
-	alarmLocks   *KeyedLock // in-process guard for alarms (userId:CreditCode)
 	pushPipeline *PushPipeline
 }
 
@@ -53,7 +52,6 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 		ctx:          ctx,
 		crawler:      NewCrawler(ctx),
 		urlLocks:     NewKeyedLock(),
-		alarmLocks:   NewKeyedLock(),
 		pushPipeline: NewPushPipeline(),
 	}
 
@@ -355,108 +353,103 @@ func (r *InfoProcessor) sendProject(st *projectPushState, project *Project, chun
 }
 
 // processAlarms handles the alarm-notice pipeline for one user: dedupe alarms
-// per run and push new alarms. The check-send-insert critical section is made
-// atomic by claiming the alarm with the DB primary key (user_id, credit_code):
-// only the invocation that actually inserts the row may send the message, so
-// concurrent runs — even multiple bot instances sharing the same DB — can
-// never push the same alarm twice. A failed send rolls the claim back so the
-// next run retries.
+// per run, then push each new alarm through the PushPipeline skeleton. The DB
+// primary key (user_id, credit_code) acts as a distributed lock: only the
+// invocation that actually inserts the row may send, so concurrent runs —
+// even multiple bot instances sharing the same DB — can never push the same
+// alarm twice. A failed send rolls the claim back so the next run retries.
 func (r *InfoProcessor) processAlarms(pd ProcessData) {
 	userId := pd.UserId
-	logger := r.ctx.Logger
 	processedAlarms := make(map[string]struct{})
-	var lockedAlarms []string
-	defer func() {
-		for _, key := range lockedAlarms {
-			r.alarmLocks.Unlock(key)
-		}
-	}()
 
+	handles := make([]ClaimHandle, 0, len(pd.Alarms))
 	for _, alarm := range pd.Alarms {
 		alarmKey := fmt.Sprintf("%d:%s", userId, alarm.CreditCode)
 
+		// Crawler already dedupes by credit code; keep the per-run map as a
+		// cheap second line of defence.
 		if _, exists := processedAlarms[alarmKey]; exists {
 			continue
 		}
 		processedAlarms[alarmKey] = struct{}{}
-
-		// In-process guard as a cheap first line of defence; the DB unique
-		// constraint below is the real authority (it also covers multiple
-		// bot instances, where in-process locks are invisible).
-		if !r.alarmLocks.TryLock(alarmKey) {
-			logger.Debug().Msgf("alarm %s is being processed by another invocation, skip", alarmKey)
-			continue
-		}
-		lockedAlarms = append(lockedAlarms, alarmKey)
-
 		alarm.UserID = userId
 
-		// Fast path: an active record for this company already exists.
-		isExist, err := dal.Alarm.IsExist(userId, alarm.CreditCode)
-		if err != nil {
-			logger.Error().Err(err).Msg("failed to check alarm existence")
-			continue
-		}
-		if isExist {
-			continue
-		}
-
-		// Claim the alarm with the DB primary key acting as a distributed
-		// lock. Only the caller that actually created the row proceeds to
-		// send; any concurrent caller gets RowsAffected == 0 and skips.
-		inserted, err := dal.Alarm.InsertIfAbsent(alarm)
-		if err != nil {
-			logger.Error().Stack().Err(err).Msg("claim alarm")
-			continue
-		}
-		if !inserted {
-			// A row exists but IsExist() reported it inactive — a stale
-			// record whose end date has passed but has not been cleaned
-			// up yet. Remove it and claim once more.
-			stillExist, e := dal.Alarm.IsExist(userId, alarm.CreditCode)
-			if e != nil {
-				logger.Error().Stack().Err(e).Msg("recheck alarm existence")
-				continue
-			}
-			if stillExist {
-				continue // claimed by a concurrent invocation in between
-			}
-			if rErr := dal.Alarm.Remove(userId, alarm.CreditCode); rErr != nil {
-				logger.Error().Stack().Err(rErr).Msg("remove stale alarm")
-				continue
-			}
-			inserted, err = dal.Alarm.InsertIfAbsent(alarm)
-			if err != nil {
-				logger.Error().Stack().Err(err).Msg("claim alarm after cleanup")
-				continue
-			}
-			if !inserted {
-				continue // lost the race again, another invocation handles it
-			}
-		}
-
-		msg, err := alarm.ToMessage()
-		if err != nil {
-			logger.Error().Stack().Err(err).Msg("alarm to msg")
-			if rErr := dal.Alarm.Remove(userId, alarm.CreditCode); rErr != nil {
-				logger.Error().Stack().Err(rErr).Msg("rollback alarm after render error")
-			}
-			continue
-		}
-		if _, msgErr := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
-			ChatID:    userId,
-			Text:      msg,
-			ParseMode: models.ParseModeHTML,
-		}); msgErr != nil {
-			logger.Error().Stack().Err(msgErr).Msg("send alarm")
-			// Roll back the claim so the next run can retry this alarm.
-			if rErr := dal.Alarm.Remove(userId, alarm.CreditCode); rErr != nil {
-				logger.Error().Stack().Err(rErr).Msg("rollback alarm after send failure")
-			}
-			continue
-		}
-		// Sent successfully — the record was already persisted by the claim.
+		handles = append(handles, ClaimHandle{
+			Key: alarmKey, // in-process guard, owned by the pipeline
+			Claim: func() (bool, error) {
+				return r.claimAlarm(alarm)
+			},
+			Send: func() error {
+				return r.sendAlarm(alarm)
+			},
+			Rollback: func() error {
+				return dal.Alarm.Remove(userId, alarm.CreditCode)
+			},
+		})
 	}
+	r.pushPipeline.Run(handles)
+}
+
+// claimAlarm claims an alarm via the (user_id, credit_code) unique constraint:
+// fast-path IsExist, then InsertIfAbsent. A conflict with no active record
+// means a stale (expired, not yet cleaned) row — remove it and claim once
+// more. Returns whether this call actually claimed the alarm.
+func (r *InfoProcessor) claimAlarm(alarm *model.Alarm) (bool, error) {
+	logger := r.ctx.Logger
+	userId := alarm.UserID
+
+	isExist, err := dal.Alarm.IsExist(userId, alarm.CreditCode)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to check alarm existence")
+		return false, err
+	}
+	if isExist {
+		return false, nil
+	}
+
+	inserted, err := dal.Alarm.InsertIfAbsent(alarm)
+	if err != nil {
+		logger.Error().Stack().Err(err).Msg("claim alarm")
+		return false, err
+	}
+	if inserted {
+		return true, nil
+	}
+
+	// A row exists but IsExist() reported it inactive — a stale record whose
+	// end date has passed but has not been cleaned up yet. Remove and retry.
+	stillExist, e := dal.Alarm.IsExist(userId, alarm.CreditCode)
+	if e != nil {
+		logger.Error().Stack().Err(e).Msg("recheck alarm existence")
+		return false, e
+	}
+	if stillExist {
+		return false, nil // claimed by a concurrent invocation in between
+	}
+	if rErr := dal.Alarm.Remove(userId, alarm.CreditCode); rErr != nil {
+		logger.Error().Stack().Err(rErr).Msg("remove stale alarm")
+		return false, rErr
+	}
+	return dal.Alarm.InsertIfAbsent(alarm)
+}
+
+// sendAlarm renders and sends a single alarm message.
+func (r *InfoProcessor) sendAlarm(alarm *model.Alarm) error {
+	logger := r.ctx.Logger
+	msg, err := alarm.ToMessage()
+	if err != nil {
+		logger.Error().Stack().Err(err).Msg("alarm to msg")
+		return err
+	}
+	if _, msgErr := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
+		ChatID:    alarm.UserID,
+		Text:      msg,
+		ParseMode: models.ParseModeHTML,
+	}); msgErr != nil {
+		logger.Error().Stack().Err(msgErr).Msg("send alarm")
+		return msgErr
+	}
+	return nil
 }
 
 func (r *InfoProcessor) ToMessage(project *Project) ([]string, int) {
