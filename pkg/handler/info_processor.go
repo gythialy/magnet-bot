@@ -293,6 +293,14 @@ func (r *InfoProcessor) processProjects(pd ProcessData) {
 	}
 	r.pushPipeline.Run(handles)
 
+	// The pre-filter lock was held from shouldSkipProcessing through the
+	// pipeline run; release every claimed URL now so a failed project (whose
+	// history row was rolled back) can be retried by a later run instead of
+	// being permanently skipped by the in-process lock.
+	for _, project := range pending {
+		r.releaseLock(st.userId, project.Pageurl)
+	}
+
 	if len(st.failed) > 1 {
 		if _, err := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
 			ChatID:    st.userId,
