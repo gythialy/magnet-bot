@@ -224,9 +224,7 @@ func (r *InfoProcessor) processProjects(pd ProcessData) {
 	}
 
 	// Filter out URLs that were already processed or are being processed by
-	// another worker, so we only render new content. The in-process lock is
-	// held from here until the project has been sent (see shouldSkipProcessing
-	// and sendProject), so the PushPipeline handles carry no Key.
+	// another worker, so we only render new content.
 	var pending []*Project
 	for _, project := range projects {
 		shouldSkip, err := r.shouldSkipProcessing(st.userId, project.Pageurl, pd.IsForced)
@@ -258,8 +256,8 @@ func (r *InfoProcessor) processProjects(pd ProcessData) {
 	}
 	wg.Wait()
 
-	// Build one handle per URL; the pipeline owns claim/send/rollback and the
-	// pre-filter lock already covers the whole lifecycle, so Key is empty.
+	// Handles carry no Key: the pre-filter lock already covers the whole
+	// render+send lifecycle.
 	handles := make([]ClaimHandle, 0, len(pending))
 	for j, project := range pending {
 		pageURL := project.Pageurl
