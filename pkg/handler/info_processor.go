@@ -40,19 +40,21 @@ type ProcessData struct {
 }
 
 type InfoProcessor struct {
-	ctx        *BotContext
-	pool       *ants.PoolWithFunc
-	crawler    *Crawler
-	urlLocks   *KeyedLock // in-process guard for project URLs
-	alarmLocks *KeyedLock // in-process guard for alarms (userId:CreditCode)
+	ctx          *BotContext
+	pool         *ants.PoolWithFunc
+	crawler      *Crawler
+	urlLocks     *KeyedLock // in-process guard for project URLs
+	alarmLocks   *KeyedLock // in-process guard for alarms (userId:CreditCode)
+	pushPipeline *PushPipeline
 }
 
 func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 	processor := &InfoProcessor{
-		ctx:        ctx,
-		crawler:    NewCrawler(ctx),
-		urlLocks:   NewKeyedLock(),
-		alarmLocks: NewKeyedLock(),
+		ctx:          ctx,
+		crawler:      NewCrawler(ctx),
+		urlLocks:     NewKeyedLock(),
+		alarmLocks:   NewKeyedLock(),
+		pushPipeline: NewPushPipeline(),
 	}
 
 	if pool, err := ants.NewPoolWithFunc(poolSize, processor.Handler); err != nil {
@@ -171,29 +173,43 @@ func (r *InfoProcessor) Handler(i interface{}) {
 	}
 }
 
+// projectPushState 汇聚一个用户一轮 project 推送的共享状态，由 PushPipeline
+// 串行消费，因此各字段无需并发保护。
+type projectPushState struct {
+	userId       int64
+	isForced     bool
+	now          time.Time
+	failed       []string
+	filterFailed map[string]*Project
+	processedURL []*model.History
+}
+
 // processProjects handles the project-notice pipeline for one user: filter by
-// keyword rules, render matched content, send messages and record history.
-// The check-send-insert critical section is made atomic by claiming each URL
-// with the DB primary key (user_id, url): only the invocation that actually
-// inserts the history row may send, so concurrent runs — even multiple bot
-// instances sharing the same DB — can never push the same project twice. A
-// fully failed send rolls the claim back so the next run retries. The forced
-// path (/retry) intentionally bypasses the claim so the operator can re-push.
+// keyword rules, render matched content, then push each URL through the
+// PushPipeline skeleton. The DB primary key (user_id, url) acts as a
+// distributed lock: only the invocation that actually inserts the history row
+// may send, so concurrent runs — even multiple bot instances — can never push
+// the same project twice. A fully failed send rolls the claim back so the
+// next run retries. The forced path (/retry) bypasses the claim on purpose.
 func (r *InfoProcessor) processProjects(pd ProcessData) {
 	historyDao := dal.History
 	projects := NewProjects(r.ctx, pd.Projects, pd.ProjectRules).Filter()
-	failed := []string{"failed:"}
-	filterFailed := make(map[string]*Project)
-	userId := pd.UserId
-	var processedURL []*model.History
-	now := time.Now()
-
 	logger := r.ctx.Logger
+	st := &projectPushState{
+		userId:       pd.UserId,
+		isForced:     pd.IsForced,
+		now:          time.Now(),
+		failed:       []string{"failed:"},
+		filterFailed: make(map[string]*Project),
+	}
+
 	// Filter out URLs that were already processed or are being processed by
-	// another worker, so we only render new content.
+	// another worker, so we only render new content. The in-process lock is
+	// held from here until the project has been sent (see shouldSkipProcessing
+	// and sendProject), so the PushPipeline handles carry no Key.
 	var pending []*Project
 	for _, project := range projects {
-		shouldSkip, err := r.shouldSkipProcessing(userId, project.Pageurl, pd.IsForced)
+		shouldSkip, err := r.shouldSkipProcessing(st.userId, project.Pageurl, pd.IsForced)
 		if err != nil {
 			logger.Error().Stack().Err(err).Msg("check url processing failed")
 			continue
@@ -222,94 +238,45 @@ func (r *InfoProcessor) processProjects(pd ProcessData) {
 	}
 	wg.Wait()
 
+	// Build one handle per URL; the pipeline owns claim/send/rollback and the
+	// pre-filter lock already covers the whole lifecycle, so Key is empty.
+	handles := make([]ClaimHandle, 0, len(pending))
 	for j, project := range pending {
 		pageURL := project.Pageurl
-		title := project.Title
-		shortTitle := project.ShortTitle
 		chunks := results[j].chunks
 		total := results[j].total
 		logger.Debug().Msgf("split content to %d parts", total)
 
-		// Wrap each URL in a closure so the in-process lock is released by
-		// defer on every exit path — including future ones — instead of
-		// relying on each branch remembering to call releaseLock.
-		func() {
-			defer r.releaseLock(userId, pageURL)
-
-			// Claim the URL with the DB primary key acting as a distributed
-			// lock. Only the caller that actually created the history row
-			// proceeds to send; any concurrent caller (even from another bot
-			// instance) gets RowsAffected == 0 and skips. The forced path is
-			// exempt so /retry can deliberately re-push already-seen projects.
-			if !pd.IsForced {
-				claimed, err := historyDao.InsertIfAbsent(&model.History{
-					UserID:        userId,
+		handles = append(handles, ClaimHandle{
+			Claim: func() (bool, error) {
+				if st.isForced {
+					return true, nil // forced path re-pushes without claiming
+				}
+				return historyDao.InsertIfAbsent(&model.History{
+					UserID:        st.userId,
 					URL:           pageURL,
-					Title:         shortTitle,
-					UpdatedAt:     now,
+					Title:         project.ShortTitle,
+					UpdatedAt:     st.now,
 					HasTenderCode: btoi(project.HasTenderCode),
 				})
-				if err != nil {
-					logger.Error().Stack().Err(err).Msg("claim project")
-					return
+			},
+			Send: func() error {
+				return r.sendProject(st, project, chunks, total)
+			},
+			Rollback: func() error {
+				if st.isForced {
+					return nil
 				}
-				if !claimed {
-					logger.Debug().Msgf("URL %s claimed by another invocation, skip", shortTitle)
-					return
-				}
-			}
-
-			// only save all parts failed to the failed list
-			isSuccessful := false
-			for idx, chunk := range chunks {
-				if _, errSend := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
-					ChatID:    userId,
-					Text:      chunk,
-					ParseMode: models.ParseModeHTML,
-				}); errSend != nil {
-					if !isSuccessful {
-						if _, ok := filterFailed[pageURL]; !ok {
-							filterFailed[pageURL] = project
-							failed = append(failed, fmt.Sprintf("%d. <b>[%s]</b> <a href=\"%s\">%s</a>",
-								len(failed), project.Keyword, pageURL, title))
-						}
-					}
-					logger.Error().Stack().Err(errSend).Msgf("content: %s", chunk)
-					if idx == 0 {
-						// Nothing was delivered: roll back the claim so the
-						// next run can retry this project.
-						if !pd.IsForced {
-							if rErr := historyDao.Remove(userId, pageURL); rErr != nil {
-								logger.Error().Stack().Err(rErr).Msg("rollback project claim")
-							}
-						}
-						return
-					}
-				} else {
-					isSuccessful = true
-					logger.Info().Msgf("notify: %s[%s]-%d", shortTitle, project.OpenTenderCode, idx)
-				}
-				time.Sleep(500 * time.Millisecond)
-			}
-
-			if isSuccessful && total > 0 && pd.IsForced {
-				// Forced path bypasses the claim, so persist history here.
-				// Normal path already persisted the row at claim time.
-				processedURL = append(processedURL, &model.History{
-					UserID:        userId,
-					URL:           pageURL,
-					Title:         shortTitle,
-					UpdatedAt:     now,
-					HasTenderCode: btoi(project.HasTenderCode),
-				})
-			}
-		}()
+				return historyDao.Remove(st.userId, pageURL)
+			},
+		})
 	}
+	r.pushPipeline.Run(handles)
 
-	if len(failed) > 1 {
+	if len(st.failed) > 1 {
 		if _, err := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
-			ChatID:    userId,
-			Text:      strings.Join(failed, "\n"),
+			ChatID:    st.userId,
+			Text:      strings.Join(st.failed, "\n"),
 			ParseMode: models.ParseModeHTML,
 		}); err != nil {
 			logger.Error().Stack().Err(err).Msg("")
@@ -317,13 +284,13 @@ func (r *InfoProcessor) processProjects(pd ProcessData) {
 			// The failure summary reached the user, so persist the failed
 			// URLs to avoid re-pushing them on every run. Their claims (if
 			// any) were already rolled back when the first chunk failed.
-			for _, v := range filterFailed {
+			for _, v := range st.filterFailed {
 				if _, err := historyDao.InsertIfAbsent(&model.History{
-					UserID:        userId,
+					UserID:        st.userId,
 					URL:           v.Pageurl,
 					Title:         v.ShortTitle,
 					HasTenderCode: btoi(v.HasTenderCode),
-					UpdatedAt:     now,
+					UpdatedAt:     st.now,
 				}); err != nil {
 					logger.Error().Stack().Err(err).Msg("")
 				}
@@ -331,12 +298,60 @@ func (r *InfoProcessor) processProjects(pd ProcessData) {
 		}
 	}
 
-	if len(processedURL) > 0 {
-		if err := historyDao.Insert(processedURL); err != nil {
+	if len(st.processedURL) > 0 {
+		if err := historyDao.Insert(st.processedURL); err != nil {
 			logger.Error().Stack().Err(err).Msg("")
 		}
 	}
+}
 
+// sendProject sends a project's chunked message, collecting failures for the
+// summary. It returns an error only when the very first chunk failed (nothing
+// was delivered), which makes the PushPipeline roll back the claim so the
+// next run can retry.
+func (r *InfoProcessor) sendProject(st *projectPushState, project *Project, chunks []string, total int) error {
+	logger := r.ctx.Logger
+	pageURL := project.Pageurl
+	title := project.Title
+	shortTitle := project.ShortTitle
+
+	isSuccessful := false
+	for idx, chunk := range chunks {
+		if _, errSend := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
+			ChatID:    st.userId,
+			Text:      chunk,
+			ParseMode: models.ParseModeHTML,
+		}); errSend != nil {
+			if !isSuccessful {
+				if _, ok := st.filterFailed[pageURL]; !ok {
+					st.filterFailed[pageURL] = project
+					st.failed = append(st.failed, fmt.Sprintf("%d. <b>[%s]</b> <a href=\"%s\">%s</a>",
+						len(st.failed), project.Keyword, pageURL, title))
+				}
+			}
+			logger.Error().Stack().Err(errSend).Msgf("content: %s", chunk)
+			if idx == 0 {
+				return errSend // nothing delivered → pipeline rolls back
+			}
+		} else {
+			isSuccessful = true
+			logger.Info().Msgf("notify: %s[%s]-%d", shortTitle, project.OpenTenderCode, idx)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	if isSuccessful && total > 0 && st.isForced {
+		// Forced path bypasses the claim, so persist history here.
+		// Normal path already persisted the row at claim time.
+		st.processedURL = append(st.processedURL, &model.History{
+			UserID:        st.userId,
+			URL:           pageURL,
+			Title:         shortTitle,
+			UpdatedAt:     st.now,
+			HasTenderCode: btoi(project.HasTenderCode),
+		})
+	}
+	return nil
 }
 
 // processAlarms handles the alarm-notice pipeline for one user: dedupe alarms
