@@ -52,6 +52,22 @@ func (h *history) Insert(data []*model.History) error {
 	}
 }
 
+// InsertIfAbsent claims a URL via the (user_id, url) unique constraint: it
+// inserts the row only when none exists and reports whether this call created
+// it, so concurrent callers can never both push the same project. See
+// dal.InsertIfAbsent.
+func (h *history) InsertIfAbsent(history *model.History) (bool, error) {
+	return InsertIfAbsent(h.UnderlyingDB(), history,
+		h.UserID.ColumnName().String(), h.URL.ColumnName().String())
+}
+
+// Remove deletes a history record. It is used to roll back a claim when the
+// project message failed to send, so the next run can retry it.
+func (h *history) Remove(userId int64, url string) error {
+	_, err := h.Where(h.UserID.Eq(userId), h.URL.Eq(url)).Delete()
+	return err
+}
+
 func (h *history) SearchByTitle(userId int64, term string, page, pageSize int) ([]*model.History, int64) {
 	query := h.Where(h.UserID.Eq(userId))
 	if term != "" {
