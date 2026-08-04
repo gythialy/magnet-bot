@@ -40,19 +40,19 @@ type ProcessData struct {
 }
 
 type InfoProcessor struct {
-	ctx        *BotContext
-	pool       *ants.PoolWithFunc
-	crawler    *Crawler
-	urlLocks   *KeyedLock // in-process guard for project URLs
-	alarmLocks *KeyedLock // in-process guard for alarms (userId:CreditCode)
+	ctx          *BotContext
+	pool         *ants.PoolWithFunc
+	crawler      *Crawler
+	urlLocks     *KeyedLock // in-process guard for project URLs
+	pushPipeline *PushPipeline
 }
 
 func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 	processor := &InfoProcessor{
-		ctx:        ctx,
-		crawler:    NewCrawler(ctx),
-		urlLocks:   NewKeyedLock(),
-		alarmLocks: NewKeyedLock(),
+		ctx:          ctx,
+		crawler:      NewCrawler(ctx),
+		urlLocks:     NewKeyedLock(),
+		pushPipeline: NewPushPipeline(),
 	}
 
 	if pool, err := ants.NewPoolWithFunc(poolSize, processor.Handler); err != nil {
@@ -121,8 +121,16 @@ func (r *InfoProcessor) get(id int64) ProcessData {
 	}
 }
 
-// shouldSkipProcessing checks if a URL is already processed in DB or is being processed,
-// returning true if processing should be skipped
+// shouldSkipProcessing is the render-time pre-filter for project URLs. It is
+// deliberately NOT the authority: its checks (in-process lock + IsUrlExist)
+// only avoid spending CPU on rendering something that is already handled or
+// in flight. The actual at-most-once guarantee comes from the DB claim
+// (InsertIfAbsent) performed later by the PushPipeline — a stale pre-filter
+// pass can only waste a render, never cause a duplicate push.
+//
+// On success (skip=false) the in-process lock is held until the caller
+// finishes with the URL (see releaseLock), so a concurrent invocation in the
+// same process cannot double-render.
 func (r *InfoProcessor) shouldSkipProcessing(userId int64, url string, isForced bool) (skip bool, err error) {
 	lockKey := fmt.Sprintf("%d:%s", userId, url)
 
@@ -166,34 +174,60 @@ const projectContentSem = 5
 func (r *InfoProcessor) Handler(i interface{}) {
 	switch pd := i.(type) {
 	case ProcessData:
-		r.processProjects(pd)
-		r.processAlarms(pd)
+		// Run the two pipelines concurrently so alarm notifications do not
+		// wait behind a large project batch. Both pipelines are safe to run
+		// in parallel: the PushPipeline's keyed lock is concurrent-safe, and
+		// the two handle sets never share a key (projects carry no Key, the
+		// pre-filter lock only guards project URLs).
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			r.processProjects(pd)
+		}()
+		go func() {
+			defer wg.Done()
+			r.processAlarms(pd)
+		}()
+		wg.Wait()
 	}
 }
 
+// projectPushState 汇聚一个用户一轮 project 推送的共享状态，由 PushPipeline
+// 串行消费，因此各字段无需并发保护。
+type projectPushState struct {
+	userId       int64
+	isForced     bool
+	now          time.Time
+	failed       []string
+	filterFailed map[string]*Project
+	processedURL []*model.History
+}
+
 // processProjects handles the project-notice pipeline for one user: filter by
-// keyword rules, render matched content, send messages and record history.
-// The check-send-insert critical section is made atomic by claiming each URL
-// with the DB primary key (user_id, url): only the invocation that actually
-// inserts the history row may send, so concurrent runs — even multiple bot
-// instances sharing the same DB — can never push the same project twice. A
-// fully failed send rolls the claim back so the next run retries. The forced
-// path (/retry) intentionally bypasses the claim so the operator can re-push.
+// keyword rules, render matched content, then push each URL through the
+// PushPipeline skeleton. The DB primary key (user_id, url) acts as a
+// distributed lock: only the invocation that actually inserts the history row
+// may send, so concurrent runs — even multiple bot instances — can never push
+// the same project twice. A fully failed send rolls the claim back so the
+// next run retries. The forced path (/retry) bypasses the claim on purpose.
 func (r *InfoProcessor) processProjects(pd ProcessData) {
 	historyDao := dal.History
 	projects := NewProjects(r.ctx, pd.Projects, pd.ProjectRules).Filter()
-	failed := []string{"failed:"}
-	filterFailed := make(map[string]*Project)
-	userId := pd.UserId
-	var processedURL []*model.History
-	now := time.Now()
-
 	logger := r.ctx.Logger
+	st := &projectPushState{
+		userId:       pd.UserId,
+		isForced:     pd.IsForced,
+		now:          time.Now(),
+		failed:       []string{"failed:"},
+		filterFailed: make(map[string]*Project),
+	}
+
 	// Filter out URLs that were already processed or are being processed by
 	// another worker, so we only render new content.
 	var pending []*Project
 	for _, project := range projects {
-		shouldSkip, err := r.shouldSkipProcessing(userId, project.Pageurl, pd.IsForced)
+		shouldSkip, err := r.shouldSkipProcessing(st.userId, project.Pageurl, pd.IsForced)
 		if err != nil {
 			logger.Error().Stack().Err(err).Msg("check url processing failed")
 			continue
@@ -222,94 +256,53 @@ func (r *InfoProcessor) processProjects(pd ProcessData) {
 	}
 	wg.Wait()
 
+	// Handles carry no Key: the pre-filter lock already covers the whole
+	// render+send lifecycle.
+	handles := make([]ClaimHandle, 0, len(pending))
 	for j, project := range pending {
 		pageURL := project.Pageurl
-		title := project.Title
-		shortTitle := project.ShortTitle
 		chunks := results[j].chunks
 		total := results[j].total
 		logger.Debug().Msgf("split content to %d parts", total)
 
-		// Wrap each URL in a closure so the in-process lock is released by
-		// defer on every exit path — including future ones — instead of
-		// relying on each branch remembering to call releaseLock.
-		func() {
-			defer r.releaseLock(userId, pageURL)
-
-			// Claim the URL with the DB primary key acting as a distributed
-			// lock. Only the caller that actually created the history row
-			// proceeds to send; any concurrent caller (even from another bot
-			// instance) gets RowsAffected == 0 and skips. The forced path is
-			// exempt so /retry can deliberately re-push already-seen projects.
-			if !pd.IsForced {
-				claimed, err := historyDao.InsertIfAbsent(&model.History{
-					UserID:        userId,
+		handles = append(handles, ClaimHandle{
+			Claim: func() (bool, error) {
+				if st.isForced {
+					return true, nil // forced path re-pushes without claiming
+				}
+				return historyDao.InsertIfAbsent(&model.History{
+					UserID:        st.userId,
 					URL:           pageURL,
-					Title:         shortTitle,
-					UpdatedAt:     now,
+					Title:         project.ShortTitle,
+					UpdatedAt:     st.now,
 					HasTenderCode: btoi(project.HasTenderCode),
 				})
-				if err != nil {
-					logger.Error().Stack().Err(err).Msg("claim project")
-					return
+			},
+			Send: func() error {
+				return r.sendProject(st, project, chunks, total)
+			},
+			Rollback: func() error {
+				if st.isForced {
+					return nil
 				}
-				if !claimed {
-					logger.Debug().Msgf("URL %s claimed by another invocation, skip", shortTitle)
-					return
-				}
-			}
+				return historyDao.Remove(st.userId, pageURL)
+			},
+		})
+	}
+	r.pushPipeline.Run(handles)
 
-			// only save all parts failed to the failed list
-			isSuccessful := false
-			for idx, chunk := range chunks {
-				if _, errSend := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
-					ChatID:    userId,
-					Text:      chunk,
-					ParseMode: models.ParseModeHTML,
-				}); errSend != nil {
-					if !isSuccessful {
-						if _, ok := filterFailed[pageURL]; !ok {
-							filterFailed[pageURL] = project
-							failed = append(failed, fmt.Sprintf("%d. <b>[%s]</b> <a href=\"%s\">%s</a>",
-								len(failed), project.Keyword, pageURL, title))
-						}
-					}
-					logger.Error().Stack().Err(errSend).Msgf("content: %s", chunk)
-					if idx == 0 {
-						// Nothing was delivered: roll back the claim so the
-						// next run can retry this project.
-						if !pd.IsForced {
-							if rErr := historyDao.Remove(userId, pageURL); rErr != nil {
-								logger.Error().Stack().Err(rErr).Msg("rollback project claim")
-							}
-						}
-						return
-					}
-				} else {
-					isSuccessful = true
-					logger.Info().Msgf("notify: %s[%s]-%d", shortTitle, project.OpenTenderCode, idx)
-				}
-				time.Sleep(500 * time.Millisecond)
-			}
-
-			if isSuccessful && total > 0 && pd.IsForced {
-				// Forced path bypasses the claim, so persist history here.
-				// Normal path already persisted the row at claim time.
-				processedURL = append(processedURL, &model.History{
-					UserID:        userId,
-					URL:           pageURL,
-					Title:         shortTitle,
-					UpdatedAt:     now,
-					HasTenderCode: btoi(project.HasTenderCode),
-				})
-			}
-		}()
+	// The pre-filter lock was held from shouldSkipProcessing through the
+	// pipeline run; release every claimed URL now so a failed project (whose
+	// history row was rolled back) can be retried by a later run instead of
+	// being permanently skipped by the in-process lock.
+	for _, project := range pending {
+		r.releaseLock(st.userId, project.Pageurl)
 	}
 
-	if len(failed) > 1 {
+	if len(st.failed) > 1 {
 		if _, err := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
-			ChatID:    userId,
-			Text:      strings.Join(failed, "\n"),
+			ChatID:    st.userId,
+			Text:      strings.Join(st.failed, "\n"),
 			ParseMode: models.ParseModeHTML,
 		}); err != nil {
 			logger.Error().Stack().Err(err).Msg("")
@@ -317,13 +310,13 @@ func (r *InfoProcessor) processProjects(pd ProcessData) {
 			// The failure summary reached the user, so persist the failed
 			// URLs to avoid re-pushing them on every run. Their claims (if
 			// any) were already rolled back when the first chunk failed.
-			for _, v := range filterFailed {
+			for _, v := range st.filterFailed {
 				if _, err := historyDao.InsertIfAbsent(&model.History{
-					UserID:        userId,
+					UserID:        st.userId,
 					URL:           v.Pageurl,
 					Title:         v.ShortTitle,
 					HasTenderCode: btoi(v.HasTenderCode),
-					UpdatedAt:     now,
+					UpdatedAt:     st.now,
 				}); err != nil {
 					logger.Error().Stack().Err(err).Msg("")
 				}
@@ -331,117 +324,160 @@ func (r *InfoProcessor) processProjects(pd ProcessData) {
 		}
 	}
 
-	if len(processedURL) > 0 {
-		if err := historyDao.Insert(processedURL); err != nil {
+	if len(st.processedURL) > 0 {
+		if err := historyDao.Insert(st.processedURL); err != nil {
 			logger.Error().Stack().Err(err).Msg("")
 		}
 	}
+}
 
+// sendProject sends a project's chunked message, collecting failures for the
+// summary. It returns an error only when the very first chunk failed (nothing
+// was delivered), which makes the PushPipeline roll back the claim so the
+// next run can retry.
+func (r *InfoProcessor) sendProject(st *projectPushState, project *Project, chunks []string, total int) error {
+	logger := r.ctx.Logger
+	pageURL := project.Pageurl
+	title := project.Title
+	shortTitle := project.ShortTitle
+
+	isSuccessful := false
+	for idx, chunk := range chunks {
+		if _, errSend := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
+			ChatID:    st.userId,
+			Text:      chunk,
+			ParseMode: models.ParseModeHTML,
+		}); errSend != nil {
+			if !isSuccessful {
+				if _, ok := st.filterFailed[pageURL]; !ok {
+					st.filterFailed[pageURL] = project
+					st.failed = append(st.failed, fmt.Sprintf("%d. <b>[%s]</b> <a href=\"%s\">%s</a>",
+						len(st.failed), project.Keyword, pageURL, title))
+				}
+			}
+			logger.Error().Stack().Err(errSend).Msgf("content: %s", chunk)
+			if idx == 0 {
+				return errSend // nothing delivered → pipeline rolls back
+			}
+		} else {
+			isSuccessful = true
+			logger.Info().Msgf("notify: %s[%s]-%d", shortTitle, project.OpenTenderCode, idx)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	if isSuccessful && total > 0 && st.isForced {
+		// Forced path bypasses the claim, so persist history here.
+		// Normal path already persisted the row at claim time.
+		st.processedURL = append(st.processedURL, &model.History{
+			UserID:        st.userId,
+			URL:           pageURL,
+			Title:         shortTitle,
+			UpdatedAt:     st.now,
+			HasTenderCode: btoi(project.HasTenderCode),
+		})
+	}
+	return nil
 }
 
 // processAlarms handles the alarm-notice pipeline for one user: dedupe alarms
-// per run and push new alarms. The check-send-insert critical section is made
-// atomic by claiming the alarm with the DB primary key (user_id, credit_code):
-// only the invocation that actually inserts the row may send the message, so
-// concurrent runs — even multiple bot instances sharing the same DB — can
-// never push the same alarm twice. A failed send rolls the claim back so the
-// next run retries.
+// per run, then push each new alarm through the PushPipeline skeleton. The DB
+// primary key (user_id, credit_code) acts as a distributed lock: only the
+// invocation that actually inserts the row may send, so concurrent runs —
+// even multiple bot instances sharing the same DB — can never push the same
+// alarm twice. A failed send rolls the claim back so the next run retries.
 func (r *InfoProcessor) processAlarms(pd ProcessData) {
 	userId := pd.UserId
-	logger := r.ctx.Logger
 	processedAlarms := make(map[string]struct{})
-	var lockedAlarms []string
-	defer func() {
-		for _, key := range lockedAlarms {
-			r.alarmLocks.Unlock(key)
-		}
-	}()
 
+	handles := make([]ClaimHandle, 0, len(pd.Alarms))
 	for _, alarm := range pd.Alarms {
 		alarmKey := fmt.Sprintf("%d:%s", userId, alarm.CreditCode)
 
+		// Crawler already dedupes by credit code; keep the per-run map as a
+		// cheap second line of defence.
 		if _, exists := processedAlarms[alarmKey]; exists {
 			continue
 		}
 		processedAlarms[alarmKey] = struct{}{}
-
-		// In-process guard as a cheap first line of defence; the DB unique
-		// constraint below is the real authority (it also covers multiple
-		// bot instances, where in-process locks are invisible).
-		if !r.alarmLocks.TryLock(alarmKey) {
-			logger.Debug().Msgf("alarm %s is being processed by another invocation, skip", alarmKey)
-			continue
-		}
-		lockedAlarms = append(lockedAlarms, alarmKey)
-
 		alarm.UserID = userId
 
-		// Fast path: an active record for this company already exists.
-		isExist, err := dal.Alarm.IsExist(userId, alarm.CreditCode)
-		if err != nil {
-			logger.Error().Err(err).Msg("failed to check alarm existence")
-			continue
-		}
-		if isExist {
-			continue
-		}
-
-		// Claim the alarm with the DB primary key acting as a distributed
-		// lock. Only the caller that actually created the row proceeds to
-		// send; any concurrent caller gets RowsAffected == 0 and skips.
-		inserted, err := dal.Alarm.InsertIfAbsent(alarm)
-		if err != nil {
-			logger.Error().Stack().Err(err).Msg("claim alarm")
-			continue
-		}
-		if !inserted {
-			// A row exists but IsExist() reported it inactive — a stale
-			// record whose end date has passed but has not been cleaned
-			// up yet. Remove it and claim once more.
-			stillExist, e := dal.Alarm.IsExist(userId, alarm.CreditCode)
-			if e != nil {
-				logger.Error().Stack().Err(e).Msg("recheck alarm existence")
-				continue
-			}
-			if stillExist {
-				continue // claimed by a concurrent invocation in between
-			}
-			if rErr := dal.Alarm.Remove(userId, alarm.CreditCode); rErr != nil {
-				logger.Error().Stack().Err(rErr).Msg("remove stale alarm")
-				continue
-			}
-			inserted, err = dal.Alarm.InsertIfAbsent(alarm)
-			if err != nil {
-				logger.Error().Stack().Err(err).Msg("claim alarm after cleanup")
-				continue
-			}
-			if !inserted {
-				continue // lost the race again, another invocation handles it
-			}
-		}
-
-		msg, err := alarm.ToMessage()
-		if err != nil {
-			logger.Error().Stack().Err(err).Msg("alarm to msg")
-			if rErr := dal.Alarm.Remove(userId, alarm.CreditCode); rErr != nil {
-				logger.Error().Stack().Err(rErr).Msg("rollback alarm after render error")
-			}
-			continue
-		}
-		if _, msgErr := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
-			ChatID:    userId,
-			Text:      msg,
-			ParseMode: models.ParseModeHTML,
-		}); msgErr != nil {
-			logger.Error().Stack().Err(msgErr).Msg("send alarm")
-			// Roll back the claim so the next run can retry this alarm.
-			if rErr := dal.Alarm.Remove(userId, alarm.CreditCode); rErr != nil {
-				logger.Error().Stack().Err(rErr).Msg("rollback alarm after send failure")
-			}
-			continue
-		}
-		// Sent successfully — the record was already persisted by the claim.
+		handles = append(handles, ClaimHandle{
+			Key: alarmKey, // in-process guard, owned by the pipeline
+			Claim: func() (bool, error) {
+				return r.claimAlarm(alarm)
+			},
+			Send: func() error {
+				return r.sendAlarm(alarm)
+			},
+			Rollback: func() error {
+				return dal.Alarm.Remove(userId, alarm.CreditCode)
+			},
+		})
 	}
+	r.pushPipeline.Run(handles)
+}
+
+// claimAlarm claims an alarm via the (user_id, credit_code) unique constraint:
+// fast-path IsExist, then InsertIfAbsent. A conflict with no active record
+// means a stale (expired, not yet cleaned) row — remove it and claim once
+// more. Returns whether this call actually claimed the alarm.
+func (r *InfoProcessor) claimAlarm(alarm *model.Alarm) (bool, error) {
+	logger := r.ctx.Logger
+	userId := alarm.UserID
+
+	isExist, err := dal.Alarm.IsExist(userId, alarm.CreditCode)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to check alarm existence")
+		return false, err
+	}
+	if isExist {
+		return false, nil
+	}
+
+	inserted, err := dal.Alarm.InsertIfAbsent(alarm)
+	if err != nil {
+		logger.Error().Stack().Err(err).Msg("claim alarm")
+		return false, err
+	}
+	if inserted {
+		return true, nil
+	}
+
+	// A row exists but IsExist() reported it inactive — a stale record whose
+	// end date has passed but has not been cleaned up yet. Remove and retry.
+	stillExist, e := dal.Alarm.IsExist(userId, alarm.CreditCode)
+	if e != nil {
+		logger.Error().Stack().Err(e).Msg("recheck alarm existence")
+		return false, e
+	}
+	if stillExist {
+		return false, nil // claimed by a concurrent invocation in between
+	}
+	if rErr := dal.Alarm.Remove(userId, alarm.CreditCode); rErr != nil {
+		logger.Error().Stack().Err(rErr).Msg("remove stale alarm")
+		return false, rErr
+	}
+	return dal.Alarm.InsertIfAbsent(alarm)
+}
+
+// sendAlarm renders and sends a single alarm message.
+func (r *InfoProcessor) sendAlarm(alarm *model.Alarm) error {
+	logger := r.ctx.Logger
+	msg, err := alarm.ToMessage()
+	if err != nil {
+		logger.Error().Stack().Err(err).Msg("alarm to msg")
+		return err
+	}
+	if _, msgErr := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
+		ChatID:    alarm.UserID,
+		Text:      msg,
+		ParseMode: models.ParseModeHTML,
+	}); msgErr != nil {
+		logger.Error().Stack().Err(msgErr).Msg("send alarm")
+		return msgErr
+	}
+	return nil
 }
 
 func (r *InfoProcessor) ToMessage(project *Project) ([]string, int) {
