@@ -13,7 +13,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/panjf2000/ants/v2 v2.12.1
 	github.com/rs/zerolog v1.35.1
-	golang.org/x/net v0.57.0
+	golang.org/x/net v0.58.0
 	golang.org/x/text v0.41.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gorm.io/gen v0.3.28
