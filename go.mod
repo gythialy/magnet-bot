@@ -16,7 +16,7 @@ require (
 	golang.org/x/net v0.58.0
 	golang.org/x/text v0.41.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
-	gorm.io/gen v0.3.28
+	gorm.io/gen v0.3.29
 	gorm.io/gorm v1.31.2
 	gorm.io/plugin/dbresolver v1.6.2
 )
