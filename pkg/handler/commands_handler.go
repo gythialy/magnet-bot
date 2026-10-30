@@ -1,18 +1,16 @@
 package handler
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
-	"html"
 	"net/http"
 	"net/url"
 	"path"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -22,8 +20,6 @@ import (
 	"github.com/gythialy/magnet/pkg/constant"
 	"github.com/gythialy/magnet/pkg/dal"
 	"github.com/gythialy/magnet/pkg/model"
-
-	"golang.org/x/text/width"
 )
 
 const (
@@ -46,6 +42,9 @@ var (
 
 type CommandsHandler struct {
 	ctx *BotContext
+	// pendingEdits holds the ForceReply prompt /statistics is waiting for,
+	// keyed by chat id.
+	pendingEdits sync.Map
 }
 
 func NewCommandsHandler(ctx *BotContext) *CommandsHandler {
@@ -398,288 +397,6 @@ func (c *CommandsHandler) sendErrorMessage(ctx context.Context, b *bot.Bot, upda
 	}); err != nil {
 		c.ctx.Logger.Error().Stack().Err(err).Msg("")
 	}
-}
-
-func (c *CommandsHandler) StaticHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	userId := update.Message.Chat.ID
-
-	responseText := renderStatistics(statisticsView{
-		Version:   constant.Version,
-		BuildTime: constant.BuildTime,
-		History:   dal.History.CountByUserId(userId),
-		Keywords:  dal.Keyword.GetByUserIdAndType(userId, model.PROJECT),
-		Alarms:    dal.Keyword.GetByUserIdAndType(userId, model.ALARM),
-	})
-
-	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID:    update.Message.Chat.ID,
-		Text:      responseText,
-		ParseMode: models.ParseModeHTML,
-	}); err != nil {
-		c.ctx.Logger.Error().Stack().Err(err).Msg("")
-	}
-}
-
-const (
-	// statisticsKeywordLimit and statisticsAlarmLimit keep the message short
-	// enough for Telegram (4096 units) even for a user with many keywords.
-	// Keywords without a single notice are listed sparingly: their ids are
-	// useful for /edit_keywords, but they must not crowd out the ones that do
-	// match.
-	statisticsKeywordLimit     = 15
-	statisticsZeroKeywordLimit = 5
-	statisticsAlarmLimit       = 10
-
-	// tableCellLimit caps one table cell's display width. Telegram wraps a
-	// <pre> block at the bubble width, so a wider table would lose the
-	// alignment that makes it a table in the first place.
-	tableCellLimit = 22
-)
-
-// tableColumn describes one column of an asciiTable.
-type tableColumn struct {
-	title string
-	right bool // right-align the values (numbers)
-}
-
-// asciiTable renders a bordered table inside a Telegram <pre> block.
-//
-// Cells are measured by display width, not byte or rune count: a CJK keyword
-// occupies two monospace columns, so measuring it as one would break the
-// borders. Long cells are truncated with an ellipsis to keep the table
-// readable.
-func asciiTable(columns []tableColumn, rows [][]string) string {
-	widths := make([]int, len(columns))
-	for i, column := range columns {
-		widths[i] = displayWidth(column.title)
-	}
-	for _, row := range rows {
-		for i := range columns {
-			if i < len(row) {
-				widths[i] = max(widths[i], min(displayWidth(row[i]), tableCellLimit))
-			}
-		}
-	}
-
-	border := func() string {
-		var b strings.Builder
-		b.WriteByte('+')
-		for _, w := range widths {
-			b.WriteString(strings.Repeat("-", w+2))
-			b.WriteByte('+')
-		}
-		return b.String()
-	}
-	line := func(cells []string) string {
-		var b strings.Builder
-		b.WriteByte('|')
-		for i := range columns {
-			cell := ""
-			if i < len(cells) {
-				cell = truncateToWidth(cells[i], widths[i])
-			}
-			padding := widths[i] - displayWidth(cell)
-
-			b.WriteByte(' ')
-			if columns[i].right {
-				b.WriteString(strings.Repeat(" ", padding))
-				b.WriteString(cell)
-			} else {
-				b.WriteString(cell)
-				b.WriteString(strings.Repeat(" ", padding))
-			}
-			b.WriteString(" |")
-		}
-		return b.String()
-	}
-
-	lines := make([]string, 0, len(rows)+3)
-	lines = append(lines, border(), line(columnTitles(columns)), border())
-	for _, row := range rows {
-		lines = append(lines, line(row))
-	}
-	lines = append(lines, border())
-	return strings.Join(lines, "\n")
-}
-
-// columnTitles extracts the header cells of columns.
-func columnTitles(columns []tableColumn) []string {
-	titles := make([]string, len(columns))
-	for i, column := range columns {
-		titles[i] = column.title
-	}
-	return titles
-}
-
-// truncateToWidth shortens s to at most limit display columns.
-func truncateToWidth(s string, limit int) string {
-	if displayWidth(s) <= limit {
-		return s
-	}
-
-	var b strings.Builder
-	used := 0
-	for _, r := range s {
-		w := runeWidth(r)
-		if used+w > limit-1 {
-			break
-		}
-		b.WriteRune(r)
-		used += w
-	}
-	b.WriteString("…")
-	return b.String()
-}
-
-// displayWidth returns how many monospace columns s occupies.
-func displayWidth(s string) int {
-	total := 0
-	for _, r := range s {
-		total += runeWidth(r)
-	}
-	return total
-}
-
-// runeWidth is the number of columns one rune occupies: East Asian wide and
-// fullwidth runes (CJK, emoji) take two, everything else one.
-func runeWidth(r rune) int {
-	switch width.LookupRune(r).Kind() {
-	case width.EastAsianWide, width.EastAsianFullwidth:
-		return 2
-	}
-	return 1
-}
-
-// statisticsView is the data /statistics renders.
-type statisticsView struct {
-	Version   string
-	BuildTime string
-	History   int64
-	Keywords  []*model.Keyword
-	Alarms    []*model.Keyword
-}
-
-// renderStatistics builds the /statistics message.
-//
-// The per-keyword number is the count of related notices, so the keywords are
-// listed as a leaderboard (highest first) instead of insertion order, and every
-// keyword text is escaped: it is user input rendered inside an HTML message.
-func renderStatistics(v statisticsView) string {
-	var b strings.Builder
-
-	fmt.Fprintf(&b, "<b>magnet-bot</b> <code>%s</code>\n", html.EscapeString(v.Version))
-	fmt.Fprintf(&b, "Build <code>%s</code>\n\n", html.EscapeString(v.BuildTime))
-
-	var related int64
-	for _, kw := range v.Keywords {
-		related += int64(kw.Counter)
-	}
-
-	b.WriteString("<b>Statistics</b>\n")
-	b.WriteString(renderTable(asciiTable(
-		[]tableColumn{{title: "Metric"}, {title: "Value", right: true}},
-		[][]string{
-			{"History", groupDigits(v.History)},
-			{"Keywords", strconv.Itoa(len(v.Keywords))},
-			{"Related notices", groupDigits(related)},
-			{"Alarm keywords", strconv.Itoa(len(v.Alarms))},
-		},
-	)))
-
-	if len(v.Keywords) == 0 {
-		b.WriteString("\nUse /add_keywords to subscribe to a keyword.\n")
-	} else {
-		keywords := slices.Clone(v.Keywords)
-		slices.SortStableFunc(keywords, func(a, c *model.Keyword) int {
-			if a.Counter != c.Counter {
-				return cmp.Compare(c.Counter, a.Counter)
-			}
-			return cmp.Compare(keywordID(a), keywordID(c))
-		})
-
-		rows := make([][]string, 0, statisticsKeywordLimit)
-		zeros := 0
-		for _, kw := range keywords {
-			if len(rows) == statisticsKeywordLimit {
-				break
-			}
-			if kw.Counter == 0 {
-				if zeros == statisticsZeroKeywordLimit {
-					continue
-				}
-				zeros++
-			}
-			rows = append(rows, []string{
-				groupDigits(int64(kw.Counter)),
-				fmt.Sprintf("#%d", keywordID(kw)),
-				kw.Keyword,
-			})
-		}
-
-		b.WriteString("\n<b>Related notices per keyword</b>\n")
-		b.WriteString(renderTable(asciiTable(
-			[]tableColumn{{title: "Notices", right: true}, {title: "ID"}, {title: "Keyword"}},
-			rows,
-		)))
-		if remaining := len(keywords) - len(rows); remaining > 0 {
-			fmt.Fprintf(&b, "…and %d more\n", remaining)
-		}
-	}
-
-	if len(v.Alarms) > 0 {
-		alarmRows := make([][]string, 0, statisticsAlarmLimit)
-		for _, kw := range v.Alarms {
-			if len(alarmRows) == statisticsAlarmLimit {
-				break
-			}
-			alarmRows = append(alarmRows, []string{fmt.Sprintf("#%d", keywordID(kw)), kw.Keyword})
-		}
-
-		b.WriteString("\n<b>Alarm keywords</b>\n")
-		b.WriteString(renderTable(asciiTable(
-			[]tableColumn{{title: "ID"}, {title: "Keyword"}},
-			alarmRows,
-		)))
-		if remaining := len(v.Alarms) - len(alarmRows); remaining > 0 {
-			fmt.Fprintf(&b, "…and %d more\n", remaining)
-		}
-	}
-
-	return strings.TrimSpace(b.String())
-}
-
-// renderTable wraps a preformatted table in a <pre> block. The table is escaped
-// as a whole: the borders are plain ASCII and survive escaping, while a keyword
-// containing "<" or "&" cannot break the message.
-func renderTable(table string) string {
-	return "<pre>" + html.EscapeString(table) + "</pre>\n"
-}
-
-// keywordID dereferences the primary key, tolerating a nil pointer.
-func keywordID(kw *model.Keyword) int32 {
-	if kw.ID == nil {
-		return 0
-	}
-	return *kw.ID
-}
-
-// groupDigits renders 12853 as 12,853.
-func groupDigits(n int64) string {
-	digits := strconv.FormatInt(n, 10)
-	sign := ""
-	if strings.HasPrefix(digits, "-") {
-		sign, digits = "-", digits[1:]
-	}
-
-	var b strings.Builder
-	b.WriteString(sign)
-	for i, r := range digits {
-		if i > 0 && (len(digits)-i)%3 == 0 {
-			b.WriteByte(',')
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
 }
 
 // extractFileName derives the output file name from the notice page title,

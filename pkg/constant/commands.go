@@ -20,4 +20,5 @@ const (
 	Statistics         = "/statistics"
 	AlarmCallback      = "alarm:"
 	SearchCallback     = "search:"
+	StatisticsCallback = "stats:"
 )
