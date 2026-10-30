@@ -120,6 +120,60 @@ func TestSimplifyHTMLComplexTablePlaceholder(t *testing.T) {
 	}
 }
 
+// TestSimplifyHTMLLayoutTableKeepsParagraphs guards a layout pattern the
+// publishing system uses: the whole notice body is wrapped in a one-cell table
+// for styling. Flattening that cell onto one line merges every paragraph, so
+// the cell has to render as block content instead.
+func TestSimplifyHTMLLayoutTableKeepsParagraphs(t *testing.T) {
+	const layoutNotice = `<div class="pdfcontent"><table class="main" style="border:0">` +
+		`<tr><td><div>第一段正文。</div>` +
+		`<div class="subtitle">一、项目名称：投影设备<br/>二、项目编号：TEST-0001</div>` +
+		`<div class="textIndent">采购包（1）：</div>` +
+		`<div class="textIndent">第一名：甲公司</div>` +
+		`</td></tr></table></div>`
+
+	got, complexTable := SimplifyHTML(layoutNotice, "")
+	if complexTable {
+		t.Error("a one-cell layout table must not be reported as a complex table")
+	}
+
+	want := strings.Join([]string{
+		"第一段正文。",
+		"一、项目名称：投影设备",
+		"二、项目编号：TEST-0001",
+		"采购包（1）：",
+		"第一名：甲公司",
+	}, "\n")
+	if got != want {
+		t.Errorf("SimplifyHTML() = %q, want %q", got, want)
+	}
+	if problems := unbalancedTags(got); len(problems) > 0 {
+		t.Errorf("rendered markup is unbalanced: %v\n%s", problems, got)
+	}
+	if strings.Contains(got, " | ") {
+		t.Errorf("layout table was flattened: %q", got)
+	}
+}
+
+// TestSimplifyHTMLLayoutTableStillFlagsInnerComplexTable keeps the unwrapping
+// from hiding a real table nested inside a layout wrapper.
+func TestSimplifyHTMLLayoutTableStillFlagsInnerComplexTable(t *testing.T) {
+	var wide strings.Builder
+	wide.WriteString("<table><tr>")
+	for i := range complexTableColumns {
+		fmt.Fprintf(&wide, "<td>c%d</td>", i)
+	}
+	wide.WriteString("</tr></table>")
+
+	got, complex := SimplifyHTML("<table><tr><td>"+wide.String()+"</td></tr></table>", "")
+	if !complex {
+		t.Fatal("nested wide table must still be flagged as complex")
+	}
+	if !strings.Contains(got, complexTablePlaceholder) {
+		t.Errorf("placeholder missing from %q", got)
+	}
+}
+
 func TestSimplifyHTMLProducesTelegramMarkup(t *testing.T) {
 	out, complexTable := SimplifyHTML(sampleNotice, "https://www.example.com")
 	if out == "" {
