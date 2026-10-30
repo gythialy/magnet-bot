@@ -13,7 +13,7 @@ require (
 	github.com/panjf2000/ants/v2 v2.12.1
 	github.com/rs/zerolog v1.35.1
 	golang.org/x/net v0.59.0
-	golang.org/x/sync v0.23.0
+	golang.org/x/sync v0.24.0
 	golang.org/x/text v0.42.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gorm.io/gen v0.3.29
