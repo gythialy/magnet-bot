@@ -2,8 +2,6 @@ package handler
 
 import (
 	"bytes"
-	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -326,6 +324,27 @@ func (r *InfoProcessor) processProjects(pd ProcessData) {
 // was delivered) or the context was cancelled, which makes the PushPipeline
 // roll back the claim so the next run can retry.
 func (r *InfoProcessor) sendProject(st *projectPushState, project *Project, chunks []string, total int) error {
+	// A notice whose table is too complex to flatten is delivered as one
+	// message: the original page as a PDF with the rendered body as its caption.
+	// Telegram caps a caption at 1024 units, so a longer body is cut there; the
+	// attachment carries the complete page anyway.
+	if project.HasComplexTable && r.ctx.Gotenberg != nil {
+		return r.sendProjectAttachment(st, project, chunks, total)
+	}
+
+	lastMessageID, err := r.sendChunks(st, project, chunks)
+	if err != nil {
+		return err
+	}
+	if lastMessageID != 0 {
+		r.persistForcedHistory(st, project, total)
+	}
+	return nil
+}
+
+// sendChunks delivers the rendered body, one message per chunk, and returns the
+// id of the last delivered message (0 when nothing was sent).
+func (r *InfoProcessor) sendChunks(st *projectPushState, project *Project, chunks []string) (int, error) {
 	logger := r.ctx.Logger
 	ctx := r.ctx.context()
 	pageURL := project.Pageurl
@@ -349,7 +368,7 @@ func (r *InfoProcessor) sendProject(st *projectPushState, project *Project, chun
 			}
 			logger.Error().Stack().Err(errSend).Msgf("content: %s", chunk)
 			if idx == 0 {
-				return errSend // nothing delivered → pipeline rolls back
+				return 0, errSend // nothing delivered → pipeline rolls back
 			}
 		} else {
 			isSuccessful = true
@@ -361,38 +380,12 @@ func (r *InfoProcessor) sendProject(st *projectPushState, project *Project, chun
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return lastMessageID, ctx.Err()
 		case <-time.After(chunkSendInterval):
 		}
 	}
 
-	// A notice with a table too complex to flatten is delivered as the original
-	// page: the body only carries a placeholder, so attach the PDF as a reply.
-	// The text already reached the user, so a failed attachment does not roll
-	// the claim back: it is queued and retried by the AttachmentRetrier.
-	if isSuccessful && project.HasComplexTable {
-		if err := r.sendProjectPDF(ctx, st.userId, lastMessageID, project); err != nil {
-			logger.Error().Stack().Err(err).
-				Int64("chatId", st.userId).
-				Str("code", project.OpenTenderCode).
-				Str("url", pageURL).
-				Msg("send project pdf")
-			r.enqueuePendingPDF(st.userId, lastMessageID, project)
-		}
-	}
-
-	if isSuccessful && total > 0 && st.isForced {
-		// Forced path bypasses the claim, so persist history here.
-		// Normal path already persisted the row at claim time.
-		st.processedURL = append(st.processedURL, &model.History{
-			UserID:        st.userId,
-			URL:           pageURL,
-			Title:         shortTitle,
-			UpdatedAt:     st.now,
-			HasTenderCode: btoi(project.HasTenderCode),
-		})
-	}
-	return nil
+	return lastMessageID, nil
 }
 
 // recordKeywordMatches records the (keyword, notice) pairs of the notices that
@@ -437,34 +430,79 @@ func (r *InfoProcessor) recordKeywordMatches(projects []*Project) {
 	}
 }
 
-// sendProjectPDF attaches the original notice page as a PDF, replying to the
-// text message that announced it. A conversion failure is logged by the caller:
-// the text already reached the user, so it must not roll the claim back.
-func (r *InfoProcessor) sendProjectPDF(ctx context.Context, chatID int64, replyTo int, project *Project) error {
-	if r.ctx.Gotenberg == nil {
-		return errors.New("gotenberg client is not configured")
-	}
+// sendProjectAttachment delivers a complex-table notice as a single message:
+// the original page as a PDF plus the rendered body as its caption.
+//
+// The body is still worth sending when either step fails, so it falls back to
+// the chunked text and hands the attachment to the background retrier.
+func (r *InfoProcessor) sendProjectAttachment(st *projectPushState, project *Project, chunks []string, total int) error {
+	logger := r.ctx.Logger
+	ctx := r.ctx.context()
 
 	data, err := r.ctx.Gotenberg.FetchPDF(ctx, project.Pageurl)
-	if err != nil {
-		return err
+	if err == nil {
+		_, err = r.ctx.Bot.SendDocument(ctx, &bot.SendDocumentParams{
+			ChatID: st.userId,
+			Document: &models.InputFileUpload{
+				Filename: attachmentName(project),
+				Data:     bytes.NewReader(data),
+			},
+			Caption:   attachmentCaption(chunks),
+			ParseMode: models.ParseModeHTML,
+		})
+		if err == nil {
+			logger.Info().Msgf("notify: %s[%s]-attachment", project.ShortTitle, project.OpenTenderCode)
+			r.persistForcedHistory(st, project, total)
+			return nil
+		}
 	}
 
-	params := &bot.SendDocumentParams{
-		ChatID: chatID,
-		Document: &models.InputFileUpload{
-			Filename: attachmentName(project),
-			Data:     bytes.NewReader(data),
-		},
-		Caption: truncateCaption(project.Title),
+	logger.Error().Stack().Err(err).
+		Int64("chatId", st.userId).
+		Str("code", project.OpenTenderCode).
+		Str("url", project.Pageurl).
+		Msg("send project attachment")
+
+	lastMessageID, sendErr := r.sendChunks(st, project, chunks)
+	if sendErr != nil {
+		return sendErr
 	}
-	if replyTo != 0 {
-		params.ReplyParameters = &models.ReplyParameters{MessageID: replyTo}
-	}
-	if _, err := r.ctx.Bot.SendDocument(ctx, params); err != nil {
-		return err
+	if lastMessageID != 0 {
+		r.enqueuePendingPDF(st.userId, lastMessageID, project)
+		r.persistForcedHistory(st, project, total)
 	}
 	return nil
+}
+
+// persistForcedHistory records a forced re-push, which bypasses the claim and
+// therefore has to persist its own history row.
+func (r *InfoProcessor) persistForcedHistory(st *projectPushState, project *Project, total int) {
+	if total == 0 || !st.isForced {
+		return
+	}
+	st.processedURL = append(st.processedURL, &model.History{
+		UserID:        st.userId,
+		URL:           project.Pageurl,
+		Title:         project.ShortTitle,
+		UpdatedAt:     st.now,
+		HasTenderCode: btoi(project.HasTenderCode),
+	})
+}
+
+// attachmentCaption renders the first chunk as the PDF caption.
+//
+// Telegram accepts at most 1024 UTF-16 units in a caption, so a body that fits
+// is used whole and a longer one is cut at that budget with an ellipsis; the
+// attachment holds the complete page either way.
+func attachmentCaption(chunks []string) string {
+	if len(chunks) == 0 {
+		return ""
+	}
+	body := strings.TrimSpace(chunks[0])
+	if visibleUnits(body) <= maxCaptionUnits {
+		return body
+	}
+	return truncateHTML(body, maxCaptionUnits) + "…"
 }
 
 // enqueuePendingPDF records a failed attachment so the background retrier can
@@ -523,7 +561,6 @@ func attachmentFilename(tenderCode, title string) string {
 
 // truncateCaption keeps a document caption inside Telegram's 1024-unit limit.
 func truncateCaption(title string) string {
-	const maxCaptionUnits = 1000
 	if utf16Len(title) <= maxCaptionUnits {
 		return title
 	}
