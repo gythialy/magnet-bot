@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"slices"
 	"sync"
 	"testing"
 
@@ -69,6 +70,36 @@ func TestFilterConcurrentUsers(t *testing.T) {
 		if project.Keyword != "" {
 			t.Fatalf("shared project %s carries a user keyword: %q", project.Pageurl, project.Keyword)
 		}
+	}
+}
+
+// TestFilterRecordsKeywordIDs checks that Filter carries the matched keyword
+// ids into the copy; the pipeline counts them only once the notice is
+// delivered, so the statistics cannot be inflated by re-matches.
+func TestFilterRecordsKeywordIDs(t *testing.T) {
+	id1, id2 := int32(1), int32(2)
+	rules := []*rule.ComplexRule{
+		rule.NewComplexRule(&model.Keyword{ID: &id1, Keyword: "t1"}),
+		rule.NewComplexRule(&model.Keyword{ID: &id2, Keyword: "t1"}),
+	}
+	shared := []*Project{{Title: "t1", ShortTitle: "t1", Pageurl: "u1"}}
+
+	matched := NewProjects(testBotContext("example.com"), shared, rules).Filter()
+	if len(matched) != 1 {
+		t.Fatalf("got %d matches, want 1", len(matched))
+	}
+	if got := matched[0].keywordIDs; !slices.Equal(got, []int32{id1, id2}) {
+		t.Fatalf("keywordIDs = %v, want [%d %d]", got, id1, id2)
+	}
+
+	// Two rules of the same keyword must still count that keyword once.
+	rules = []*rule.ComplexRule{
+		rule.NewComplexRule(&model.Keyword{ID: &id1, Keyword: "t1"}),
+		rule.NewComplexRule(&model.Keyword{ID: &id1, Keyword: "+t1"}),
+	}
+	matched = NewProjects(testBotContext("example.com"), shared, rules).Filter()
+	if got := matched[0].keywordIDs; !slices.Equal(got, []int32{id1}) {
+		t.Fatalf("keywordIDs = %v, want [%d]", got, id1)
 	}
 }
 
