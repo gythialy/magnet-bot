@@ -193,6 +193,7 @@ func (ctx *BotContext) initBot() error {
 	ctx.Bot.RegisterHandler(bot.HandlerTypeCallbackQueryData, constant.SearchCallback, bot.MatchTypePrefix, cmdHandler.HandleCallbackQuery)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeCallbackQueryData, constant.AlarmCallback, bot.MatchTypePrefix, cmdHandler.HandleCallbackQuery)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeCallbackQueryData, constant.TodayCallback, bot.MatchTypePrefix, cmdHandler.HandleCallbackQuery)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeCallbackQueryData, constant.StatisticsCallback, bot.MatchTypePrefix, cmdHandler.StatisticsCallback)
 
 	managerHandler := NewManagerHandler(ctx)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Retry, bot.MatchTypePrefix, managerHandler.Retry)

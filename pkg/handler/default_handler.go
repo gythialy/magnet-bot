@@ -22,6 +22,15 @@ func (d *defaultHandler) Handler(ctx context.Context, b *bot.Bot, update *models
 	}
 
 	message := update.Message
+	if message == nil {
+		return
+	}
+	// A reply to the /statistics edit prompt renames a keyword instead of being
+	// echoed back as an unknown message.
+	if d.cmd.consumePendingKeywordEdit(ctx, b, update) {
+		return
+	}
+
 	userId := message.Chat.ID
 	command := message.Text
 
