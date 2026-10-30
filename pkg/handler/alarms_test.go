@@ -1,8 +1,8 @@
 package handler
 
 import (
-	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,16 +18,16 @@ import (
 // processors — each with its own in-memory locks, simulating two bot
 // instances — cannot both claim and send the same alarm.
 func TestAlarmClaimPreventsDuplicateAcrossInstances(t *testing.T) {
-	f := "./alarm_claim_test.db"
-	defer func() { _ = os.Remove(f) }()
-	db, err := gorm.Open(sqlite.Open(f), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(t.TempDir()+"/alarm_claim_test.db"), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = db.AutoMigrate(&model.Alarm{})
+	if err := db.AutoMigrate(&model.Alarm{}); err != nil {
+		t.Fatal(err)
+	}
 	dal.SetDefault(db)
 
-	userId := int64(3333)
+	const userId = int64(3333)
 	makeAlarm := func() *model.Alarm {
 		return &model.Alarm{
 			UserID:     userId,
@@ -35,7 +35,7 @@ func TestAlarmClaimPreventsDuplicateAcrossInstances(t *testing.T) {
 			CreditName: "测试公司",
 			CreditCode: "CODE-CLAIM",
 			StartDate:  time.Now(),
-			EndDate:    &[]time.Time{time.Time{}}[0],
+			EndDate:    new(time.Time),
 			PageUrl1:   "http://example.com",
 			NoticeID:   "N-CLAIM",
 		}
@@ -43,48 +43,46 @@ func TestAlarmClaimPreventsDuplicateAcrossInstances(t *testing.T) {
 
 	// claim runs the same critical section used by processAlarms: fast-path
 	// IsExist, then claim via InsertIfAbsent; returns how many sends happened.
-	claim := func() (sent int) {
+	claim := func() (sent bool) {
 		alarm := makeAlarm()
 		exist, err := dal.Alarm.IsExist(userId, alarm.CreditCode)
 		if err != nil || exist {
-			return 0
+			return false
 		}
 		inserted, err := dal.Alarm.InsertIfAbsent(alarm)
 		if err != nil || !inserted {
-			return 0
+			return false
 		}
-		return 1 // this instance won the claim and would send the message
+		return true // this instance won the claim and would send the message
 	}
 
-	var sentTotal int32
+	var sentTotal atomic.Int32
 	var wg sync.WaitGroup
 	// 30 concurrent "instances" all racing for the same alarm
-	for i := 0; i < 30; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if claim() == 1 {
-				sentTotal++
+	for range 30 {
+		wg.Go(func() {
+			if claim() {
+				sentTotal.Add(1)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 
-	if sentTotal != 1 {
-		t.Fatalf("expected exactly 1 send across instances, got %d", sentTotal)
+	if got := sentTotal.Load(); got != 1 {
+		t.Fatalf("expected exactly 1 send across instances, got %d", got)
 	}
 
 	// The claim must be visible to later runs: another attempt is skipped.
-	if sent := claim(); sent != 0 {
-		t.Fatalf("expected the claimed alarm to be skipped on the next run, got send=%d", sent)
+	if claim() {
+		t.Fatal("expected the claimed alarm to be skipped on the next run")
 	}
 
 	// Rollback (as done on send failure) must allow retry.
 	if err := dal.Alarm.Remove(userId, "CODE-CLAIM"); err != nil {
 		t.Fatal(err)
 	}
-	if sent := claim(); sent != 1 {
-		t.Fatalf("expected the alarm to be claimable again after rollback, got send=%d", sent)
+	if !claim() {
+		t.Fatal("expected the alarm to be claimable again after rollback")
 	}
 }
 
@@ -92,20 +90,22 @@ func TestAlarmClaimPreventsDuplicateAcrossInstances(t *testing.T) {
 // primary key (user_id, url) acts as a distributed lock for project pushes:
 // many concurrent "instances" can never both send the same project URL.
 func TestHistoryClaimPreventsDuplicateAcrossInstances(t *testing.T) {
-	f := "./history_claim_test.db"
-	defer func() { _ = os.Remove(f) }()
-	db, err := gorm.Open(sqlite.Open(f), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(t.TempDir()+"/history_claim_test.db"), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = db.AutoMigrate(&model.History{})
+	if err := db.AutoMigrate(&model.History{}); err != nil {
+		t.Fatal(err)
+	}
 	dal.SetDefault(db)
 
-	userId := int64(4444)
-	url := "http://example.com/project/1"
+	const (
+		userId = int64(4444)
+		url    = "http://example.com/project/1"
+	)
 
 	// claim runs the same critical section used by processProjects.
-	claim := func() (won bool) {
+	claim := func() bool {
 		history := &model.History{
 			UserID:    userId,
 			URL:       url,
@@ -120,22 +120,20 @@ func TestHistoryClaimPreventsDuplicateAcrossInstances(t *testing.T) {
 		return inserted
 	}
 
-	var winners int32
+	var winners atomic.Int32
 	var wg sync.WaitGroup
 	// 30 concurrent "instances" all racing for the same URL
-	for i := 0; i < 30; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 30 {
+		wg.Go(func() {
 			if claim() {
-				winners++
+				winners.Add(1)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 
-	if winners != 1 {
-		t.Fatalf("expected exactly 1 claim across instances, got %d", winners)
+	if got := winners.Load(); got != 1 {
+		t.Fatalf("expected exactly 1 claim across instances, got %d", got)
 	}
 
 	// A later run must see the URL as already claimed.

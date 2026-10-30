@@ -1,6 +1,11 @@
 version: "2"
 
 linters:
+  # modernize flags pre-Go-1.21 idioms that the Go team's modernize analyzer
+  # rewrites (any, slices/maps helpers, wg.Go, strings.Cut, range over int, ...).
+  # It keeps the codebase from drifting back to the older style.
+  enable:
+    - modernize
   # Defines a set of rules to ignore issues.
   # It does not skip the analysis, and so does not ignore "typecheck" errors.
   exclusions:
@@ -8,5 +13,5 @@ linters:
     # "/" will be replaced by the current OS file path separator to properly work on Windows.
     # Default: []
     paths:
-      - ".*\\.gen\\.go"
-      - ".gen_test\\.go"
+      - '.*\.gen\.go'
+      - '.gen_test\.go'

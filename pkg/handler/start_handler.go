@@ -17,27 +17,27 @@ type startHandler struct {
 func (s *startHandler) Handler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	m := update.Message
 	command := strings.TrimSpace(strings.TrimPrefix(m.Text, constant.Start))
-	switch {
-	case strings.HasPrefix(command, constant.Alarm[1:]):
-		split := strings.Split(command, "_")
-		if len(split) == 2 {
-			update.Message.Text = fmt.Sprintf("%s %s", constant.Alarm, strings.TrimSpace(split[1]))
-			s.cmdHandler.AlarmRecordHandler(ctx, b, update)
-		} else {
+
+	// /start alarm_<id> deep-links straight to the alarm detail.
+	if rest, ok := strings.CutPrefix(command, strings.TrimPrefix(constant.Alarm, "/")); ok {
+		id, found := strings.CutPrefix(rest, "_")
+		id = strings.TrimSpace(id)
+		if !found || id == "" {
 			s.cmdHandler.sendErrorMessage(ctx, b, update, fmt.Sprintf("invalid alarm %s", command))
+			return
 		}
-	default:
-		s.sendHelpMessage(ctx, b, update)
+		update.Message.Text = constant.Alarm + " " + id
+		s.cmdHandler.AlarmRecordHandler(ctx, b, update)
+		return
 	}
+
+	s.sendHelpMessage(ctx, b, update)
 }
 
 func (s *startHandler) sendHelpMessage(ctx context.Context, b *bot.Bot, update *models.Update) {
-	helpText := HelpText()
-
 	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID:    update.Message.Chat.ID,
-		Text:      helpText,
-		ParseMode: models.ParseModeHTML,
+		ChatID: update.Message.Chat.ID,
+		Text:   HelpText(),
 	}); err != nil {
 		s.cmdHandler.ctx.Logger.Error().Err(err).Msg("Failed to send help message")
 	}

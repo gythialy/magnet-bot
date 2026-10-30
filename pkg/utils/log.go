@@ -3,7 +3,7 @@ package utils
 import (
 	"io"
 	"os"
-	"path"
+	"path/filepath"
 
 	"github.com/rs/zerolog/pkgerrors"
 
@@ -85,7 +85,7 @@ func newRollingFile(config Config) io.Writer {
 	}
 
 	return &lumberjack.Logger{
-		Filename:   path.Join(config.Directory, config.Filename),
+		Filename:   filepath.Join(config.Directory, config.Filename),
 		MaxBackups: config.MaxBackups,
 		MaxSize:    config.MaxSize,
 		MaxAge:     config.MaxAge,

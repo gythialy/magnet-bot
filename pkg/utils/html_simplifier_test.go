@@ -2,986 +2,337 @@ package utils
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
 
-const input = `<h2 style="margin-top: 0pt; margin-bottom: 0pt; text-align: center; line-height: 28pt; break-after: avoid; font-family:
-  Arial; font-size: 16pt;" align="center"><span style="font-family: 方正小标宋简体; font-size: 22.0000pt;"><span
-      style="font-family: 方正小标宋简体;">竞争性谈判</span><span style="font-family: 方正小标宋简体;">公告</span></span></h2>\n<p
-  style="text-indent: 28pt; line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify;
-  font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">我部就以下项目进行国内竞争性谈判采购，采购资金已全部落实，欢迎符合条件的供应商参加谈判。</span></span></p>\n<p style="text-indent:
-  28pt; line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size:
-  10.5pt;"><span style="font-family: 黑体; font-size: 14.0000pt;"><span style="font-family:
-      黑体;">一、项目名称：</span></span><u><span style="font-family: 黑体; text-decoration: underline; font-size:
-      14.0000pt;"><span style="font-family: 黑体;">车场信息化改造（</span></span></u><u><span style="font-family: 黑体;
-      text-decoration: underline; font-size: 14.0000pt;"><span style="font-family: 黑体;">四</span></span></u><u><span
-      style="font-family: 黑体; text-decoration: underline; font-size: 14.0000pt;"><span style="font-family:
-        黑体;">次）</span></span></u></p>\n<p style="text-indent: 28pt; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-  text-align: justify; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 黑体; font-size:
-    14.0000pt;"><span style="font-family: 黑体;">二、项目编号：</span></span><u><span style="font-family: 黑体;
-      text-decoration: underline; font-size: 14.0000pt;"><span style="font-family: Times New
-        Roman;">2024-JLBBDC-W3002</span></span></u></p>\n<p style="text-indent: 28pt; line-height: 28pt; margin: 0pt
-  0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family:
-    黑体; font-size: 14.0000pt;"><span style="font-family: 黑体;">三、项目概况：</span></span></p>\n<div align="center">\n
-  <table style="border-collapse: collapse; border: none; font-family: 'Times New Roman' ; font-size: 10pt;"
-    border="1" cellspacing="0">\n<tbody>\n<tr style="height: 36.0500pt; page-break-inside: avoid;">\n<td
-          style="width: 43.1500pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family:
-                宋体;">序号</span></span></p>\n</td>\n<td style="width: 202.9000pt; padding: 0.0000pt 5.4000pt 0.0000pt
-          5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext; border-top: 1.0000pt solid windowtext;
-          border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align: center; margin: 0pt 0pt
-            0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">物资名称</span></span></p>\n</td>\n<td style="width: 45.3000pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: 1.0000pt solid windowtext; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p
-            style="text-align: center; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">计量</span></span></p>
-          \n<p style="text-align: center; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size:
-            10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family:
-                宋体;">单位</span></span></p>\n</td>\n<td style="width: 37.1000pt; padding: 0.0000pt 5.4000pt 0.0000pt
-          5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext; border-top: 1.0000pt solid windowtext;
-          border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align: center; margin: 0pt 0pt
-            0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">数量</span></span></p>\n</td>\n<td style="width: 46.3500pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: 1.0000pt solid windowtext; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p
-            style="text-align: center; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">交货</span></span></p>
-          \n<p style="text-align: center; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size:
-            10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family:
-                宋体;">时间</span></span></p>\n</td>\n<td style="width: 49.3500pt; padding: 0.0000pt 5.4000pt 0.0000pt
-          5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext; border-top: 1.0000pt solid windowtext;
-          border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align: center; margin: 0pt 0pt
-            0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">交货</span></span></p>\n<p style="text-align: center; margin:
-            0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体;
-              font-size: 12.0000pt;"><span style="font-family: 宋体;">地点</span></span></p>\n</td>\n<td style="width:
-          33.5500pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid
-          windowtext; border-top: 1.0000pt solid windowtext; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family:
-                宋体;">备注</span></span></p>\n</td>\n</tr>\n<tr style="height: 31.2000pt; page-break-inside: avoid;">\n
-        <td style="width: 43.1500pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: 1.0000pt solid
-          windowtext; border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid
-          windowtext;" valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">一</span></span></p>\n</td>\n<td style="width: 285.3000pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" colspan="3" valign="center">\n<p
-            style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family:
-                宋体;">车辆管理系统</span></span></p>\n</td>\n<td style="width: 46.3500pt; padding: 0.0000pt 5.4000pt 0.0000pt
-          5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext; border-top: none; border-bottom:
-          1.0000pt solid windowtext;" rowspan="24" valign="center">\n<p style="text-align: center; line-height:
-            28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">合同签订之日起</span><span
-                style="font-family: 宋体;">30天内全部交货并安装调试完毕</span></span></p>\n</td>\n<td style="width: 49.3500pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" rowspan="24" valign="center">\n<p
-            style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family:
-                宋体;">辽宁省抚顺市清原满族自治县</span></span></p>\n</td>\n<td style="width: 33.5500pt; padding: 0.0000pt 5.4000pt
-          0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext; border-top: none;
-          border-bottom: none;" valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt
-            0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr style="height: 31.2000pt; page-break-inside: avoid;">\n<td
-          style="width: 43.1500pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: 1.0000pt solid
-          windowtext; border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid
-          windowtext;" valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">1</span></span></p>\n</td>\n<td style="width: 202.9000pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">车牌管理平台</span></span>
-          </p>\n</td>\n<td style="width: 45.3000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">套</span></span></p>\n</td>\n<td style="width: 37.1000pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">1</span></span></p>
-          \n</td>\n<td style="width: 33.5500pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: 1.0000pt solid windowtext; border-bottom: 1.0000pt solid
-          windowtext;" valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr style="height: 31.2000pt; page-break-inside: avoid;">\n<td
-          style="width: 43.1500pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: 1.0000pt solid
-          windowtext; border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid
-          windowtext;" valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">2</span></span></p>\n</td>\n<td style="width: 202.9000pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family:
-                宋体;">车辆管理服务器</span></span></p>\n</td>\n<td style="width: 45.3000pt; padding: 0.0000pt 5.4000pt
-          0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext; border-top: none;
-          border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align: center; line-height:
-            28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">台</span></span></p>\n
-        </td>\n<td style="width: 37.1000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">1</span></span></p>\n</td>\n<td style="width: 33.5500pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr style="height:
-        31.2000pt; page-break-inside: avoid;">\n<td style="width: 43.1500pt; padding: 0.0000pt 5.4000pt 0.0000pt
-          5.4000pt; border-left: 1.0000pt solid windowtext; border-right: 1.0000pt solid windowtext; border-top: none;
-          border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align: center; line-height:
-            28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">3</span></span></p>\n
-        </td>\n<td style="width: 202.9000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">30位钥匙管理箱</span></span></p>\n</td>\n<td style="width:
-          45.3000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid
-          windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p
-            style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family:
-                宋体;">台</span></span></p>\n</td>\n<td style="width: 37.1000pt; padding: 0.0000pt 5.4000pt 0.0000pt
-          5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext; border-top: none; border-bottom:
-          1.0000pt solid windowtext;" valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt
-            0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体;
-              font-size: 12.0000pt;"><span style="font-family: 宋体;">1</span></span></p>\n</td>\n<td style="width:
-          33.5500pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid
-          windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p
-            style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr
-        style="height: 31.2000pt; page-break-inside: avoid;">\n<td style="width: 43.1500pt; padding: 0.0000pt
-          5.4000pt 0.0000pt 5.4000pt; border-left: 1.0000pt solid windowtext; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">4</span></span></p>
-          \n</td>\n<td style="width: 202.9000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">拍摄设备（扫描仪、高拍仪等）</span></span></p>\n</td>\n<td style="width:
-          45.3000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid
-          windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p
-            style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family:
-                宋体;">台</span></span></p>\n</td>\n<td style="width: 37.1000pt; padding: 0.0000pt 5.4000pt 0.0000pt
-          5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext; border-top: none; border-bottom:
-          1.0000pt solid windowtext;" valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt
-            0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体;
-              font-size: 12.0000pt;"><span style="font-family: 宋体;">1</span></span></p>\n</td>\n<td style="width:
-          33.5500pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid
-          windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p
-            style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr
-        style="height: 31.2000pt; page-break-inside: avoid;">\n<td style="width: 43.1500pt; padding: 0.0000pt
-          5.4000pt 0.0000pt 5.4000pt; border-left: 1.0000pt solid windowtext; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">5</span></span></p>
-          \n</td>\n<td style="width: 202.9000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">台式机</span></span></p>\n</td>\n<td style="width: 45.3000pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">台</span></span></p>
-          \n</td>\n<td style="width: 37.1000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">1</span></span></p>\n</td>\n<td style="width: 33.5500pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr style="height:
-        31.2000pt; page-break-inside: avoid;">\n<td style="width: 43.1500pt; padding: 0.0000pt 5.4000pt 0.0000pt
-          5.4000pt; border-left: 1.0000pt solid windowtext; border-right: 1.0000pt solid windowtext; border-top: none;
-          border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align: center; line-height:
-            28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">6</span></span></p>\n
-        </td>\n<td style="width: 202.9000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">车牌识别一体机（含机头）</span></span></p>\n</td>\n<td style="width:
-          45.3000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid
-          windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p
-            style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family:
-                宋体;">台</span></span></p>\n</td>\n<td style="width: 37.1000pt; padding: 0.0000pt 5.4000pt 0.0000pt
-          5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext; border-top: none; border-bottom:
-          1.0000pt solid windowtext;" valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt
-            0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体;
-              font-size: 12.0000pt;"><span style="font-family: 宋体;">2</span></span></p>\n</td>\n<td style="width:
-          33.5500pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid
-          windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p
-            style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr
-        style="height: 31.2000pt; page-break-inside: avoid;">\n<td style="width: 43.1500pt; padding: 0.0000pt
-          5.4000pt 0.0000pt 5.4000pt; border-left: 1.0000pt solid windowtext; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">7</span></span></p>
-          \n</td>\n<td style="width: 202.9000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">频读卡器（车辆进出通道方向各一个）</span></span></p>\n</td>\n<td
-          style="width: 45.3000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right:
-          1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n
-          <p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family:
-                宋体;">台</span></span></p>\n</td>\n<td style="width: 37.1000pt; padding: 0.0000pt 5.4000pt 0.0000pt
-          5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext; border-top: none; border-bottom:
-          1.0000pt solid windowtext;" valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt
-            0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体;
-              font-size: 12.0000pt;"><span style="font-family: 宋体;">4</span></span></p>\n</td>\n<td style="width:
-          33.5500pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid
-          windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p
-            style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr
-        style="height: 31.2000pt; page-break-inside: avoid;">\n<td style="width: 43.1500pt; padding: 0.0000pt
-          5.4000pt 0.0000pt 5.4000pt; border-left: 1.0000pt solid windowtext; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">8</span></span></p>
-          \n</td>\n<td style="width: 202.9000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">车载模块</span></span></p>\n</td>\n<td style="width: 45.3000pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">个</span></span></p>
-          \n</td>\n<td style="width: 37.1000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">70</span></span></p>\n</td>\n<td style="width: 33.5500pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr style="height:
-        31.2000pt; page-break-inside: avoid;">\n<td style="width: 43.1500pt; padding: 0.0000pt 5.4000pt 0.0000pt
-          5.4000pt; border-left: 1.0000pt solid windowtext; border-right: 1.0000pt solid windowtext; border-top: none;
-          border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align: center; line-height:
-            28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">9</span></span></p>\n
-        </td>\n<td style="width: 202.9000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">网络交换机</span></span></p>\n</td>\n<td style="width:
-          45.3000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid
-          windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p
-            style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family:
-                宋体;">台</span></span></p>\n</td>\n<td style="width: 37.1000pt; padding: 0.0000pt 5.4000pt 0.0000pt
-          5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext; border-top: none; border-bottom:
-          1.0000pt solid windowtext;" valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt
-            0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体;
-              font-size: 12.0000pt;"><span style="font-family: 宋体;">1</span></span></p>\n</td>\n<td style="width:
-          33.5500pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid
-          windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p
-            style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr
-        style="height: 31.2000pt; page-break-inside: avoid;">\n<td style="width: 43.1500pt; padding: 0.0000pt
-          5.4000pt 0.0000pt 5.4000pt; border-left: 1.0000pt solid windowtext; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">10</span></span></p>
-          \n</td>\n<td style="width: 202.9000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">网线</span></span></p>\n</td>\n<td style="width: 45.3000pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">箱</span></span></p>
-          \n</td>\n<td style="width: 37.1000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">1</span></span></p>\n</td>\n<td style="width: 33.5500pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr style="height:
-        31.2000pt; page-break-inside: avoid;">\n<td style="width: 43.1500pt; padding: 0.0000pt 5.4000pt 0.0000pt
-          5.4000pt; border-left: 1.0000pt solid windowtext; border-right: 1.0000pt solid windowtext; border-top: none;
-          border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align: center; line-height:
-            28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">1</span></span><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">1</span></span></p>\n
-        </td>\n<td style="width: 202.9000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">电源线</span></span></p>\n</td>\n<td style="width: 45.3000pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">米</span></span></p>
-          \n</td>\n<td style="width: 37.1000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">400</span></span></p>\n</td>\n<td style="width: 33.5500pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr style="height:
-        31.2000pt; page-break-inside: avoid;">\n<td style="width: 43.1500pt; padding: 0.0000pt 5.4000pt 0.0000pt
-          5.4000pt; border-left: 1.0000pt solid windowtext; border-right: 1.0000pt solid windowtext; border-top: none;
-          border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align: center; line-height:
-            28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">1</span></span><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">2</span></span></p>\n
-        </td>\n<td style="width: 202.9000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">辅材</span></span></p>\n</td>\n<td style="width: 45.3000pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">批</span></span></p>
-          \n</td>\n<td style="width: 37.1000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">1</span></span></p>\n</td>\n<td style="width: 33.5500pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr style="height:
-        31.2000pt; page-break-inside: avoid;">\n<td style="width: 43.1500pt; padding: 0.0000pt 5.4000pt 0.0000pt
-          5.4000pt; border-left: 1.0000pt solid windowtext; border-right: 1.0000pt solid windowtext; border-top: none;
-          border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align: center; line-height:
-            28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">1</span></span><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">3</span></span></p>\n
-        </td>\n<td style="width: 202.9000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">悬浮门</span></span></p>\n</td>\n<td style="width: 45.3000pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: none;" valign="center">\n<p style="text-align: center; line-height: 28pt;
-            margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family:
-              宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">个</span></span></p>\n</td>\n<td
-          style="width: 37.1000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right:
-          1.0000pt solid windowtext; border-top: none; border-bottom: none;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">1</span></span></p>
-          \n</td>\n<td style="width: 33.5500pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr style="height: 31.2000pt; page-break-inside: avoid;">\n<td
-          style="width: 43.1500pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: 1.0000pt solid
-          windowtext; border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid
-          windowtext;" valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">二</span></span></p>\n</td>\n<td style="width: 285.3000pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" colspan="3" valign="center">\n<p
-            style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family:
-                宋体;">安防设施</span></span></p>\n</td>\n<td style="width: 33.5500pt; padding: 0.0000pt 5.4000pt 0.0000pt
-          5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: none;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr style="height: 31.2000pt; page-break-inside: avoid;">\n<td
-          style="width: 43.1500pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: 1.0000pt solid
-          windowtext; border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid
-          windowtext;" valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">1</span></span></p>\n</td>\n<td style="width: 202.9000pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family:
-                宋体;">监控摄像机（火点）</span></span></p>\n</td>\n<td style="width: 45.3000pt; padding: 0.0000pt 5.4000pt
-          0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext; border-top: none;
-          border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align: center; line-height:
-            28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">台</span></span></p>\n
-        </td>\n<td style="width: 37.1000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">16</span></span></p>\n</td>\n<td style="width: 33.5500pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: 1.0000pt solid windowtext; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p
-            style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr
-        style="height: 31.2000pt; page-break-inside: avoid;">\n<td style="width: 43.1500pt; padding: 0.0000pt
-          5.4000pt 0.0000pt 5.4000pt; border-left: 1.0000pt solid windowtext; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">2</span></span></p>
-          \n</td>\n<td style="width: 202.9000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">报警器主机</span></span></p>\n</td>\n<td style="width:
-          45.3000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid
-          windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p
-            style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family:
-                宋体;">个</span></span></p>\n</td>\n<td style="width: 37.1000pt; padding: 0.0000pt 5.4000pt 0.0000pt
-          5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext; border-top: none; border-bottom:
-          1.0000pt solid windowtext;" valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt
-            0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体;
-              font-size: 12.0000pt;"><span style="font-family: 宋体;">2</span></span></p>\n</td>\n<td style="width:
-          33.5500pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid
-          windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p
-            style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr
-        style="height: 31.2000pt; page-break-inside: avoid;">\n<td style="width: 43.1500pt; padding: 0.0000pt
-          5.4000pt 0.0000pt 5.4000pt; border-left: 1.0000pt solid windowtext; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">3</span></span></p>
-          \n</td>\n<td style="width: 202.9000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">视频监控主机</span></span></p>\n</td>\n<td style="width:
-          45.3000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid
-          windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p
-            style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family:
-                宋体;">台</span></span></p>\n</td>\n<td style="width: 37.1000pt; padding: 0.0000pt 5.4000pt 0.0000pt
-          5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext; border-top: none; border-bottom:
-          1.0000pt solid windowtext;" valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt
-            0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体;
-              font-size: 12.0000pt;"><span style="font-family: 宋体;">1</span></span></p>\n</td>\n<td style="width:
-          33.5500pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid
-          windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p
-            style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr
-        style="height: 31.2000pt; page-break-inside: avoid;">\n<td style="width: 43.1500pt; padding: 0.0000pt
-          5.4000pt 0.0000pt 5.4000pt; border-left: 1.0000pt solid windowtext; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">4</span></span></p>
-          \n</td>\n<td style="width: 202.9000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">网络交换机</span></span></p>\n</td>\n<td style="width:
-          45.3000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid
-          windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p
-            style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family:
-                宋体;">台</span></span></p>\n</td>\n<td style="width: 37.1000pt; padding: 0.0000pt 5.4000pt 0.0000pt
-          5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext; border-top: none; border-bottom:
-          1.0000pt solid windowtext;" valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt
-            0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体;
-              font-size: 12.0000pt;"><span style="font-family: 宋体;">1</span></span></p>\n</td>\n<td style="width:
-          33.5500pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid
-          windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p
-            style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr
-        style="height: 31.2000pt; page-break-inside: avoid;">\n<td style="width: 43.1500pt; padding: 0.0000pt
-          5.4000pt 0.0000pt 5.4000pt; border-left: 1.0000pt solid windowtext; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">5</span></span></p>
-          \n</td>\n<td style="width: 202.9000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">网线</span></span></p>\n</td>\n<td style="width: 45.3000pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">箱</span></span></p>
-          \n</td>\n<td style="width: 37.1000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">2</span></span></p>\n</td>\n<td style="width: 33.5500pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr style="height:
-        31.2000pt; page-break-inside: avoid;">\n<td style="width: 43.1500pt; padding: 0.0000pt 5.4000pt 0.0000pt
-          5.4000pt; border-left: 1.0000pt solid windowtext; border-right: 1.0000pt solid windowtext; border-top: none;
-          border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align: center; line-height:
-            28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">6</span></span></p>\n
-        </td>\n<td style="width: 202.9000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">电源线</span></span></p>\n</td>\n<td style="width: 45.3000pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">米</span></span></p>
-          \n</td>\n<td style="width: 37.1000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">400</span></span></p>\n</td>\n<td style="width: 33.5500pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr style="height:
-        31.2000pt; page-break-inside: avoid;">\n<td style="width: 43.1500pt; padding: 0.0000pt 5.4000pt 0.0000pt
-          5.4000pt; border-left: 1.0000pt solid windowtext; border-right: 1.0000pt solid windowtext; border-top: none;
-          border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align: center; line-height:
-            28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">7</span></span></p>\n
-        </td>\n<td style="width: 202.9000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">辅材</span></span></p>\n</td>\n<td style="width: 45.3000pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: none;" valign="center">\n<p style="text-align: center; line-height: 28pt;
-            margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family:
-              宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">批</span></span></p>\n</td>\n<td
-          style="width: 37.1000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right:
-          1.0000pt solid windowtext; border-top: none; border-bottom: none;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">1</span></span></p>
-          \n</td>\n<td style="width: 33.5500pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr style="height: 31.2000pt; page-break-inside: avoid;">\n<td
-          style="width: 43.1500pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: 1.0000pt solid
-          windowtext; border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid
-          windowtext;" valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">三</span></span></p>\n</td>\n<td style="width: 285.3000pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" colspan="3" valign="center">\n<p
-            style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family:
-                宋体;">设备安装调试服务</span></span></p>\n</td>\n<td style="width: 33.5500pt; padding: 0.0000pt 5.4000pt
-          0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext; border-top: none;
-          border-bottom: none;" valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt
-            0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr style="height: 31.2000pt; page-break-inside: avoid;">\n<td
-          style="width: 43.1500pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: 1.0000pt solid
-          windowtext; border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid
-          windowtext;" valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">1</span></span></p>\n</td>\n<td style="width: 202.9000pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align:
-            center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-            <span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family:
-                宋体;">设备安装调试服务</span></span></p>\n</td>\n<td style="width: 45.3000pt; padding: 0.0000pt 5.4000pt
-          0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext; border-top: none;
-          border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p style="text-align: center; line-height:
-            28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">项</span></span></p>\n
-        </td>\n<td style="width: 37.1000pt; padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none;
-          border-right: 1.0000pt solid windowtext; border-top: none; border-bottom: 1.0000pt solid windowtext;"
-          valign="center">\n<p style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-            font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">1</span></span></p>\n</td>\n<td style="width: 33.5500pt;
-          padding: 0.0000pt 5.4000pt 0.0000pt 5.4000pt; border-left: none; border-right: 1.0000pt solid windowtext;
-          border-top: 1.0000pt solid windowtext; border-bottom: 1.0000pt solid windowtext;" valign="center">\n<p
-            style="text-align: center; line-height: 28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"> </span></p>\n</td>\n</tr>\n<tr
-        style="height: 31.9000pt; page-break-inside: avoid;">\n<td style="width: 457.7000pt; padding: 0.0000pt
-          5.4000pt 0.0000pt 5.4000pt; border-left: 1.0000pt solid windowtext; border-right: 1.0000pt solid windowtext;
-          border-top: none; border-bottom: 1.0000pt solid windowtext;" colspan="7" valign="center">\n<p
-            style="line-height: 114%; margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family:
-                宋体;">说明：</span></span></p>\n<p style="text-indent: 24pt; line-height: 114%; margin: 0pt 0pt 0.0001pt;
-            text-align: justify; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体;
-              font-size: 12.0000pt;">1.</span><span style="font-family: 宋体; font-size: 12.0000pt;"><span
-                style="font-family: 宋体;">报价供应商应当</span></span><span style="font-family: 宋体; font-size:
-              12.0000pt;"><span style="font-family: 宋体;">对所投包内所有产品和数量进行</span></span><span style="font-family: 宋体;
-              font-size: 12.0000pt;"><span style="font-family: 宋体;">唯一</span></span><span style="font-family: 宋体;
-              font-size: 12.0000pt;"><span style="font-family: 宋体;">报价，否则视为无效</span></span><span style="font-family:
-              宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">报价</span></span><span style="font-family:
-              宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">。</span></span></p>\n<p style="text-indent:
-            24pt; line-height: 114%; margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;">2.</span><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family:
-                宋体;">报价应当包括所有物资供应、运输、安装调试、技术培训、售后服务、备品备件和伴随服务等价格。</span></span></p>\n<p style="text-indent: 24pt;
-            line-height: 114%; margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ;
-            font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 12.0000pt;">3.</span><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">报价</span></span><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">供应商</span></span><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">应当</span></span><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">保证所投</span></span><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">物资</span></span><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">为全新</span></span><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">且</span></span><span
-              style="font-family: 宋体; font-size: 12.0000pt;"><span style="font-family: 宋体;">未使用过的产品。</span></span>
-          </p>\n</td>\n</tr>\n</tbody>\n</table>\n</div>\n<p style="text-indent: 28pt; line-height: 28pt; margin: 0pt
-  0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family:
-    宋体; font-size: 14.0000pt;">1.本项目是否接受联合体</span><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">谈判：</span></span><u><span style="font-family: 宋体; text-decoration: underline;
-      font-size: 14.0000pt;"><span style="font-family: 宋体;">否</span></span></u><span style="font-family: 宋体;
-    font-size: 14.0000pt;"><span style="font-family: 宋体;">；</span></span></p>\n<p style="text-indent: 28pt;
-  line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size:
-  10.5pt;"><span style="font-family: 宋体; font-size: 14.0000pt;">2.项目预</span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">算：</span></span><u><span style="font-family: 宋体; text-decoration:
-      underline; font-size: 14.0000pt;"><span style="font-family: 宋体;">25万元</span></span></u><span
-    style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family: 宋体;">；</span></span></p>\n<p
-  style="text-indent: 28pt; line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify;
-  font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-    14.0000pt;">3.最高限价：</span><u><span style="font-family: 宋体; text-decoration: underline; font-size:
-      14.0000pt;"><span style="font-family: 宋体;">25万元</span></span></u><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">；</span></span></p>\n<p style="text-indent: 28pt; line-height: 28pt;
-  margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span
-    style="font-family: 宋体; font-size: 14.0000pt;">4.本项目</span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">确定</span></span><u><span style="font-family: 宋体; text-decoration:
-      underline; font-size: 14.0000pt;"> </span></u><u><span style="font-family: 宋体; text-decoration: underline;
-      font-size: 14.0000pt;"><span style="font-family: 宋体;">1</span></span></u><u><span style="font-family: 宋体;
-      text-decoration: underline; font-size: 14.0000pt;"> </span></u><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">家供应商成交。</span></span></p>\n<p style="text-indent: 28pt; line-height:
-  28pt; margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span
-    style="font-family: 黑体; font-size: 14.0000pt;"><span style="font-family: 黑体;">四、报价供应商资格条件</span></span></p>\n<p
-  style="text-indent: 28pt; line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify;
-  font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">（一）具有企（事）业法人资格（有行业特殊情况的银行、保险、电力、电信等法人分支机构，会计师、律师等非法人组织，行业协会等社会团体法人除外）；</span></span>
-</p>\n<p style="text-indent: 28pt; line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify;
-  font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">（二）国有企业；事业单位；军队单位；成立三年以上的非外资（含港澳台）独资或控股企业；</span></span></p>\n<p style="text-indent:
-  28pt; line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size:
-  10.5pt;"><span style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">（三）具有良好的商业信誉和健全的财务会计制度；</span></span></p>\n<p style="text-indent: 28pt; line-height: 28pt; margin: 0pt 0pt
-  0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体;
-    font-size: 14.0000pt;"><span style="font-family: 宋体;">（四）具有履行合同所必需的设施设备、专业技术能力、质量保证体系和固定的生产经营、服务场地；</span></span>
-</p>\n<p style="text-indent: 28pt; line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify;
-  font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">（五）有依法缴纳税收和社会保障资金的良好记录；</span></span></p>\n<p style="text-indent: 28pt; line-height:
-  28pt; margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span
-    style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family: 宋体;">（六）参加军队采购活动前</span><span
-      style="font-family: 宋体;">3年内，在经营活动中没有受到刑事处罚或者责令停产停业、吊销许可证或者执照、较大数额罚款（200万元以上）等重大违法记录；</span></span></p>\n<p
-  style="text-indent: 28pt; line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify;
-  font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">（七）未被中国政府采购网（</span><span style="font-family:
-      宋体;">www.ccgp.gov.cn）列入政府采购严重违法失信行为记录名单，未在军队采购网（www.plap.mil.cn）军队采购暂停名单处罚范围内或军队采购失信名单禁入处罚期和处罚范围内，以及未被“信用中国”（www.creditchina.gov.cn）列入严重失信主体名单或国家企业信用信息公</span></span><span
-    style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family: 宋体;">示系统（</span><span
-      style="font-family: 宋体;">www.gsxt.gov.cn）列入严重违法失信名单（处罚期内）。</span></span></p>\n<p style="text-indent: 28pt;
-  line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size:
-  10.5pt;"><span style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">（八）本项目特定资格：</span></span><u><span style="font-family: 宋体; text-decoration: underline; font-size:
-      14.0000pt;"><span style="font-family: 宋体;">无</span></span></u><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">。</span></span></p>\n<p style="text-indent: 28.1pt; line-height:
-  28pt; margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size: 10.5pt;">
-  <strong><span style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family:
-        宋体;">（</span></span></strong><strong><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-        style="font-family: 宋体;">九</span></span></strong><strong><span style="font-family: 宋体; font-size:
-      14.0000pt;"><span style="font-family: 宋体;">）</span></span></strong><strong><span style="font-family: 宋体;
-      font-size: 14.0000pt;"><span style="font-family: 宋体;">有意愿参与该项目采购活动的供应商，必须登录供应商管理系统（互联网网址：</span><span
-        style="font-family:
-        宋体;">plap.mil.cn）进行注册。依托电子招投标系统实施的电子化项目，供应商必须完成注册，方可报名、获取采购文件。线下组织的非电子化项目，供应商可先行</span></span></strong><strong><span
-      style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family:
-        宋体;">获取采购文件，但必须在提交投标（报价）文件截止时间前完成注册，未完成的不得参加采购活动。</span></span></strong></p>\n<p style="text-indent: 28pt;
-  line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size:
-  10.5pt;"><span style="font-family: 黑体; font-size: 14.0000pt;"><span style="font-family:
-      黑体;">五、谈判文件申领时间、地点、方式</span></span></p>\n<p style="text-indent: 28pt; line-height: 28pt; margin: 0pt 0pt
-  0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体;
-    font-size: 14.0000pt;"><span style="font-family: 宋体;">（一）</span></span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">申领</span></span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">时间</span></span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">：</span></span><u><span style="font-family: 宋体; text-decoration:
-      underline; font-size: 14.0000pt;"><span style="font-family: 宋体;">2024</span></span></u><span
-    style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family: 宋体;">年</span></span><u><span
-      style="font-family: 宋体; text-decoration: underline; font-size: 14.0000pt;"><span style="font-family:
-        宋体;">11</span></span></u><span style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">月</span></span><u><span style="font-family: 宋体; text-decoration: underline; font-size: 14.0000pt;"><span
-        style="font-family: 宋体;">01</span></span></u><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">日至</span></span><u><span style="font-family: 宋体; text-decoration: underline;
-      font-size: 14.0000pt;"><span style="font-family: 宋体;">11</span></span></u><span style="font-family: 宋体;
-    font-size: 14.0000pt;"><span style="font-family: 宋体;">月</span></span><u><span style="font-family: 宋体;
-      text-decoration: underline; font-size: 14.0000pt;"><span style="font-family: 宋体;">08</span></span></u><span
-    style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family: 宋体;">日</span></span><span
-    style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family: 宋体;">，每日</span></span><span
-    style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family: 宋体;">上午</span></span><u><span
-      style="font-family: 宋体; text-decoration: underline; font-size: 14.0000pt;"><span style="font-family:
-        宋体;">08</span></span></u><span style="font-family: 宋体; font-size: 14.0000pt;">:</span><u><span
-      style="font-family: 宋体; text-decoration: underline; font-size: 14.0000pt;"><span style="font-family:
-        宋体;">30</span></span></u><span style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">至</span></span><u><span style="font-family: 宋体; text-decoration: underline; font-size: 14.0000pt;"><span
-        style="font-family: 宋体;">11</span></span></u><span style="font-family: 宋体; font-size:
-    14.0000pt;">:</span><u><span style="font-family: 宋体; text-decoration: underline; font-size: 14.0000pt;"><span
-        style="font-family: 宋体;">30</span></span></u><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">，下午</span></span><u><span style="font-family: 宋体; text-decoration: underline;
-      font-size: 14.0000pt;"><span style="font-family: 宋体;">13</span></span></u><span style="font-family: 宋体;
-    font-size: 14.0000pt;">:</span><u><span style="font-family: 宋体; text-decoration: underline; font-size:
-      14.0000pt;"><span style="font-family: 宋体;">30</span></span></u><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">至</span></span><u><span style="font-family: 宋体; text-decoration:
-      underline; font-size: 14.0000pt;"><span style="font-family: 宋体;">16</span></span></u><span style="font-family:
-    宋体; font-size: 14.0000pt;">:</span><u><span style="font-family: 宋体; text-decoration: underline; font-size:
-      14.0000pt;"><span style="font-family: 宋体;">30</span></span></u><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">。</span></span></p>\n<p style="text-indent: 28pt; line-height: 28pt;
-  margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span
-    style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family: 宋体;">（二）</span></span><span
-    style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family: 宋体;">申领地点</span></span><span
-    style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family: 宋体;">：</span></span><u><span
-      style="font-family: 宋体; text-decoration: underline; font-size: 14.0000pt;"><span style="font-family:
-        宋体;">沈阳市和平区三好街</span><span style="font-family: 宋体;">54号物产科贸大厦20楼2028室</span></span></u><span
-    style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family: 宋体;">。</span></span></p>\n<p
-  style="text-indent: 28pt; line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify;
-  font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">（</span></span><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">三</span></span><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">）</span></span><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">申领谈判文件</span></span><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">时需提供以下</span></span><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">材料：</span></span></p>\n<p style="text-indent: 28pt; line-height: 28pt; margin: 0pt 0pt
-  0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体;
-    font-size: 14.0000pt;">1.</span><span style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">营业执照或事业单位法人证书复印件加盖公章</span></span><span style="font-family: 宋体; font-size: 14.0000pt;">(军队单位不需要提供)；</span>
-</p>\n<p style="text-indent: 28pt; line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify;
-  font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-    14.0000pt;">2.法定代表人资格证明书原件；</span></p>\n<p style="text-indent: 28pt; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-  text-align: justify; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-    14.0000pt;">3.法定代表人授权书原件，授权代表身份证和授权代表在</span><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">报价前</span></span><span style="font-family: 宋体; font-size:
-    14.0000pt;">4个月内</span><span style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">（不含报价当月）</span></span><span style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">连续</span>3个月由</span><span style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">报价供应商缴纳社保证明材料的复印件；</span></span></p>\n<p style="text-indent: 28pt; line-height: 28pt; margin: 0pt 0pt
-  0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体;
-    font-size: 14.0000pt;">4.非外资</span><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">独资</span></span><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">企业或控股企业的书面声明</span></span><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">（事业单位、军队单位不需要提供）</span></span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">；</span></span></p>\n<p style="text-indent: 28pt; line-height: 28pt;
-  margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span
-    style="font-family: 宋体; font-size: 14.0000pt;">5.</span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">报价供应商</span></span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">主要股东或出资人信息</span></span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">；</span></span></p>\n<p style="text-indent: 28pt; line-height: 28pt;
-  margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span
-    style="font-family: 宋体; font-size: 14.0000pt;">6.</span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">未被列入本公告第四条第（</span></span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">七</span></span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">）项明确的违法失信名单</span><span style="font-family:
-      宋体;">的</span></span><span style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">承诺书。</span></span></p>\n<ul style="margin-top: 0px; margin-bottom: 0px;">\n<li class="MsoNormal"
-    style="line-height: 28pt;"><span style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family:
-        宋体;">申领</span></span><span style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family:
-        宋体;">方式</span></span></li>\n</ul>\n<p style="margin-top: 0pt; margin-bottom: 0pt; text-indent: 27.8pt;
-  line-height: 28pt; text-align: left; font-family: 宋体; font-size: 12pt;"><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">采取网上发售和</span></span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">线下发售两种</span></span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">方式。线下发售由投标供应商</span></span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">携带申领</span></span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">资料</span></span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">至代理公司现地报名，线上报名由</span></span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">投标人采取发送</span></span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">电子邮件</span></span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">方式递交报名资料，邮件主题：项目名称</span></span><span style="font-family: 宋体;
-    font-size: 14.0000pt;">+</span><span style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">项目编号</span></span><span style="font-family: 宋体; font-size: 14.0000pt;">+</span><span style="font-family:
-    宋体; font-size: 14.0000pt;"><span style="font-family: 宋体;">公司名称；邮件内容：列明公司名称、法定代表人或授权代表人</span></span><span
-    style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family: 宋体;">姓名</span></span><span
-    style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family: 宋体;">及</span></span><span
-    style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family: 宋体;">联系方式；</span></span><span
-    style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family: 宋体;">邮件附件：需采用</span></span><span
-    style="font-family: 宋体; font-size: 14.0000pt;">A4</span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">纸幅面，将报名材料加盖企业鲜章，按顺序制作成</span><span style="font-family:
-      宋体;">1个PDF格式文件，文件名称与主题一致，复印件扫描无效。报名</span></span><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">材料</span></span><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">审核通过后，采购</span></span><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">机构联系人</span></span><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">向供应商邮箱发送招标文件电子版；审核未通过的，采购</span></span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">机构联系人</span></span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">以</span></span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">邮件形式回复审核情况，供应</span></span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">商</span></span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">可在招标文件申领时间内重新提交材料。采购机构</span></span><span style="font-family: 宋体;
-    font-size: 14.0000pt;"><span style="font-family: 宋体;">或代理机构邮箱：</span></span><u><span style="font-family: 宋体;
-      text-decoration: underline; font-size: 14.0000pt;"><span style="font-family:
-        宋体;">yczb-024</span></span></u><u><span style="font-family: 宋体; text-decoration: underline; font-size:
-      14.0000pt;"><span style="font-family: 宋体;">@</span></span></u><u><span style="font-family: 宋体;
-      text-decoration: underline; font-size: 14.0000pt;"><span style="font-family:
-        宋体;">yichengzhaobiao</span></span></u><u><span style="font-family: 宋体; text-decoration: underline; font-size:
-      14.0000pt;"><span style="font-family: 宋体;">.com</span></span></u><u><span style="font-family: 宋体;
-      text-decoration: underline; font-size: 14.0000pt;"><span style="font-family: 宋体;">。</span></span></u></p>\n<p
-  style="text-indent: 28pt; line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify;
-  font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">（</span></span><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">五</span></span><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">）</span></span><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">谈判</span></span><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">文件售价：</span></span><u><span style="font-family: 宋体; text-decoration: underline;
-      font-size: 14.0000pt;"><span style="font-family: 宋体;">200</span></span></u><span style="font-family: 宋体;
-    font-size: 14.0000pt;"><span style="font-family: 宋体;">元</span>/份，售后不退。</span></p>\n<p style="text-indent: 28pt;
-  line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size:
-  10.5pt;"><span style="font-family: 黑体; font-size: 14.0000pt;"><span style="font-family:
-      黑体;">六、报</span></span><span style="font-family: 黑体; font-size: 14.0000pt;"><span style="font-family:
-      黑体;">价</span></span><span style="font-family: 'Times New Roman' ; font-size: 14.0000pt;"><span
-      style="font-family: 黑体;">开始和截止时间及地点、方式</span></span></p>\n<p style="text-indent: 28pt; line-height: 28pt;
-  margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span
-    style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family: 宋体;">（一）报价</span></span><span
-    style="font-family: 'Times New Roman' ; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">开始时间：</span></span><u><span style="font-family: 宋体; text-decoration: underline; font-size:
-      14.0000pt;"><span style="font-family: Times New Roman;">2024</span></span></u><span
-    style="font-family: 'Times New Roman' ; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">年</span></span><u><span style="font-family: 宋体; text-decoration: underline; font-size: 14.0000pt;"><span
-        style="font-family: Times New Roman;">11</span></span></u><span style="font-family: 'Times New Roman' ;
-    font-size: 14.0000pt;"><span style="font-family: 宋体;">月</span></span><u><span style="font-family: 宋体;
-      text-decoration: underline; font-size: 14.0000pt;"><span style="font-family: Times New
-        Roman;">18</span></span></u><span style="font-family: 'Times New Roman' ; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">日</span></span><u><span style="font-family: 宋体; text-decoration: underline; font-size:
-      14.0000pt;"><span style="font-family: Times New Roman;">09</span></span></u><span
-    style="font-family: 'Times New Roman' ; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">时</span></span><u><span style="font-family: 宋体; text-decoration: underline; font-size: 14.0000pt;"><span
-        style="font-family: Times New Roman;">00</span></span></u><span style="font-family: 'Times New Roman' ;
-    font-size: 14.0000pt;"><span style="font-family: 宋体;">分。</span></span></p>\n<p style="text-indent: 28pt;
-  line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size:
-  10.5pt;"><span style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">（二）报价</span></span><span style="font-family: 'Times New Roman' ; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">截止时间：</span></span><u><span style="font-family: 宋体; text-decoration: underline;
-      font-size: 14.0000pt;"><span style="font-family: Times New Roman;">2024</span></span></u><span
-    style="font-family: 'Times New Roman' ; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">年</span></span><u><span style="font-family: 宋体; text-decoration: underline; font-size: 14.0000pt;"><span
-        style="font-family: Times New Roman;">11</span></span></u><span style="font-family: 'Times New Roman' ;
-    font-size: 14.0000pt;"><span style="font-family: 宋体;">月</span></span><u><span style="font-family: 宋体;
-      text-decoration: underline; font-size: 14.0000pt;"><span style="font-family: Times New
-        Roman;">18</span></span></u><span style="font-family: 'Times New Roman' ; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">日</span></span><u><span style="font-family: 宋体; text-decoration: underline; font-size:
-      14.0000pt;"><span style="font-family: Times New Roman;">09</span></span></u><span
-    style="font-family: 'Times New Roman' ; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">时</span></span><u><span style="font-family: 宋体; text-decoration: underline; font-size: 14.0000pt;"><span
-        style="font-family: Times New Roman;">30</span></span></u><span style="font-family: 'Times New Roman' ;
-    font-size: 14.0000pt;"><span style="font-family: 宋体;">分。</span></span></p>\n<p style="text-indent: 28pt;
-  line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size:
-  10.5pt;"><span style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">（三）报价</span></span><span style="font-family: 'Times New Roman' ; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">地点：</span></span><u><span style="font-family: 宋体; text-decoration: underline;
-      font-size: 14.0000pt;"><span style="font-family: 宋体;">沈阳市和平区三好街</span><span style="font-family:
-        宋体;">54号物产科贸大厦20楼</span></span></u><u><span style="font-family: 宋体; text-decoration: underline; font-size:
-      14.0000pt;"><span style="font-family: 宋体;">会议</span></span></u><u><span style="font-family: 宋体;
-      text-decoration: underline; font-size: 14.0000pt;"><span style="font-family: 宋体;">室</span></span></u><span
-    style="font-family: 'Times New Roman' ; font-size: 14.0000pt;"><span style="font-family: 宋体;">。</span></span>
-</p>\n<p class="15" style="text-indent: 28.0000pt; line-height: 28.0000pt;"><span style="font-family: 宋体;
-    font-size: 14.0000pt;"><span style="font-family: 宋体;">（四）报价</span></span><span
-    style="font-family: 'Times New Roman' ; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">方式：</span></span><span style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">由报价供应商法定代表人或授权代表现场提</span></span><span style="font-family: 'Times New Roman' ; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">交</span></span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">报价文件</span></span><span style="font-family: 'Times New Roman' ;
-    font-size: 14.0000pt;"><span style="font-family: 宋体;">，不接受邮寄等其他方式。</span></span></p>\n<p style="text-indent:
-  28pt; line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size:
-  10.5pt;"><span style="font-family: 黑体; font-size: 14.0000pt;"><span style="font-family:
-      黑体;">七、谈判时间、地点</span></span></p>\n<p style="text-indent: 28pt; line-height: 28pt; margin: 0pt 0pt 0.0001pt;
-  text-align: justify; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">（一）谈判时间：</span></span><u><span style="font-family: 宋体;
-      text-decoration: underline; font-size: 14.0000pt;"><span style="font-family: Times New
-        Roman;">2024</span></span></u><span style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">年</span></span><u><span style="font-family: 宋体; text-decoration: underline; font-size: 14.0000pt;"><span
-        style="font-family: Times New Roman;">11</span></span></u><span style="font-family: 'Times New Roman' ;
-    font-size: 14.0000pt;"><span style="font-family: 宋体;">月</span></span><u><span style="font-family: 宋体;
-      text-decoration: underline; font-size: 14.0000pt;"><span style="font-family: Times New
-        Roman;">18</span></span></u><span style="font-family: 'Times New Roman' ; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">日</span></span><u><span style="font-family: 宋体; text-decoration: underline; font-size:
-      14.0000pt;"><span style="font-family: Times New Roman;">09</span></span></u><span style="font-family: 宋体;
-    font-size: 14.0000pt;"><span style="font-family: 宋体;">时</span></span><u><span style="font-family: 宋体;
-      text-decoration: underline; font-size: 14.0000pt;"><span style="font-family: Times New
-        Roman;">30</span></span></u><span style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">分</span></span><span style="font-family: 楷体; font-size: 14.0000pt;"><span style="font-family:
-      楷体;">（应当</span></span><span style="font-family: 楷体; font-size: 14.0000pt;"><span style="font-family:
-      楷体;">与报价截止时间保持一致）</span></span><span style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">。</span></span></p>\n<p style="margin: 0pt 0pt 0.0001pt 27.4pt; line-height: 28pt; text-align: justify;
-  font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">（二）谈判地点：</span></span><u><span style="font-family: 宋体; text-decoration: underline;
-      font-size: 14.0000pt;"><span style="font-family: 宋体;">沈阳市和平区三好街</span><span style="font-family:
-        宋体;">54号物产科贸大厦20楼</span></span></u><u><span style="font-family: 宋体; text-decoration: underline; font-size:
-      14.0000pt;"><span style="font-family: 宋体;">会议</span></span></u><u><span style="font-family: 宋体;
-      text-decoration: underline; font-size: 14.0000pt;"><span style="font-family: 宋体;">室</span></span></u><span
-    style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family: 宋体;">。</span></span></p>\n<p
-  style="text-indent: 30.65pt; line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify;
-  font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 黑体; font-size: 14.0000pt;"><span
-      style="font-family: 黑体;">八</span></span><span style="font-family: 黑体; font-size: 14.0000pt;"><span
-      style="font-family: 黑体;">、</span></span><span style="font-family: 黑体; font-size: 14.0000pt;"><span
-      style="font-family: 黑体;">本采购项目相关信息在《军队采购网》（</span></span><span style="font-family: 黑体; font-size:
-    14.0000pt;"><span style="font-family: Times New Roman;">plap.mil.cn</span></span><span style="font-family: 黑体;
-    font-size: 14.0000pt;"><span style="font-family: 黑体;">）</span></span><span style="font-family: 黑体; font-size:
-    14.0000pt;"><span style="font-family: 黑体;">和</span></span><span style="font-family: 黑体; font-size:
-    14.0000pt;"><span style="font-family: 黑体;">《中国政府采购网》（</span><span style="font-family: Times New
-      Roman;">www.ccgp.gov.cn</span><span style="font-family:
-      黑体;">）上发布，对于因其他网站转载并发布的非完整版或修改版公告，而导致误报名或未报名的情形，招标人及招标代理机构不予承担责任</span></span><span style="font-family: 黑体;
-    font-size: 14.0000pt;"><span style="font-family: 黑体;">。</span></span></p>\n<p style="text-indent: 28pt;
-  line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size:
-  10.5pt;"><span style="font-family: 黑体; font-size: 14.0000pt;"><span style="font-family: 黑体;">九</span></span><span
-    style="font-family: 黑体; font-size: 14.0000pt;"><span style="font-family: 黑体;">、采购机构联系方式</span></span></p>\n<p
-  style="text-indent: 28pt; line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify;
-  font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">联</span></span><span style="font-family: 'Times New Roman' ; font-size: 14.0000pt;">
-  </span><span style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family: 宋体;">系</span></span><span
-    style="font-family: 'Times New Roman' ; font-size: 14.0000pt;"> </span><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">人：</span></span><u><span style="font-family: 宋体; text-decoration:
-      underline; font-size: 14.0000pt;"><span style="font-family: 宋体;">马帅、李昂、丁艺、徐峰、英峰铭、赵昱博、代春雨、王秋明</span></span></u>
-</p>\n<p style="text-indent: 28pt; line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify;
-  font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">移动电话：</span></span><u><span style="font-family: 宋体; text-decoration: underline;
-      font-size: 14.0000pt;"><span style="font-family: Times New Roman;">17640025161</span></span></u></p>\n<p
-  style="text-indent: 28pt; line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify;
-  font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">地</span></span><span style="font-family: 'Times New Roman' ; font-size: 14.0000pt;">
-  </span><span style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">址：</span></span><u><span style="font-family: 宋体; text-decoration: underline; font-size: 14.0000pt;"><span
-        style="font-family: 宋体;">沈阳市和平区三好街</span><span style="font-family: Times New Roman;">54</span><span
-        style="font-family: 宋体;">号物产科贸大厦</span><span style="font-family: Times New Roman;">20</span><span
-        style="font-family: 宋体;">楼</span><span style="font-family: Times New Roman;">2028</span><span
-        style="font-family: 宋体;">室</span></span></u></p>\n<p style="text-indent: 28pt; line-height: 28pt; margin: 0pt
-  0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family:
-    黑体; font-size: 14.0000pt;"><span style="font-family: 黑体;">十、监督部门联系方式</span></span></p>\n<p style="text-indent:
-  28pt; line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size:
-  10.5pt;"><span style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">项目监督人：</span></span><u><span style="font-family: 宋体; text-decoration: underline; font-size:
-      14.0000pt;"><span style="font-family: 宋体;">卢</span></span></u><u><span style="font-family: 宋体;
-      text-decoration: underline; font-size: 14.0000pt;"><span style="font-family: 宋体;">先生</span></span></u><u><span
-      style="font-family: 'Times New Roman' ; text-decoration: underline; font-size: 14.0000pt;"> </span></u></p>\n<p
-  style="text-indent: 28pt; line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify;
-  font-family: 'Times New Roman' ; font-size: 10.5pt;"><span style="font-family: 宋体; font-size: 14.0000pt;"><span
-      style="font-family: 宋体;">移动电话：</span></span><u><span style="font-family: 宋体; text-decoration: underline;
-      font-size: 14.0000pt;"><span style="font-family: Times New Roman;">18341956829</span></span></u></p>\n<p
-  style="text-indent: 28pt; line-height: 28pt; margin: 0pt 0pt 0.0001pt; text-align: justify;
-  font-family: 'Times New Roman' ; font-size: 10.5pt;"><u><span style="font-family: 宋体; text-decoration: underline;
-      font-size: 14.0000pt;"> </span></u></p>\n<p style="text-indent: 28pt; text-align: right; line-height: 20pt;
-  margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><em><span style="font-family: 宋体;
-      font-style: italic; font-size: 14.0000pt;"><span style="font-family: 宋体;">采购机构：</span></span></em><em><u><span
-        style="font-family: 宋体; text-decoration: underline; font-style: italic; font-size: 14.0000pt;"><span
-          style="font-family: 宋体;">依诚招标有限公司</span></span></u></em></p>\n<p style="text-align: right; line-height:
-  28pt; margin: 0pt 0pt 0.0001pt; font-family: 'Times New Roman' ; font-size: 10.5pt;"><u><span style="font-family:
-      宋体; text-decoration: underline; font-size: 14.0000pt;"><span style="font-family: Times New
-        Roman;">2024</span></span></u><span style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family:
-      宋体;">年</span></span><u><span style="font-family: 宋体; text-decoration: underline; font-size: 14.0000pt;"><span
-        style="font-family: Times New Roman;">11</span></span></u><span style="font-family: 宋体; font-size:
-    14.0000pt;"><span style="font-family: 宋体;">月</span></span><u><span style="font-family: 宋体; text-decoration:
-      underline; font-size: 14.0000pt;"><span style="font-family: Times New Roman;">01</span></span></u><span
-    style="font-family: 宋体; font-size: 14.0000pt;"><span style="font-family: 宋体;">日</span></span></p>\n<p
-  style="margin: 0pt 0pt 0.0001pt; text-align: justify; font-family: 'Times New Roman' ; font-size: 10.5pt;"><span
-    style="font-family: 'Times New Roman' ; font-size: 10.5000pt;"> </span></p>`
+// sampleNotice is a synthetic notice that exercises the markup the real API
+// returns: nested spans with inline styles, a table with merged cells, inline
+// formatting, <br>, entities, a relative link and script/style noise. It
+// deliberately carries no data from any real notice.
+const sampleNotice = `<h2 style="text-align: center; font-family: 宋体; font-size: 18pt;"><span
+    style="font-family: 宋体;">测试采购项目</span><span style="font-family: 宋体;">谈判公告</span></h2>
+<p style="text-indent: 28pt;"><span style="font-family: 宋体; font-size: 14pt;"><span
+    style="font-family: 宋体;">我部就以下项目进行国内</span><strong>竞争性谈判</strong><span
+    style="font-family: 宋体;">采购，欢迎符合条件的供应商参加。</span></span></p>
+<p style="margin: 0pt;">一、项目名称：<u><span style="font-family: 宋体;">车场信息化改造</span></u></p>
+<p style="margin: 0pt;">二、项目编号：<u>2024-TEST-W0001</u></p>
+<p style="margin: 0pt;">三、项目概况：</p>
+<table border="1" style="border-collapse: collapse; width: 100%;">
+  <tr style="height: 26pt;">
+    <th style="text-align: center;">序号</th>
+    <th colspan="2" style="text-align: center;">物资名称</th>
+    <th style="text-align: center;">数量</th>
+    <th style="text-align: center;">备注</th>
+  </tr>
+  <tr>
+    <td rowspan="2">1</td>
+    <td>车牌识别</td>
+    <td>套</td>
+    <td>2</td>
+    <td>1.规格：18.9升<br />2.含安装调试</td>
+  </tr>
+  <tr>
+    <td>管理服务器</td>
+    <td>台</td>
+    <td>1</td>
+    <td>详见附件</td>
+  </tr>
+</table>
+<p>四、说明：<em>详见采购文件</em>，<strong>不接受联合体投标</strong>。</p>
+<ul>
+  <li>申领时间：2026年01月01日至2026年01月07日</li>
+  <li>申领方式：<a href="/site/notice/1.html">线上申领</a></li>
+</ul>
+<p>五、联系方式：联系人：张助理，电话：010-00000000</p>
+<script>alert('x')</script>
+<style>p { margin: 0; }</style>
+<!-- 注释 -->
+<p>符号测试：a &lt; b &amp; c &gt; d</p>
+`
 
-func Test_SimplifyHTML_TableWithoutBorder(t *testing.T) {
-	content := SimplifyHTML(input)
-	if content == "" {
-		t.Error("SimplifyHTML returned empty content")
+// sanitize is SimplifyHTML for the cases that do not care about link
+// resolution or the complex-table flag.
+func sanitize(content string) string {
+	html, _ := SimplifyHTML(content, "")
+	return html
+}
+
+// TestSimplifyHTMLResolvesRelativeLinks guards the base URL: notice bodies link
+// to their own site with relative hrefs, which Telegram cannot open.
+func TestSimplifyHTMLResolvesRelativeLinks(t *testing.T) {
+	in := `<p><a href="/site/a.html">站内</a> <a href="b.html">相对</a> <a href="https://other.example.com/c">绝对</a></p>`
+
+	got, _ := SimplifyHTML(in, "https://www.example.com")
+	for _, want := range []string{
+		`<a href="https://www.example.com/site/a.html">站内</a>`,
+		`<a href="https://www.example.com/b.html">相对</a>`,
+		`<a href="https://other.example.com/c">绝对</a>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output is missing %q\n%s", want, got)
+		}
+	}
+
+	// Without a base URL a relative link degrades to its text.
+	got, _ = SimplifyHTML(in, "")
+	if strings.Contains(got, "site/a.html") {
+		t.Errorf("relative link survived without a base URL: %q", got)
+	}
+	if !strings.Contains(got, "站内") {
+		t.Errorf("link text was lost: %q", got)
 	}
 }
 
-func TestToMarkdown(t *testing.T) {
-	tmp := SimplifyContent(input)
-	fmt.Println(tmp)
+// TestSimplifyHTMLComplexTablePlaceholder guards the hand-off to the PDF path:
+// a table too wide or too tall to flatten is replaced by a placeholder and
+// reported, instead of producing an unreadable text table.
+func TestSimplifyHTMLComplexTablePlaceholder(t *testing.T) {
+	var wide strings.Builder
+	wide.WriteString("<table><tr>")
+	for i := range complexTableColumns {
+		fmt.Fprintf(&wide, "<th>h%d</th>", i)
+	}
+	wide.WriteString("</tr><tr>")
+	for i := range complexTableColumns {
+		fmt.Fprintf(&wide, "<td>c%d</td>", i)
+	}
+	wide.WriteString("</tr></table>")
+
+	got, complex := SimplifyHTML(wide.String(), "")
+	if !complex {
+		t.Fatal("expected the wide table to be flagged as complex")
+	}
+	if !strings.Contains(got, complexTablePlaceholder) {
+		t.Errorf("placeholder missing from %q", got)
+	}
+	if strings.Contains(got, "c0") {
+		t.Errorf("complex table should not be flattened: %q", got)
+	}
+
+	// A small table still flattens.
+	got, complex = SimplifyHTML("<table><tr><td>a</td><td>b</td></tr></table>", "")
+	if complex {
+		t.Error("small table must not be flagged as complex")
+	}
+	if got != "a | b" {
+		t.Errorf("small table = %q, want %q", got, "a | b")
+	}
+}
+
+func TestSimplifyHTMLProducesTelegramMarkup(t *testing.T) {
+	out, complexTable := SimplifyHTML(sampleNotice, "https://www.example.com")
+	if out == "" {
+		t.Fatal("SimplifyHTML returned empty content")
+	}
+	if complexTable {
+		t.Error("the sample table is small enough to flatten")
+	}
+
+	for _, tag := range tagsOf(out) {
+		if !allowedTelegramTag(tag) {
+			t.Errorf("output contains a tag Telegram cannot render: %q", tag)
+		}
+	}
+	if problems := unbalancedTags(out); len(problems) > 0 {
+		t.Errorf("output has unbalanced tags: %v", problems)
+	}
+	for _, unwanted := range []string{
+		"style=", "<table", "<td", "<th", "<span", "<p>", "<div", "<h2", "<em>", "<strong", "<script", "<style", "alert(",
+	} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("output still contains %q", unwanted)
+		}
+	}
+
+	for _, want := range []string{
+		"测试采购项目谈判公告",        // two adjacent spans join without a space
+		"2024-TEST-W0001",   // <u> content survives
+		"<u>", "<i>", "<b>", // formatting tags are mapped
+		"<b>序号</b> | <b>物资名称</b> | <b>数量</b> | <b>备注</b>",   // header row, colspan cell once
+		"1 | 车牌识别 | 套 | 2 | 1.规格：18.9升 2.含安装调试",             // <br> becomes a space
+		"1 | 管理服务器 | 台 | 1 | 详见附件",                          // rowspan cell repeats
+		`href="https://www.example.com/site/notice/1.html"`, // relative link resolved
+		"a &lt; b &amp; c &gt; d",                           // entities decoded then re-escaped
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output is missing %q\n---\n%s", want, out)
+		}
+	}
+
+	// Telegram treats blank lines as paragraph breaks; the flattening must not
+	// introduce them, otherwise every notice doubles in height.
+	if strings.Contains(out, "\n\n") {
+		t.Error("output contains blank lines")
+	}
+}
+
+func TestSimplifyHTMLTable(t *testing.T) {
+	got := sanitize("<table><tbody><tr><th>序号</th><th>名称</th></tr><tr><td>1</td><td>车场</td></tr></tbody></table>")
+	// Header cells are bolded; every row stays on one line.
+	if want := "<b>序号</b> | <b>名称</b>\n1 | 车场"; got != want {
+		t.Fatalf("SimplifyHTML(table) = %q, want %q", got, want)
+	}
+}
+
+// TestSimplifyHTMLTableMergedCells covers colspan/rowspan: the grid keeps the
+// columns aligned, a colspan cell is written once, and a rowspan cell repeats
+// on every row it covers so each line stands on its own.
+func TestSimplifyHTMLTableMergedCells(t *testing.T) {
+	in := "<table>" +
+		`<tr><th>序号</th><th colspan="2">名称</th><th>数量</th></tr>` +
+		`<tr><td rowspan="2">1</td><td>甲</td><td>乙</td><td>2</td></tr>` +
+		"<tr><td>丙</td><td>丁</td><td>3</td></tr>" +
+		"</table>"
+
+	want := "<b>序号</b> | <b>名称</b> | <b>数量</b>\n" +
+		"1 | 甲 | 乙 | 2\n" +
+		"1 | 丙 | 丁 | 3"
+	if got := sanitize(in); got != want {
+		t.Fatalf("SimplifyHTML(merged table) = %q, want %q", got, want)
+	}
+}
+
+// TestSimplifyHTMLTableSpanBounds guards absurd span values: they are clamped
+// and a rowspan cannot reach past the last row.
+func TestSimplifyHTMLTableSpanBounds(t *testing.T) {
+	// A colspan wider than the row is reserved, not rendered as empty cells.
+	in := `<table><tr><td colspan="3">x</td><td>y</td></tr></table>`
+	if got, want := sanitize(in), "x | y"; got != want {
+		t.Fatalf("sanitize() = %q, want %q", got, want)
+	}
+
+	// A rowspan that outlives the table must not invent extra lines.
+	in = `<table><tr><td rowspan="3">A</td><td>1</td></tr><tr><td>2</td></tr></table>`
+	if got, want := sanitize(in), "A | 1\nA | 2"; got != want {
+		t.Fatalf("sanitize() = %q, want %q", got, want)
+	}
+}
+
+func TestSimplifyHTMLDropsScriptAndStyle(t *testing.T) {
+	in := "<p>保留</p><script>alert(1)</script><style>p{color:red}</style><!-- 注释 --><noscript>no</noscript>"
+	if got := sanitize(in); got != "保留" {
+		t.Fatalf("sanitize() = %q, want %q", got, "保留")
+	}
+}
+
+func TestSimplifyHTMLEscapesText(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"entities", "<p>a &lt; b &amp; c &gt; d</p>", "a &lt; b &amp; c &gt; d"},
+		{"raw text", "5 < 6", "5 &lt; 6"},
+		{"tag-like text", "<p>&lt;b&gt; 不是标签</p>", "&lt;b&gt; 不是标签"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sanitize(tt.in); got != tt.want {
+				t.Fatalf("sanitize(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSimplifyHTMLLinks(t *testing.T) {
+	in := `<p><a href="https://example.com/x?a=1&amp;b=2">链接</a> <a href="javascript:alert(1)">坏链接</a></p>`
+	got := sanitize(in)
+
+	if want := `<a href="https://example.com/x?a=1&amp;b=2">链接</a>`; !strings.Contains(got, want) {
+		t.Errorf("safe link was not preserved: %q", got)
+	}
+	if strings.Contains(got, "javascript:") {
+		t.Errorf("unsafe link target survived: %q", got)
+	}
+	if !strings.Contains(got, "坏链接") {
+		t.Errorf("link text was lost: %q", got)
+	}
+}
+
+func TestSimplifyHTMLBlocksAndLists(t *testing.T) {
+	in := "<div><p>第一段</p><p>第二段<br>换行</p><ul><li>一</li><li>二</li></ul></div>"
+	want := "第一段\n第二段\n换行\n• 一\n• 二"
+	if got := sanitize(in); got != want {
+		t.Fatalf("sanitize() = %q, want %q", got, want)
+	}
+}
+
+func TestSimplifyHTMLInlineFormatting(t *testing.T) {
+	in := "<p><strong>粗</strong><em>斜</em><u>下划线</u><del>删除</del><code>x=1</code></p>"
+	want := "<b>粗</b><i>斜</i><u>下划线</u><s>删除</s><code>x=1</code>"
+	if got := sanitize(in); got != want {
+		t.Fatalf("sanitize() = %q, want %q", got, want)
+	}
+}
+
+// tagsOf returns the tag names used in s.
+func tagsOf(s string) []string {
+	var tags []string
+	for i := 0; i < len(s); i++ {
+		if s[i] != '<' {
+			continue
+		}
+		end := strings.IndexByte(s[i:], '>')
+		if end < 0 {
+			break
+		}
+		body := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(s[i:i+end+1], "<"), ">"))
+		body = strings.TrimPrefix(body, "/")
+		if body == "" {
+			i += end
+			continue
+		}
+		tags = append(tags, strings.ToLower(strings.Fields(body)[0]))
+		i += end
+	}
+	return tags
+}
+
+func allowedTelegramTag(name string) bool {
+	switch name {
+	case "b", "i", "u", "s", "code", "pre", "blockquote", "a", "span", "tg-spoiler":
+		return true
+	}
+	return false
+}
+
+// unbalancedTags lists elements left open or closed twice.
+func unbalancedTags(s string) []string {
+	var (
+		stack    []string
+		problems []string
+	)
+	for i := 0; i < len(s); i++ {
+		if s[i] != '<' {
+			continue
+		}
+		end := strings.IndexByte(s[i:], '>')
+		if end < 0 {
+			break
+		}
+		body := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(s[i:i+end+1], "<"), ">"))
+		i += end
+		if body == "" {
+			continue
+		}
+		if rest, ok := strings.CutPrefix(body, "/"); ok {
+			name := strings.ToLower(strings.TrimSpace(rest))
+			n := len(stack)
+			if n == 0 || stack[n-1] != name {
+				problems = append(problems, "stray </"+name+">")
+				continue
+			}
+			stack = stack[:n-1]
+			continue
+		}
+		if strings.HasSuffix(body, "/") {
+			continue // self-closing
+		}
+		stack = append(stack, strings.ToLower(strings.Fields(body)[0]))
+	}
+	for _, name := range stack {
+		problems = append(problems, "unclosed <"+name+">")
+	}
+	return problems
 }

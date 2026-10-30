@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"strings"
 
 	"github.com/glebarez/sqlite"
@@ -10,11 +11,6 @@ import (
 	"gorm.io/gen/field"
 	"gorm.io/gorm"
 )
-
-type HistoryQuerier interface {
-	// SELECT COUNT(*) FROM @@table WHERE user_id = @userId AND url = @url
-	IsUrlExist(userId int, url string) (gen.RowsAffected, error)
-}
 
 func main() {
 	// Initialize the generator with configuration
@@ -31,18 +27,12 @@ func main() {
 	})
 
 	// Initialize a *gorm.DB instance
-	db, _ := gorm.Open(sqlite.Open("bot.db"), &gorm.Config{})
-	//
-	// Use the above `*gorm.DB` instance to initialize the generator,
-	// which is required to generate structs from db when using `GenerateModel/GenerateModelAs`
+	db, err := gorm.Open(sqlite.Open("bot.db"), &gorm.Config{})
+	if err != nil {
+		log.Fatalf("open bot.db: %v", err)
+	}
 	g.UseDB(db)
 
-	// Generate default DAO interface for those specified structs
-	// g.ApplyBasic(entities.Keyword{}, entities.Alarm{}, entities.History{})
-	// g.ApplyInterface(func(HistoryQuerier) {}, entities.History{})
-
-	// Generate default DAO interface for those generated structs from database
-	// companyGenerator := g.GenerateModelAs("company", "MyCompany")
 	caser := cases.Title(language.English)
 	tagWithNS := gen.FieldJSONTagWithNS(func(columnName string) string {
 		// Convert snake_case to camelCase
@@ -77,17 +67,7 @@ func main() {
 				return tag
 			}),
 			tagWithNS),
-		g.GenerateModel("keywords", gen.FieldType("user_id", "int64"),
-			//gen.FieldGORMTag("id", func(tag field.GormTag) field.GormTag {
-			//	tag.Set("primaryKey", "").Append("autoIncrement", "true")
-			//	return tag
-			//}),
-			tagWithNS),
-		//companyGenerator,
-		//g.GenerateModelAs("people", "Person",
-		//	gen.FieldIgnore("deleted_at"),
-		//	gen.FieldNewTag("age", `json:"-"`),
-		//),
+		g.GenerateModel("keywords", gen.FieldType("user_id", "int64"), tagWithNS),
 	)
 
 	// Execute the generator

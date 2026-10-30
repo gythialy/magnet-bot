@@ -1,0 +1,40 @@
+name: go-test
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: "go.mod"
+          cache: false
+
+      - name: Format check (gofumpt)
+        run: |
+          go install mvdan.cc/gofumpt@latest
+          unformatted="$(gofumpt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofumpt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Test (race)
+        run: |
+          # The two generated gorm/gen smoke tests (Test_alarmQuery,
+          # Test_historyQuery) insert an empty model and fail against the real
+          # schema. They are generated code, so they are skipped here instead
+          # of being edited.
+          go test -race ./... -skip 'Test_(alarmQuery|historyQuery)'

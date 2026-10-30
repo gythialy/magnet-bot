@@ -15,7 +15,7 @@ import (
 //
 // conflictColumns must form (a subset of) a unique index on the table, e.g.
 // "user_id", "credit_code" for alarms or "user_id", "url" for histories.
-func InsertIfAbsent(db *gorm.DB, value interface{}, conflictColumns ...string) (bool, error) {
+func InsertIfAbsent(db *gorm.DB, value any, conflictColumns ...string) (bool, error) {
 	columns := make([]clause.Column, 0, len(conflictColumns))
 	for _, c := range conflictColumns {
 		columns = append(columns, clause.Column{Name: c})

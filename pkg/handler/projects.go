@@ -4,13 +4,10 @@ import (
 	"bytes"
 	"html/template"
 	"strings"
-	"sync"
-
-	"github.com/gythialy/magnet/pkg/utils"
 
 	"github.com/gythialy/magnet/pkg/dal"
-
 	"github.com/gythialy/magnet/pkg/rule"
+	"github.com/gythialy/magnet/pkg/utils"
 )
 
 const (
@@ -18,7 +15,6 @@ const (
 <b>[{{.Keyword}}]</b>
 
 {{ .Content | noescape }} `
-	maxMessageLength = 4090
 )
 
 var keywordRender = template.Must(template.New("keyword_template").
@@ -38,61 +34,30 @@ type Project struct {
 	Pageurl        string `json:"pageurl,omitempty"`
 	Keyword        string `json:"keyword,omitempty"`
 	HasTenderCode  bool   `json:"-"`
+	// HasComplexTable marks a notice whose table cannot be flattened into the
+	// message body; the pipeline attaches the original page as a PDF instead.
+	HasComplexTable bool `json:"-"`
 }
 
 func (p *Project) ToMessage() string {
 	var buf bytes.Buffer
 	p.HasTenderCode = utils.TenderCodeRegex.MatchString(p.Keyword)
-	if err := keywordRender.Execute(&buf, p); err == nil {
-		return buf.String()
+	if err := keywordRender.Execute(&buf, p); err != nil {
+		return ""
 	}
-	return ""
+	return buf.String()
 }
 
+// SplitMessage renders the project and splits it into Telegram-sized chunks.
 func (p *Project) SplitMessage() ([]string, int) {
 	message := p.ToMessage()
-	var chunks []string
-
-	for len(message) > 0 {
-		if len(message) <= maxMessageLength {
-			chunk := strings.TrimSpace(message)
-			if chunk != "" {
-				chunks = append(chunks, chunk)
-			}
-			break
+	if utf16Len(message) <= maxMessageUnits {
+		if chunk := strings.TrimSpace(message); chunk != "" {
+			return []string{chunk}, 1
 		}
-
-		runes := []rune(message)
-		end := maxMessageLength
-		if end > len(runes) {
-			end = len(runes)
-		}
-
-		chunk := string(runes[:end])
-		lastNewline := strings.LastIndex(chunk, "\n")
-		if lastNewline > 0 {
-			chunk = chunk[:lastNewline]
-		}
-
-		chunk = strings.TrimSpace(chunk)
-
-		// 只添加非空chunk
-		if chunk != "" {
-			chunks = append(chunks, chunk)
-			// 正确计算已处理的字符数（使用rune长度）
-			processedRunes := len([]rune(chunk))
-			message = string(runes[processedRunes:])
-		} else {
-			// 如果chunk为空，直接跳过这部分
-			message = string(runes[end:])
-		}
-
-		// 避免无限循环
-		if len(message) > 0 && strings.TrimSpace(message) == "" {
-			break
-		}
+		return nil, 0
 	}
-
+	chunks := splitMessage(message)
 	return chunks, len(chunks)
 }
 
@@ -101,19 +66,27 @@ type Projects struct {
 	keywordProjects []*Project
 	rules           []*rule.ComplexRule
 	ctx             *BotContext
-	counters        *sync.Map
+	counters        map[int32]int32
 }
 
 func NewProjects(ctx *BotContext, projects []*Project, rules []*rule.ComplexRule) *Projects {
 	return &Projects{
 		Projects:        projects,
 		rules:           rules,
-		keywordProjects: make([]*Project, 0),
+		keywordProjects: make([]*Project, 0, len(projects)),
 		ctx:             ctx,
-		counters:        &sync.Map{},
+		counters:        make(map[int32]int32),
 	}
 }
 
+// Filter returns the projects matched by at least one rule.
+//
+// Every matched project is a shallow copy carrying its own Keyword: the
+// caller's slice is shared by every user processed in one run (InfoProcessor
+// fans users out to the ants pool), so writing the match result back into the
+// original structs would both race and leak one user's keywords into another
+// user's message. The copies also own Content/HasTenderCode, which the render
+// step rewrites.
 func (r *Projects) Filter() []*Project {
 	logger := r.ctx.Logger
 	for _, v := range r.Projects {
@@ -123,56 +96,34 @@ func (r *Projects) Filter() []*Project {
 			if cr.IsMatch(v.ShortTitle) || cr.IsMatch(v.OpenTenderCode) {
 				matched = append(matched, cr.ToString())
 				if cr.Rule != nil && cr.Rule.ID != nil {
-					key := *cr.Rule.ID
-					if val, ok := r.counters.Load(key); ok {
-						counter := val.(int32)
-						r.counters.Store(key, counter+1)
-					} else {
-						r.counters.Store(key, int32(1))
-					}
+					r.counters[*cr.Rule.ID]++
 				}
 			}
 		}
-		if len(matched) > 0 {
-			v.Keyword = strings.Join(matched, "| ")
-			r.keywordProjects = append(r.keywordProjects, v)
-			logger.Debug().Msgf("matched by (%s)", v.Keyword)
+		if len(matched) == 0 {
+			continue
 		}
+		project := *v
+		project.Keyword = strings.Join(matched, "| ")
+		r.keywordProjects = append(r.keywordProjects, &project)
+		logger.Debug().Msgf("matched by (%s)", project.Keyword)
 	}
 
 	// Update counters in database
-	r.counters.Range(func(key, value interface{}) bool {
-		keyId, ok := key.(int32)
-		if !ok {
-			logger.Error().
-				Interface("key", key).
-				Msg("invalid key type in counter map")
-			return true
-		}
-
-		counter, ok := value.(int32)
-		if !ok {
-			logger.Error().
-				Interface("value", value).
-				Int32("keyId", keyId).
-				Msg("invalid counter type in map")
-			return true
-		}
-
-		if err := dal.Keyword.UpdateCounter(keyId, counter); err != nil {
+	for keyID, counter := range r.counters {
+		if err := dal.Keyword.UpdateCounter(keyID, counter); err != nil {
 			logger.Error().
 				Err(err).
-				Int32("keyId", keyId).
+				Int32("keyId", keyID).
 				Int32("counter", counter).
 				Msg("failed to update counter")
-		} else {
-			logger.Debug().
-				Int32("keyId", keyId).
-				Int32("counter", counter).
-				Msg("counter updated successfully")
+			continue
 		}
-		return true
-	})
+		logger.Debug().
+			Int32("keyId", keyID).
+			Int32("counter", counter).
+			Msg("counter updated successfully")
+	}
 
 	return r.keywordProjects
 }

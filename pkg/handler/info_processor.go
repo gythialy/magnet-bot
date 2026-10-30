@@ -1,32 +1,30 @@
 package handler
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/gythialy/magnet/pkg/utils"
-
 	"github.com/gythialy/magnet/pkg/dal"
 	"github.com/gythialy/magnet/pkg/model"
-
 	"github.com/gythialy/magnet/pkg/rule"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"github.com/panjf2000/ants/v2"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
 	poolSize = 10
-)
-
-var (
-	htmlTagsRegex = regexp.MustCompile(`<[^>]*>|</[^>]*>|<[^/][^>]*/>|<\s*[a-zA-Z][^>]*>`)
-	htmlAttrRegex = regexp.MustCompile(`\s+\w+\s*=\s*("[^"]*"|'[^']*')`)
+	// projectContentSem bounds how many per-project renderings run at once,
+	// keeping the fan-out bounded instead of spawning one goroutine per
+	// project.
+	projectContentSem = 5
 )
 
 // ProcessData holds the data for processing
@@ -55,18 +53,17 @@ func NewInfoProcessor(ctx *BotContext) (*InfoProcessor, error) {
 		pushPipeline: NewPushPipeline(),
 	}
 
-	if pool, err := ants.NewPoolWithFunc(poolSize, processor.Handler); err != nil {
+	pool, err := ants.NewPoolWithFunc(poolSize, processor.Handler)
+	if err != nil {
 		return nil, err
-	} else {
-		processor.pool = pool
 	}
+	processor.pool = pool
 	return processor, nil
 }
 
 func (r *InfoProcessor) Process() {
 	projects := r.crawler.Projects()
-	conf := r.config()
-	for _, data := range conf {
+	for _, data := range r.config() {
 		data.Projects = projects
 		data.Alarms = r.crawler.Alarms(data.AlarmKeyword, data.UserId)
 		data.IsForced = false
@@ -78,13 +75,14 @@ func (r *InfoProcessor) Process() {
 
 func (r *InfoProcessor) Get(userId int64) {
 	results := r.crawler.Projects()
-	if len(results) > 0 {
-		data := r.get(userId)
-		data.Projects = results
-		data.IsForced = true
-		if err := r.pool.Invoke(data); err != nil {
-			r.ctx.Logger.Error().Stack().Err(err).Msg("")
-		}
+	if len(results) == 0 {
+		return
+	}
+	data := r.get(userId)
+	data.Projects = results
+	data.IsForced = true
+	if err := r.pool.Invoke(data); err != nil {
+		r.ctx.Logger.Error().Stack().Err(err).Msg("")
 	}
 }
 
@@ -94,7 +92,7 @@ func (r *InfoProcessor) Release() {
 
 func (r *InfoProcessor) config() map[int64]ProcessData {
 	ids := dal.Keyword.Ids()
-	m := make(map[int64]ProcessData)
+	m := make(map[int64]ProcessData, len(ids))
 	for _, id := range ids {
 		if _, ok := m[id]; !ok {
 			m[id] = r.get(id)
@@ -106,11 +104,10 @@ func (r *InfoProcessor) config() map[int64]ProcessData {
 
 func (r *InfoProcessor) get(id int64) ProcessData {
 	keywords := dal.Keyword.GetByUserIdAndType(id, model.PROJECT)
-	var rules []*rule.ComplexRule
+	rules := make([]*rule.ComplexRule, 0, len(keywords))
 	for _, kw := range keywords {
-		r := rule.NewComplexRule(kw)
-		if r != nil {
-			rules = append(rules, r)
+		if cr := rule.NewComplexRule(kw); cr != nil {
+			rules = append(rules, cr)
 		}
 	}
 	rule.SortComplexRules(rules)
@@ -156,8 +153,7 @@ func (r *InfoProcessor) shouldSkipProcessing(userId int64, url string, isForced 
 }
 
 func (r *InfoProcessor) releaseLock(userId int64, url string) {
-	lockKey := fmt.Sprintf("%d:%s", userId, url)
-	r.urlLocks.Unlock(lockKey)
+	r.urlLocks.Unlock(fmt.Sprintf("%d:%s", userId, url))
 }
 
 // contentResult holds the outcome of a single project's message rendering.
@@ -166,31 +162,20 @@ type contentResult struct {
 	total  int
 }
 
-// projectContentSem limits how many per-project content renderings run at
-// once, keeping the fan-out bounded instead of spawning one goroutine per
-// project.
-const projectContentSem = 5
-
-func (r *InfoProcessor) Handler(i interface{}) {
-	switch pd := i.(type) {
-	case ProcessData:
-		// Run the two pipelines concurrently so alarm notifications do not
-		// wait behind a large project batch. Both pipelines are safe to run
-		// in parallel: the PushPipeline's keyed lock is concurrent-safe, and
-		// the two handle sets never share a key (projects carry no Key, the
-		// pre-filter lock only guards project URLs).
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			r.processProjects(pd)
-		}()
-		go func() {
-			defer wg.Done()
-			r.processAlarms(pd)
-		}()
-		wg.Wait()
+func (r *InfoProcessor) Handler(i any) {
+	pd, ok := i.(ProcessData)
+	if !ok {
+		return
 	}
+	// Run the two pipelines concurrently so alarm notifications do not wait
+	// behind a large project batch. Both pipelines are safe to run in
+	// parallel: the PushPipeline's keyed lock is concurrent-safe, and the two
+	// handle sets never share a key (projects carry no Key, the pre-filter
+	// lock only guards project URLs).
+	var wg sync.WaitGroup
+	wg.Go(func() { r.processProjects(pd) })
+	wg.Go(func() { r.processAlarms(pd) })
+	wg.Wait()
 }
 
 // projectPushState 汇聚一个用户一轮 project 推送的共享状态，由 PushPipeline
@@ -242,28 +227,25 @@ func (r *InfoProcessor) processProjects(pd ProcessData) {
 	// Rendering is CPU heavy, so render the pending projects concurrently
 	// with a bounded fan-out instead of blocking on each project in turn.
 	results := make([]contentResult, len(pending))
-	sem := make(chan struct{}, projectContentSem)
-	var wg sync.WaitGroup
+	var g errgroup.Group
+	g.SetLimit(projectContentSem)
 	for i, pj := range pending {
-		wg.Add(1)
-		go func(idx int, pj *Project) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
+		g.Go(func() error {
 			chunks, total := r.ToMessage(pj)
-			results[idx] = contentResult{chunks: chunks, total: total}
-		}(i, pj)
+			results[i] = contentResult{chunks: chunks, total: total}
+			return nil
+		})
 	}
-	wg.Wait()
+	_ = g.Wait()
 
 	// Handles carry no Key: the pre-filter lock already covers the whole
 	// render+send lifecycle.
 	handles := make([]ClaimHandle, 0, len(pending))
 	for j, project := range pending {
+		logger.Debug().Msgf("split content to %d parts", results[j].total)
 		pageURL := project.Pageurl
 		chunks := results[j].chunks
 		total := results[j].total
-		logger.Debug().Msgf("split content to %d parts", total)
 
 		handles = append(handles, ClaimHandle{
 			Claim: func() (bool, error) {
@@ -300,7 +282,7 @@ func (r *InfoProcessor) processProjects(pd ProcessData) {
 	}
 
 	if len(st.failed) > 1 {
-		if _, err := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
+		if _, err := r.ctx.Bot.SendMessage(r.ctx.context(), &bot.SendMessageParams{
 			ChatID:    st.userId,
 			Text:      strings.Join(st.failed, "\n"),
 			ParseMode: models.ParseModeHTML,
@@ -333,17 +315,19 @@ func (r *InfoProcessor) processProjects(pd ProcessData) {
 
 // sendProject sends a project's chunked message, collecting failures for the
 // summary. It returns an error only when the very first chunk failed (nothing
-// was delivered), which makes the PushPipeline roll back the claim so the
-// next run can retry.
+// was delivered) or the context was cancelled, which makes the PushPipeline
+// roll back the claim so the next run can retry.
 func (r *InfoProcessor) sendProject(st *projectPushState, project *Project, chunks []string, total int) error {
 	logger := r.ctx.Logger
+	ctx := r.ctx.context()
 	pageURL := project.Pageurl
 	title := project.Title
 	shortTitle := project.ShortTitle
 
 	isSuccessful := false
+	lastMessageID := 0
 	for idx, chunk := range chunks {
-		if _, errSend := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
+		if sent, errSend := r.ctx.Bot.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:    st.userId,
 			Text:      chunk,
 			ParseMode: models.ParseModeHTML,
@@ -361,9 +345,25 @@ func (r *InfoProcessor) sendProject(st *projectPushState, project *Project, chun
 			}
 		} else {
 			isSuccessful = true
+			lastMessageID = sent.ID
 			logger.Info().Msgf("notify: %s[%s]-%d", shortTitle, project.OpenTenderCode, idx)
 		}
-		time.Sleep(500 * time.Millisecond)
+		if idx == len(chunks)-1 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(chunkSendInterval):
+		}
+	}
+
+	// A notice with a table too complex to flatten is delivered as the original
+	// page: the body only carries a placeholder, so attach the PDF as a reply.
+	if isSuccessful && project.HasComplexTable {
+		if err := r.sendProjectPDF(ctx, st.userId, lastMessageID, project); err != nil {
+			logger.Error().Stack().Err(err).Msg("send project pdf")
+		}
 	}
 
 	if isSuccessful && total > 0 && st.isForced {
@@ -380,6 +380,71 @@ func (r *InfoProcessor) sendProject(st *projectPushState, project *Project, chun
 	return nil
 }
 
+// sendProjectPDF attaches the original notice page as a PDF, replying to the
+// text message that announced it. A conversion failure is logged by the caller:
+// the text already reached the user, so it must not roll the claim back.
+func (r *InfoProcessor) sendProjectPDF(ctx context.Context, chatID int64, replyTo int, project *Project) error {
+	if r.ctx.Gotenberg == nil {
+		return errors.New("gotenberg client is not configured")
+	}
+
+	data, err := r.ctx.Gotenberg.FetchPDF(ctx, project.Pageurl)
+	if err != nil {
+		return err
+	}
+
+	params := &bot.SendDocumentParams{
+		ChatID: chatID,
+		Document: &models.InputFileUpload{
+			Filename: attachmentName(project),
+			Data:     bytes.NewReader(data),
+		},
+		Caption: truncateCaption(project.Title),
+	}
+	if replyTo != 0 {
+		params.ReplyParameters = &models.ReplyParameters{MessageID: replyTo}
+	}
+	if _, err := r.ctx.Bot.SendDocument(ctx, params); err != nil {
+		return err
+	}
+	return nil
+}
+
+// attachmentName builds a safe file name for the attached notice.
+func attachmentName(project *Project) string {
+	name := strings.TrimSpace(project.OpenTenderCode)
+	if name == "" {
+		name = strings.TrimSpace(project.Title)
+	}
+	if name == "" {
+		name = "notice"
+	}
+	name = strings.Map(func(r rune) rune {
+		switch r {
+		case '/', '\\', ':', '*', '?', '"', '<', '>', '|', '\n', '\r', '\t':
+			return '-'
+		}
+		return r
+	}, name)
+	if utf16Len(name) > 60 {
+		name = string([]rune(name)[:60])
+	}
+	return name + ".pdf"
+}
+
+// truncateCaption keeps a document caption inside Telegram's 1024-unit limit.
+func truncateCaption(title string) string {
+	const maxCaptionUnits = 1000
+	if utf16Len(title) <= maxCaptionUnits {
+		return title
+	}
+	runes := []rune(title)
+	for len(runes) > 0 && utf16Len(string(runes)) > maxCaptionUnits {
+		runes = runes[:len(runes)-1]
+	}
+	return string(runes) + "…"
+}
+
 // processAlarms handles the alarm-notice pipeline for one user: dedupe alarms
 // per run, then push each new alarm through the PushPipeline skeleton. The DB
 // primary key (user_id, credit_code) acts as a distributed lock: only the
@@ -388,7 +453,7 @@ func (r *InfoProcessor) sendProject(st *projectPushState, project *Project, chun
 // alarm twice. A failed send rolls the claim back so the next run retries.
 func (r *InfoProcessor) processAlarms(pd ProcessData) {
 	userId := pd.UserId
-	processedAlarms := make(map[string]struct{})
+	processedAlarms := make(map[string]struct{}, len(pd.Alarms))
 
 	handles := make([]ClaimHandle, 0, len(pd.Alarms))
 	for _, alarm := range pd.Alarms {
@@ -469,7 +534,7 @@ func (r *InfoProcessor) sendAlarm(alarm *model.Alarm) error {
 		logger.Error().Stack().Err(err).Msg("alarm to msg")
 		return err
 	}
-	if _, msgErr := r.ctx.Bot.SendMessage(context.Background(), &bot.SendMessageParams{
+	if _, msgErr := r.ctx.Bot.SendMessage(r.ctx.context(), &bot.SendMessageParams{
 		ChatID:    alarm.UserID,
 		Text:      msg,
 		ParseMode: models.ParseModeHTML,
@@ -480,23 +545,10 @@ func (r *InfoProcessor) sendAlarm(alarm *model.Alarm) error {
 	return nil
 }
 
+// ToMessage renders one project into Telegram-sized message chunks. Content is
+// already sanitised for Telegram's HTML parse mode by the crawler.
 func (r *InfoProcessor) ToMessage(project *Project) ([]string, int) {
-	project.Content = utils.SimplifyContent(project.Content)
 	return project.SplitMessage()
-}
-
-func cleanContent(content string) string {
-	// Remove HTML attributes and tags
-	content = htmlAttrRegex.ReplaceAllString(content, "")
-	content = htmlTagsRegex.ReplaceAllString(content, "")
-
-	// Remove markdown style bold and any remaining < or > characters
-	content = strings.NewReplacer(
-		"**", "",
-		"__", "",
-	).Replace(content)
-
-	return content
 }
 
 func btoi(b bool) int32 {

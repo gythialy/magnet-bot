@@ -187,14 +187,13 @@ type AlarmDetail struct {
 		AdduserLike         any    `json:"adduserLike,omitempty"`
 		Content             string `json:"content,omitempty"`
 		Addtime             int64  `json:"addtime,omitempty"`
-	} `json:"data,omitempty"`
+	} `json:"data"`
 }
 
 func (a *Alarm) ToMessage() (string, error) {
 	var buf bytes.Buffer
-	if err := alarmRender.Execute(&buf, a); err == nil {
-		return buf.String(), nil
-	} else {
+	if err := alarmRender.Execute(&buf, a); err != nil {
 		return "", err
 	}
+	return buf.String(), nil
 }

@@ -2,7 +2,6 @@ package constant
 
 const (
 	Me                 = "/me"
-	Magnet             = "/magnet"
 	Retry              = "/retry"
 	Clean              = "/clean"
 	AddKeyword         = "/add_keywords"

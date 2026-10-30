@@ -2,10 +2,9 @@ package rule
 
 import (
 	"encoding/json"
-	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
-	"sync"
 	"unicode"
 
 	"github.com/gythialy/magnet/pkg/utils"
@@ -19,44 +18,49 @@ type ComplexRule struct {
 	Rule         *model.Keyword
 }
 
-type ComplexRules []*ComplexRule
-
-func (r ComplexRules) Len() int      { return len(r) }
-func (r ComplexRules) Swap(i, j int) { r[i], r[j] = r[j], r[i] }
-func (r ComplexRules) Less(i, j int) bool {
-	// Check if rules have a tender code pattern
-	iHasTenderCode := r[i].hasTenderCode()
-	jHasTenderCode := r[j].hasTenderCode()
-
-	// If one has tender code and the other doesn't, tender code has higher priority
-	if iHasTenderCode != jHasTenderCode {
-		return iHasTenderCode
-	}
-
-	// If both have or don't have tender codes, check ExcludeTerms
-	iHasExclude := len(r[i].ExcludeTerms) > 0
-	jHasExclude := len(r[j].ExcludeTerms) > 0
-
-	// If one has exclude terms and the other doesn't, exclude terms has higher priority
-	if iHasExclude != jHasExclude {
-		return iHasExclude
-	}
-
-	// If all above conditions are equal, sort by IncludeTerms
-	iTerms := r[i].getIncludeTermsSorted()
-	jTerms := r[j].getIncludeTermsSorted()
-
-	// Compare terms lexicographically
-	minLen := min(len(iTerms), len(jTerms))
-	for k := 0; k < minLen; k++ {
-		if iTerms[k] != jTerms[k] {
-			return iTerms[k] < jTerms[k]
-		}
-	}
-	return len(iTerms) < len(jTerms)
+// sortKey is the precomputed ordering key of a rule, so sorting does not
+// rebuild the include-term slice and rescan the maps on every comparison.
+type sortKey struct {
+	hasTenderCode bool
+	hasExclude    bool
+	includeTerms  []string
 }
 
-// Helper method to check if rule has a tender code pattern
+func (r *ComplexRule) newSortKey() sortKey {
+	return sortKey{
+		hasTenderCode: r.hasTenderCode(),
+		hasExclude:    len(r.ExcludeTerms) > 0,
+		includeTerms:  slices.Sorted(maps.Keys(r.IncludeTerms)),
+	}
+}
+
+// SortComplexRules orders rules by descending specificity: rules containing a
+// tender code first, then rules with exclude terms, then lexicographically by
+// their include terms. Equal keys keep their input order.
+func SortComplexRules(rules []*ComplexRule) {
+	keys := make(map[*ComplexRule]sortKey, len(rules))
+	for _, r := range rules {
+		keys[r] = r.newSortKey()
+	}
+	slices.SortStableFunc(rules, func(a, b *ComplexRule) int {
+		ka, kb := keys[a], keys[b]
+		if ka.hasTenderCode != kb.hasTenderCode {
+			if ka.hasTenderCode {
+				return -1
+			}
+			return 1
+		}
+		if ka.hasExclude != kb.hasExclude {
+			if ka.hasExclude {
+				return -1
+			}
+			return 1
+		}
+		return slices.Compare(ka.includeTerms, kb.includeTerms)
+	})
+}
+
+// hasTenderCode reports whether any include term looks like a tender code.
 func (r *ComplexRule) hasTenderCode() bool {
 	for term := range r.IncludeTerms {
 		if utils.TenderCodeRegex.MatchString(term) {
@@ -66,42 +70,13 @@ func (r *ComplexRule) hasTenderCode() bool {
 	return false
 }
 
-// Helper method to get sorted include terms
-func (r *ComplexRule) getIncludeTermsSorted() []string {
-	terms := make([]string, 0, len(r.IncludeTerms))
-	for term := range r.IncludeTerms {
-		terms = append(terms, term)
-	}
-	sort.Strings(terms)
-	return terms
-}
-
-func SortComplexRules(rules []*ComplexRule) {
-	sort.Sort(ComplexRules(rules))
-}
-
-// Use sync.Pool to reuse slices during marshaling and unmarshaling
-var slicePool = sync.Pool{
-	New: func() interface{} {
-		return make([]string, 0, 30)
-	},
-}
-
 func (cr *ComplexRule) MarshalJSON() ([]byte, error) {
-	include := keysToSlice(cr.IncludeTerms)
-	exclude := keysToSlice(cr.ExcludeTerms)
-	// Put the exact same slices back that were used for marshaling, otherwise
-	// the pooled slices are never reused and concurrent MarshalJSON calls can
-	// race on the same underlying slice.
-	defer slicePool.Put(include)
-	defer slicePool.Put(exclude)
-
 	temp := struct {
 		IncludeTerms []string `json:"includeTerms"`
 		ExcludeTerms []string `json:"excludeTerms"`
 	}{
-		IncludeTerms: *include,
-		ExcludeTerms: *exclude,
+		IncludeTerms: slices.Sorted(maps.Keys(cr.IncludeTerms)),
+		ExcludeTerms: slices.Sorted(maps.Keys(cr.ExcludeTerms)),
 	}
 
 	return json.Marshal(temp)
@@ -115,8 +90,8 @@ func (cr *ComplexRule) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &temp); err != nil {
 		return err
 	}
-	cr.IncludeTerms = sliceToMap(&temp.IncludeTerms)
-	cr.ExcludeTerms = sliceToMap(&temp.ExcludeTerms)
+	cr.IncludeTerms = sliceToSet(temp.IncludeTerms)
+	cr.ExcludeTerms = sliceToSet(temp.ExcludeTerms)
 	return nil
 }
 
@@ -144,43 +119,23 @@ func (cr *ComplexRule) IsMatch(data string) bool {
 }
 
 func (cr *ComplexRule) ToString() string {
-	var parts []string
-
-	// Handle include terms
-	var includeTerms []string
-	for term := range cr.IncludeTerms {
-		includeTerms = append(includeTerms, term)
+	var sb strings.Builder
+	for _, term := range slices.Sorted(maps.Keys(cr.IncludeTerms)) {
+		sb.WriteString("+")
+		sb.WriteString(term)
+		sb.WriteString(" ")
 	}
-	sort.Strings(includeTerms)
-	for _, term := range includeTerms {
-		parts = append(parts, fmt.Sprintf("+%s", term))
+	for _, term := range slices.Sorted(maps.Keys(cr.ExcludeTerms)) {
+		sb.WriteString("-")
+		sb.WriteString(term)
+		sb.WriteString(" ")
 	}
-
-	// Handle exclude terms
-	var excludeTerms []string
-	for term := range cr.ExcludeTerms {
-		excludeTerms = append(excludeTerms, term)
-	}
-	sort.Strings(excludeTerms)
-	for _, term := range excludeTerms {
-		parts = append(parts, fmt.Sprintf("-%s", term))
-	}
-
-	return strings.Join(parts, " ")
+	return strings.TrimSpace(sb.String())
 }
 
-func keysToSlice(m map[string]struct{}) *[]string {
-	slice := slicePool.Get().(*[]string)
-	*slice = (*slice)[:0] // Reset the slice length
-	for k := range m {
-		*slice = append(*slice, k)
-	}
-	return slice
-}
-
-func sliceToMap(s *[]string) map[string]struct{} {
-	m := make(map[string]struct{}, len(*s)) // Pre-allocate map with known size
-	for _, v := range *s {
+func sliceToSet(s []string) map[string]struct{} {
+	m := make(map[string]struct{}, len(s))
+	for _, v := range s {
 		m[v] = struct{}{}
 	}
 	return m
@@ -200,8 +155,8 @@ func NewComplexRule(k *model.Keyword) *ComplexRule {
 		if term == "" {
 			continue
 		}
-		if strings.HasPrefix(term, "-") {
-			rule.ExcludeTerms[strings.TrimPrefix(term, "-")] = struct{}{}
+		if excluded, ok := strings.CutPrefix(term, "-"); ok {
+			rule.ExcludeTerms[excluded] = struct{}{}
 		} else {
 			// Remove '+' if present, otherwise keep the term as is
 			rule.IncludeTerms[strings.TrimPrefix(term, "+")] = struct{}{}
