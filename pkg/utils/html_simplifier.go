@@ -193,12 +193,37 @@ func (r *htmlRenderer) table(n *html.Node) {
 		return
 	}
 
+	// A one-row, one-cell table is layout, not data: the publishing system wraps
+	// whole notices in one so it can apply its stylesheet. Flattening that cell
+	// onto a single line would merge every paragraph, so render it as block
+	// content instead and keep the line breaks.
+	if cell, ok := layoutTableCell(n); ok {
+		r.newline()
+		r.children(cell)
+		r.newline()
+		return
+	}
+
 	r.newline()
 	for _, line := range flattenTable(n, r.base) {
 		r.newline()
 		r.b = append(r.b, line...)
 	}
 	r.newline()
+}
+
+// layoutTableCell reports whether the table is a one-row, one-cell wrapper used
+// for page layout, and returns that cell.
+func layoutTableCell(n *html.Node) (*html.Node, bool) {
+	rows := tableRows(n)
+	if len(rows) != 1 {
+		return nil, false
+	}
+	cells := rowCells(rows[0])
+	if len(cells) != 1 {
+		return nil, false
+	}
+	return cells[0], true
 }
 
 // isComplexTable reports whether a table is too wide or too tall to flatten.

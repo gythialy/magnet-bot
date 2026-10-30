@@ -20,8 +20,8 @@ Gotenberg 把公告转成 PDF / PNG。
 数据流：
 
 1. 每 `SCHEDULE_INTERVAL` 小时抓取一轮公告，按每个用户的关键词匹配；
-2. 命中即推送 Telegram HTML 消息；若公告含**复杂表格**（≥ 6 列或 ≥ 10 行），正文用
-   占位符替代表格，并把整页转成 PDF 作为**回复附件**发送；
+2. 命中即推送 Telegram HTML 消息；若公告含**复杂表格**（≥ 6 列或 ≥ 10 行），改为
+   发**一条消息**：整页转成的 PDF + 正文作为它的 caption（正文超过 1000 字时截断）；
 3. 用户执行 `/convertpdf`、`/convertimg` 时，bot 请求 Gotenberg；Gotenberg 完成后
    回调 `POST /pdf/{requestId}`，bot 再把文件发回聊天。
 
@@ -264,13 +264,16 @@ docker run ... ghcr.io/gythialy/magnet-bot:<上一个版本>
 - `shm_size` 至少 1GB，否则 Chromium 容易崩；
 - 确认 Gotenberg 容器本身能出网访问公告站点。
 
-**Q：复杂表格公告没有收到附件**
+**Q：复杂表格公告是怎么发的？**
 
-- 正文出现「（表格较大，已省略；完整内容见附件 PDF）」表示识别为复杂表格；
-- 附件转换/上传失败不回滚推送（正文已送达），失败记录会写入 `pending_attachments`
-  表，由后台 worker 按 1m / 5m / 15m / 30m / 1h / 2h 退避自动补发；
-- 成功或放弃（6 次或超过 24 小时）后该行被删除：看 `resent notice pdf` 表示补发成功，
-  `giving up on notice pdf` 表示放弃，`last_error` 列保存最后一次失败原因；
+- 只发一条消息：整页 PDF + 正文作为 caption，不再单独发一条附件消息；
+- Telegram 单条消息的 caption 上限是 1024 个 UTF-16 字符（普通正文消息是 4096），
+  所以正文超过 1000 字时会截断并以「…」结尾——完整内容本来就在 PDF 里；
+- 判定复杂表格的阈值：**单个表格列数 ≥ 6 或行数 ≥ 10**；被判定后正文里会出现
+  「（表格较大，已省略；完整内容见附件 PDF）」；
+- 转换/发送失败时退回「正文分条送达 + 后台补发附件」：失败记录写入 `pending_attachments`
+  表，按 1m / 5m / 15m / 30m / 1h / 2h 退避补发，成功看 `resent notice pdf`，
+  放弃（6 次或 24 小时）看 `giving up on notice pdf`；
 - 同一用户同一公告只排一条，多实例共享 `bot.db` 时用 `locked_until` 租约互斥；
 - `PDF_SERVER_URL` 为空时 bot 启动即失败（Gotenberg 是必填依赖）。
 

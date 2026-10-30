@@ -173,6 +173,38 @@ func parseTag(raw string) (name string, open, selfClosing, ok bool) {
 	return name, true, selfClosing, name != ""
 }
 
+// maxCaptionUnits is the visible-text budget of one media caption. Telegram
+// allows 1024 UTF-16 units; the margin absorbs entity parsing and the ellipsis
+// appended when the body is cut.
+const maxCaptionUnits = 1000
+
+// visibleUnits returns the UTF-16 units Telegram charges for msg, i.e. the text
+// without the markup.
+func visibleUnits(msg string) int {
+	n := 0
+	for _, a := range parseHTMLAtoms(msg) {
+		n += a.units
+	}
+	return n
+}
+
+// truncateHTML cuts msg to at most budget visible units and closes every element
+// still open at the cut, so the fragment stays parseable on its own.
+func truncateHTML(msg string, budget int) string {
+	atoms := parseHTMLAtoms(msg)
+	st := splitState{}
+
+	cut := len(atoms)
+	for i, a := range atoms {
+		if a.units > 0 && st.units+a.units > budget {
+			cut = i
+			break
+		}
+		st.apply(a, i)
+	}
+	return strings.TrimSpace(renderChunk(atoms[:cut], st.stack))
+}
+
 // utf16Len returns the length of s in UTF-16 code units.
 func utf16Len(s string) int {
 	n := 0

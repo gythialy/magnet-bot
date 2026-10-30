@@ -47,6 +47,37 @@ func squash(s string) string {
 
 // TestSplitMessageKeepsTagsBalanced is the regression guard for cutting a
 // message in the middle of an <a>/<b> element, which Telegram rejects.
+// TestTruncateHTMLClosesOpenTags keeps a cut fragment parseable: the element
+// that was open at the cut has to be closed.
+func TestTruncateHTMLClosesOpenTags(t *testing.T) {
+	got := truncateHTML("<b>一二三四</b>", 2)
+	if got != "<b>一二</b>" {
+		t.Errorf("truncateHTML() = %q, want %q", got, "<b>一二</b>")
+	}
+	if problems := tagProblems(got); len(problems) > 0 {
+		t.Errorf("truncated markup is unbalanced: %v", problems)
+	}
+}
+
+// TestTruncateHTMLCountsUTF16Units guards emoji: a surrogate pair must never be
+// cut in half.
+func TestTruncateHTMLCountsUTF16Units(t *testing.T) {
+	if got := truncateHTML("😀😀😀", 5); got != "😀😀" {
+		t.Errorf("truncateHTML() = %q, want two emoji", got)
+	}
+	if got := truncateHTML("abc", 10); got != "abc" {
+		t.Errorf("truncateHTML() = %q, want the body unchanged", got)
+	}
+}
+
+// TestVisibleUnitsIgnoresMarkup keeps the caption budget aligned with what
+// Telegram charges for a message.
+func TestVisibleUnitsIgnoresMarkup(t *testing.T) {
+	if got := visibleUnits(`<b>ab</b><a href="https://example.com">c</a>`); got != 3 {
+		t.Errorf("visibleUnits() = %d, want 3", got)
+	}
+}
+
 func TestSplitMessageKeepsTagsBalanced(t *testing.T) {
 	var sb strings.Builder
 	sb.WriteString(`<a href="https://example.com/very/long/path">公告标题</a> @ 2024-01-01`)
