@@ -97,7 +97,7 @@ func NewBotContext() (*BotContext, error) {
 		return nil, err
 	}
 
-	if err := db.AutoMigrate(&model.Keyword{}, &model.History{}, &model.Alarm{}); err != nil {
+	if err := db.AutoMigrate(&model.Keyword{}, &model.History{}, &model.Alarm{}, &model.KeywordNotice{}); err != nil {
 		return nil, err
 	}
 	dal.SetDefault(db)
@@ -109,6 +109,13 @@ func NewBotContext() (*BotContext, error) {
 		ctxLogger.Error().Stack().Err(err).Msg("normalize history urls")
 	} else if rows > 0 {
 		ctxLogger.Info().Int64("rows", rows).Msg("normalized scheme-less history urls")
+	}
+
+	// The keyword-match log only has to cover the crawl window.
+	if rows, err := dal.PruneKeywordMatches(time.Now()); err != nil {
+		ctxLogger.Error().Stack().Err(err).Msg("prune keyword matches")
+	} else if rows > 0 {
+		ctxLogger.Debug().Int64("rows", rows).Msg("pruned keyword match records")
 	}
 
 	client, err := NewGotenbergClient(cfg.PDF.PDFServiceURL, cfg.PDF.WebhookURL(), cfg.PDF.WebhookToken)

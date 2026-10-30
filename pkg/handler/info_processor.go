@@ -241,6 +241,7 @@ func (r *InfoProcessor) processProjects(pd ProcessData) {
 	// Handles carry no Key: the pre-filter lock already covers the whole
 	// render+send lifecycle.
 	handles := make([]ClaimHandle, 0, len(pending))
+	var delivered []*Project
 	for j, project := range pending {
 		logger.Debug().Msgf("split content to %d parts", results[j].total)
 		pageURL := project.Pageurl
@@ -261,7 +262,13 @@ func (r *InfoProcessor) processProjects(pd ProcessData) {
 				})
 			},
 			Send: func() error {
-				return r.sendProject(st, project, chunks, total)
+				if err := r.sendProject(st, project, chunks, total); err != nil {
+					return err
+				}
+				// Run is serial, so appending here needs no lock. Only a notice
+				// that actually reached the user counts towards the keyword.
+				delivered = append(delivered, project)
+				return nil
 			},
 			Rollback: func() error {
 				if st.isForced {
@@ -272,6 +279,7 @@ func (r *InfoProcessor) processProjects(pd ProcessData) {
 		})
 	}
 	r.pushPipeline.Run(handles)
+	r.recordKeywordMatches(delivered)
 
 	// The pre-filter lock was held from shouldSkipProcessing through the
 	// pipeline run; release every claimed URL now so a failed project (whose
@@ -378,6 +386,48 @@ func (r *InfoProcessor) sendProject(st *projectPushState, project *Project, chun
 		})
 	}
 	return nil
+}
+
+// recordKeywordMatches records the (keyword, notice) pairs of the notices that
+// were delivered and bumps the keyword counter for the pairs that are new.
+//
+// A keyword's counter is therefore the number of distinct related notices that
+// actually reached the user: a re-crawled window, a forced re-push and a failed
+// send cannot inflate it.
+//
+// A failure is logged and ignored: statistics must never affect delivery.
+func (r *InfoProcessor) recordKeywordMatches(projects []*Project) {
+	logger := r.ctx.Logger
+	counters := make(map[int32]int32)
+	for _, project := range projects {
+		for _, keyID := range project.keywordIDs {
+			fresh, err := dal.MarkKeywordMatch(keyID, project.Pageurl)
+			if err != nil {
+				logger.Error().Stack().Err(err).
+					Int32("keyId", keyID).
+					Str("url", project.Pageurl).
+					Msg("record keyword match")
+				continue
+			}
+			if fresh {
+				counters[keyID]++
+			}
+		}
+	}
+
+	for keyID, counter := range counters {
+		if err := dal.Keyword.UpdateCounter(keyID, counter); err != nil {
+			logger.Error().Stack().Err(err).
+				Int32("keyId", keyID).
+				Int32("counter", counter).
+				Msg("failed to update counter")
+			continue
+		}
+		logger.Debug().
+			Int32("keyId", keyID).
+			Int32("counter", counter).
+			Msg("counter updated successfully")
+	}
 }
 
 // sendProjectPDF attaches the original notice page as a PDF, replying to the

@@ -416,7 +416,7 @@ func (c *CommandsHandler) StaticHandler(ctx context.Context, b *bot.Bot, update 
 	keywords := keywordDao.GetByUserIdAndType(userId, model.PROJECT)
 	var keywordStats strings.Builder
 	if len(keywords) > 0 {
-		fmt.Fprintf(&keywordStats, "\n- Keyword Match Counts: %d\n", keywordCount)
+		fmt.Fprintf(&keywordStats, "\n- Keywords: %d\n", keywordCount)
 		for idx, kw := range keywords {
 			if cr := rule.NewComplexRule(kw); cr != nil {
 				fmt.Fprintf(&keywordStats, "\n- [%d/%d] %s => [%s]: %d", idx+1, *kw.ID, kw.Keyword, cr.ToString(), kw.Counter)

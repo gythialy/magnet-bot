@@ -3,9 +3,9 @@ package handler
 import (
 	"bytes"
 	"html/template"
+	"slices"
 	"strings"
 
-	"github.com/gythialy/magnet/pkg/dal"
 	"github.com/gythialy/magnet/pkg/rule"
 	"github.com/gythialy/magnet/pkg/utils"
 )
@@ -37,6 +37,12 @@ type Project struct {
 	// HasComplexTable marks a notice whose table cannot be flattened into the
 	// message body; the pipeline attaches the original page as a PDF instead.
 	HasComplexTable bool `json:"-"`
+
+	// keywordIDs lists the keywords that matched this notice. The pipeline
+	// records each (keyword, notice) pair once, so a keyword's counter is the
+	// number of distinct related notices instead of the number of times the same
+	// notice was re-crawled.
+	keywordIDs []int32
 }
 
 func (p *Project) ToMessage() string {
@@ -66,7 +72,6 @@ type Projects struct {
 	keywordProjects []*Project
 	rules           []*rule.ComplexRule
 	ctx             *BotContext
-	counters        map[int32]int32
 }
 
 func NewProjects(ctx *BotContext, projects []*Project, rules []*rule.ComplexRule) *Projects {
@@ -75,7 +80,6 @@ func NewProjects(ctx *BotContext, projects []*Project, rules []*rule.ComplexRule
 		rules:           rules,
 		keywordProjects: make([]*Project, 0, len(projects)),
 		ctx:             ctx,
-		counters:        make(map[int32]int32),
 	}
 }
 
@@ -86,17 +90,19 @@ func NewProjects(ctx *BotContext, projects []*Project, rules []*rule.ComplexRule
 // fans users out to the ants pool), so writing the match result back into the
 // original structs would both race and leak one user's keywords into another
 // user's message. The copies also own Content/HasTenderCode, which the render
-// step rewrites.
+// step rewrites, and the matched keyword ids, which the pipeline counts only
+// after the notice has actually been delivered.
 func (r *Projects) Filter() []*Project {
 	logger := r.ctx.Logger
 	for _, v := range r.Projects {
 		logger.Debug().Msgf("process: %s,%s[%s]", v.ShortTitle, v.OpenTenderCode, v.NoticeTime)
 		matched := make([]string, 0, len(r.rules))
+		matchedIDs := make([]int32, 0, len(r.rules))
 		for _, cr := range r.rules {
 			if cr.IsMatch(v.ShortTitle) || cr.IsMatch(v.OpenTenderCode) {
 				matched = append(matched, cr.ToString())
-				if cr.Rule != nil && cr.Rule.ID != nil {
-					r.counters[*cr.Rule.ID]++
+				if cr.Rule != nil && cr.Rule.ID != nil && !slices.Contains(matchedIDs, *cr.Rule.ID) {
+					matchedIDs = append(matchedIDs, *cr.Rule.ID)
 				}
 			}
 		}
@@ -105,24 +111,9 @@ func (r *Projects) Filter() []*Project {
 		}
 		project := *v
 		project.Keyword = strings.Join(matched, "| ")
+		project.keywordIDs = matchedIDs
 		r.keywordProjects = append(r.keywordProjects, &project)
 		logger.Debug().Msgf("matched by (%s)", project.Keyword)
-	}
-
-	// Update counters in database
-	for keyID, counter := range r.counters {
-		if err := dal.Keyword.UpdateCounter(keyID, counter); err != nil {
-			logger.Error().
-				Err(err).
-				Int32("keyId", keyID).
-				Int32("counter", counter).
-				Msg("failed to update counter")
-			continue
-		}
-		logger.Debug().
-			Int32("keyId", keyID).
-			Int32("counter", counter).
-			Msg("counter updated successfully")
 	}
 
 	return r.keywordProjects
