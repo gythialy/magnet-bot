@@ -2,7 +2,6 @@ package dal
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -14,25 +13,22 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-func setupTestDB(t *testing.T) func() {
-	f := "./history.db"
-	db, err := gorm.Open(sqlite.Open(f), &gorm.Config{
+// setupTestDB opens a throwaway database for the test and points the global DAO
+// at it. t.TempDir is removed automatically, so there is nothing to clean up.
+func setupTestDB(t *testing.T) {
+	t.Helper()
+
+	db, err := gorm.Open(sqlite.Open(t.TempDir()+"/history.db"), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_ = db.AutoMigrate(&model.History{})
-	db.Debug()
-
-	SetDefault(db)
-
-	cleanup := func() {
-		_ = os.Remove(f)
+	if err := db.AutoMigrate(&model.History{}); err != nil {
+		t.Fatal(err)
 	}
-
-	return cleanup
+	SetDefault(db)
 }
 
 //func TestHistoryDao_Cache(t *testing.T) {
@@ -85,8 +81,7 @@ func setupTestDB(t *testing.T) func() {
 //}
 
 func TestHistoryDao_SearchByTitle(t *testing.T) {
-	cleanup := setupTestDB(t)
-	defer cleanup()
+	setupTestDB(t)
 
 	userId := int64(1)
 	now := time.Now()
@@ -164,8 +159,7 @@ func TestHistoryDao_SearchByTitle(t *testing.T) {
 }
 
 func TestHistoryDao_IsUrlExist(t *testing.T) {
-	cleanup := setupTestDB(t)
-	defer cleanup()
+	setupTestDB(t)
 
 	// Test data
 	userId := int64(1)
@@ -227,8 +221,7 @@ func TestHistoryDao_IsUrlExist(t *testing.T) {
 }
 
 func TestHistoryDao_CountHistory(t *testing.T) {
-	cleanup := setupTestDB(t)
-	defer cleanup()
+	setupTestDB(t)
 
 	userId := int64(1)
 	now := time.Now()
@@ -256,8 +249,7 @@ func containsInsensitive(s, substr string) bool {
 }
 
 func TestHistoryDao_GetTodayByUserId(t *testing.T) {
-	cleanup := setupTestDB(t)
-	defer cleanup()
+	setupTestDB(t)
 
 	userId := int64(1)
 	now := time.Now()
@@ -350,4 +342,58 @@ func TestHistoryDao_GetTodayByUserId(t *testing.T) {
 
 		t.Logf("Today's records for user %d: %s, total: %d", userId, utils.ToString(results), total)
 	})
+}
+
+// TestHistoryNormalizeURLs guards the one-off backfill: rows written before
+// links were absolute must gain a scheme so they keep matching the claim key,
+// and the backfill must be idempotent.
+func TestHistoryNormalizeURLs(t *testing.T) {
+	setupTestDB(t)
+
+	now := time.Now()
+	legacy := []*model.History{
+		{UserID: 1, URL: "www.example.com/a.html", Title: "legacy a", UpdatedAt: now},
+		{UserID: 2, URL: "www.example.com/b.html", Title: "legacy b", UpdatedAt: now},
+	}
+	if err := History.Insert(legacy); err != nil {
+		t.Fatal(err)
+	}
+	if err := History.Insert([]*model.History{
+		{UserID: 1, URL: "https://www.example.com/c.html", Title: "absolute c", UpdatedAt: now},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := History.NormalizeURLs()
+	if err != nil {
+		t.Fatalf("NormalizeURLs() failed: %v", err)
+	}
+	if rows != 2 {
+		t.Fatalf("NormalizeURLs() touched %d rows, want 2", rows)
+	}
+
+	for _, tc := range []struct {
+		userID int64
+		url    string
+	}{
+		{1, "https://www.example.com/a.html"},
+		{2, "https://www.example.com/b.html"},
+		{1, "https://www.example.com/c.html"},
+	} {
+		exist, err := History.IsUrlExist(tc.userID, tc.url)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !exist {
+			t.Errorf("expected %q to exist after the backfill", tc.url)
+		}
+	}
+	if exist, _ := History.IsUrlExist(1, "www.example.com/a.html"); exist {
+		t.Error("scheme-less URL survived the backfill")
+	}
+
+	// A second run must be a no-op.
+	if rows, err := History.NormalizeURLs(); err != nil || rows != 0 {
+		t.Fatalf("second NormalizeURLs() = (%d, %v), want (0, nil)", rows, err)
+	}
 }

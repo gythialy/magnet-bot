@@ -11,31 +11,31 @@ import (
 func TestPushPipelineClaimAndSend(t *testing.T) {
 	p := NewPushPipeline()
 
-	var claimed, sent, rolledBack int32
+	var claimed, sent, rolledBack atomic.Int32
 	handles := []ClaimHandle{
 		{
 			Key: "a",
 			Claim: func() (bool, error) {
-				atomic.AddInt32(&claimed, 1)
+				claimed.Add(1)
 				return true, nil
 			},
 			Send: func() error {
-				atomic.AddInt32(&sent, 1)
+				sent.Add(1)
 				return errors.New("send failed")
 			},
 			Rollback: func() error {
-				atomic.AddInt32(&rolledBack, 1)
+				rolledBack.Add(1)
 				return nil
 			},
 		},
 		{
 			Key: "b",
 			Claim: func() (bool, error) {
-				atomic.AddInt32(&claimed, 1)
+				claimed.Add(1)
 				return false, nil // lost the claim, must not send
 			},
 			Send: func() error {
-				atomic.AddInt32(&sent, 1)
+				sent.Add(1)
 				return nil
 			},
 		},
@@ -43,14 +43,14 @@ func TestPushPipelineClaimAndSend(t *testing.T) {
 
 	p.Run(handles)
 
-	if claimed != 2 {
-		t.Errorf("expected both handles to attempt claim, got %d", claimed)
+	if got := claimed.Load(); got != 2 {
+		t.Errorf("expected both handles to attempt claim, got %d", got)
 	}
-	if sent != 1 {
-		t.Errorf("expected exactly 1 send, got %d", sent)
+	if got := sent.Load(); got != 1 {
+		t.Errorf("expected exactly 1 send, got %d", got)
 	}
-	if rolledBack != 1 {
-		t.Errorf("expected rollback for the failed send, got %d", rolledBack)
+	if got := rolledBack.Load(); got != 1 {
+		t.Errorf("expected rollback for the failed send, got %d", got)
 	}
 }
 
@@ -64,7 +64,7 @@ func TestPushPipelineKeyLock(t *testing.T) {
 		t.Fatal("expected to hold the key")
 	}
 
-	var sent int32
+	var sent atomic.Int32
 	p.Run([]ClaimHandle{{
 		Key: "same",
 		Claim: func() (bool, error) {
@@ -72,13 +72,13 @@ func TestPushPipelineKeyLock(t *testing.T) {
 			return true, nil
 		},
 		Send: func() error {
-			atomic.AddInt32(&sent, 1)
+			sent.Add(1)
 			return nil
 		},
 	}})
 
-	if sent != 0 {
-		t.Fatalf("expected the handle to be skipped, got %d sends", sent)
+	if got := sent.Load(); got != 0 {
+		t.Fatalf("expected the handle to be skipped, got %d sends", got)
 	}
 	p.locks.Unlock("same")
 }
@@ -88,20 +88,20 @@ func TestPushPipelineKeyLock(t *testing.T) {
 func TestPushPipelineNoKeySkipsLock(t *testing.T) {
 	p := NewPushPipeline()
 
-	var sent int32
+	var sent atomic.Int32
 	handles := make([]ClaimHandle, 0, 3)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		handles = append(handles, ClaimHandle{
 			Claim: func() (bool, error) { return true, nil },
 			Send: func() error {
-				atomic.AddInt32(&sent, 1)
+				sent.Add(1)
 				return nil
 			},
 		})
 	}
 	p.Run(handles)
 
-	if sent != 3 {
-		t.Fatalf("expected all 3 handles to send without a Key, got %d", sent)
+	if got := sent.Load(); got != 3 {
+		t.Fatalf("expected all 3 handles to send without a Key, got %d", got)
 	}
 }

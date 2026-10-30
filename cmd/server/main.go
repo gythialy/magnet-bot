@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -8,23 +9,22 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/gythialy/magnet/pkg/handler"
-
 	"github.com/gythialy/magnet/pkg/constant"
+	"github.com/gythialy/magnet/pkg/handler"
 )
 
 func main() {
 	fmt.Printf("magnet %s @ %s\n", constant.Version, constant.BuildTime)
 
-	ctx, err := handler.NewBotContext()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	botContext, err := handler.NewBotContext()
 	if err != nil {
 		log.Fatal().Stack().Err(err).Msg("NewBotContext")
 	}
 
-	ctx.Start()
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
-	<-signalChan
-
-	ctx.Stop()
+	botContext.Start()
+	<-ctx.Done()
+	botContext.Stop()
 }

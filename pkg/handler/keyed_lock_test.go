@@ -18,23 +18,21 @@ func TestKeyedLock(t *testing.T) {
 	}
 
 	// While held, every concurrent attempt must fail.
-	var failed int32
+	var failed atomic.Int32
 	var wg sync.WaitGroup
-	for i := 0; i < 20; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 20 {
+		wg.Go(func() {
 			if l.TryLock(key) {
 				t.Error("concurrent TryLock should fail while the key is held")
 				l.Unlock(key)
 				return
 			}
-			atomic.AddInt32(&failed, 1)
-		}()
+			failed.Add(1)
+		})
 	}
 	wg.Wait()
-	if failed != 20 {
-		t.Fatalf("expected all 20 concurrent attempts to fail, got %d", failed)
+	if got := failed.Load(); got != 20 {
+		t.Fatalf("expected all 20 concurrent attempts to fail, got %d", got)
 	}
 
 	// After Unlock the key is acquirable again.

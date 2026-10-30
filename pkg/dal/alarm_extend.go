@@ -7,36 +7,30 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// emptyTime is how a punishment without an end date is stored: year 1, UTC.
+//
+// It is deliberately parsed from the exact text the SQLite driver writes for a
+// zero time.Time instead of using time.Time{} directly. Both values are the
+// same instant and the driver serialises them identically today, but they are
+// not == (the zero value carries no location), and an earlier incident came
+// from assuming the two were interchangeable.
 var emptyTime, _ = time.Parse("2006-01-02 15:04:05-07:00", "0001-01-01 00:00:00+00:00")
 
 func (a *alarm) Clean() error {
 	now := time.Now()
-	if _, err := a.Where(a.EndDate.Neq(emptyTime), a.EndDate.Lt(now)).Delete(); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (a *alarm) Cache(userId int64) map[string]*model.Alarm {
-	result := make(map[string]*model.Alarm)
-	now := time.Now()
-	if alarms, err := a.Where(a.UserID.Eq(userId), a.Where(a.EndDate.Gt(now)).Or(a.EndDate.Eq(emptyTime))).Find(); err == nil {
-		for _, alarm := range alarms {
-			result[alarm.CreditCode] = alarm
-		}
-	}
-	return result
+	_, err := a.Where(a.EndDate.Neq(emptyTime), a.EndDate.Lt(now)).Delete()
+	return err
 }
 
 func (a *alarm) IsExist(userId int64, creditCode string) (bool, error) {
 	now := time.Now()
-	if count, err := a.Where(a.UserID.Eq(userId),
+	count, err := a.Where(a.UserID.Eq(userId),
 		a.CreditCode.Eq(creditCode),
-		a.Where(a.EndDate.Gt(now)).Or(a.EndDate.Eq(emptyTime))).Count(); err == nil {
-		return count > 0, nil
-	} else {
+		a.Where(a.EndDate.Gt(now)).Or(a.EndDate.Eq(emptyTime))).Count()
+	if err != nil {
 		return false, err
 	}
+	return count > 0, nil
 }
 
 func (a *alarm) GetById(userId int64, businessId string) (*model.Alarm, error) {
@@ -50,11 +44,11 @@ func (a *alarm) SearchByName(userId int64, term string, page, pageSize int) ([]*
 	if term != "" {
 		query = query.Where(a.CreditName.Like("%" + term + "%"))
 	}
-	if result, total, err := query.Order(a.StartDate.Desc()).FindByPage(offset, pageSize); err == nil {
-		return result, total
-	} else {
+	result, total, err := query.Order(a.StartDate.Desc()).FindByPage(offset, pageSize)
+	if err != nil {
 		return nil, 0
 	}
+	return result, total
 }
 
 func (a *alarm) Insert(data []*model.Alarm) error {

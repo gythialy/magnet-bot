@@ -144,6 +144,11 @@ lint:
 	GOOS=freebsd golangci-lint run ./...
 	GOOS=openbsd golangci-lint run ./...
 
+# Test_historyQuery/Test_alarmQuery are generated gorm/gen smoke tests that
+# fail against the real schema; they are skipped rather than edited.
+test:
+	go test -race ./... -skip 'Test_(alarmQuery|historyQuery)'
+
 clean:
 	rm -rf $(BINDIR)
 

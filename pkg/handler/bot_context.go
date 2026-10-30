@@ -9,19 +9,16 @@ import (
 	"time"
 
 	"github.com/gythialy/magnet/pkg/config"
-
+	"github.com/gythialy/magnet/pkg/constant"
 	"github.com/gythialy/magnet/pkg/dal"
 	"github.com/gythialy/magnet/pkg/model"
-
-	"gorm.io/gorm/logger"
-
-	"github.com/gythialy/magnet/pkg/constant"
+	"github.com/gythialy/magnet/pkg/utils"
 
 	"github.com/glebarez/sqlite"
 	"github.com/go-co-op/gocron"
 	"github.com/go-telegram/bot"
-	"github.com/gythialy/magnet/pkg/utils"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type dbLogger struct {
@@ -32,15 +29,15 @@ func (dl *dbLogger) LogMode(_ logger.LogLevel) logger.Interface {
 	return dl
 }
 
-func (dl *dbLogger) Info(_ context.Context, msg string, data ...interface{}) {
+func (dl *dbLogger) Info(_ context.Context, msg string, data ...any) {
 	dl.Logger.Info().Msgf(msg, data...)
 }
 
-func (dl *dbLogger) Warn(_ context.Context, msg string, data ...interface{}) {
+func (dl *dbLogger) Warn(_ context.Context, msg string, data ...any) {
 	dl.Logger.Warn().Msgf(msg, data...)
 }
 
-func (dl *dbLogger) Error(_ context.Context, msg string, data ...interface{}) {
+func (dl *dbLogger) Error(_ context.Context, msg string, data ...any) {
 	dl.Logger.Error().Msgf(msg, data...)
 }
 
@@ -56,7 +53,7 @@ func (dl *dbLogger) Trace(_ context.Context, begin time.Time, fc func() (string,
 
 type BotContext struct {
 	Bot             *bot.Bot
-	Store           *Store
+	Store           *Store[model.RequestInfo]
 	Logger          *utils.Logger
 	Config          *config.ServiceConfig
 	Gotenberg       *GotenbergClient
@@ -68,11 +65,19 @@ type BotContext struct {
 	shutdownWebhook func()
 }
 
+// context returns the process-wide context so background work honours
+// shutdown. It never returns nil, which keeps it usable from tests that build
+// a partial BotContext.
+func (ctx *BotContext) context() context.Context {
+	if ctx.ctx != nil {
+		return ctx.ctx
+	}
+	return context.Background()
+}
+
 func NewBotContext() (*BotContext, error) {
 	cfg := config.NewServiceConfig()
 
-	// init log
-	level := cfg.LogLevel
 	ctxLogger := utils.Configure(utils.Config{
 		ConsoleLoggingEnabled: true,
 		EncodeLogsAsJson:      false,
@@ -82,10 +87,9 @@ func NewBotContext() (*BotContext, error) {
 		MaxSize:               10,
 		MaxBackups:            10,
 		MaxAge:                7,
-		LogLevel:              level,
+		LogLevel:              cfg.LogLevel,
 	})
 
-	// init database
 	db, err := gorm.Open(sqlite.Open(path.Join(cfg.BaseDir, constant.DatabaseFile)), &gorm.Config{
 		Logger: &dbLogger{ctxLogger},
 	})
@@ -93,64 +97,73 @@ func NewBotContext() (*BotContext, error) {
 		return nil, err
 	}
 
-	err = db.AutoMigrate(&model.Keyword{}, &model.History{}, &model.Alarm{})
-	if err != nil {
+	if err := db.AutoMigrate(&model.Keyword{}, &model.History{}, &model.Alarm{}); err != nil {
 		return nil, err
 	}
 	dal.SetDefault(db)
-	// init gotenberg
+
+	// Backfill: history rows written before links were absolute carry a
+	// scheme-less URL, which would no longer match the claim key of new pushes
+	// and make already delivered notices look new.
+	if rows, err := dal.History.NormalizeURLs(); err != nil {
+		ctxLogger.Error().Stack().Err(err).Msg("normalize history urls")
+	} else if rows > 0 {
+		ctxLogger.Info().Int64("rows", rows).Msg("normalized scheme-less history urls")
+	}
+
 	client, err := NewGotenbergClient(cfg.PDF.PDFServiceURL, cfg.PDF.WebhookURL(), cfg.PDF.WebhookToken)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create gotenberg client: %s", err)
+		return nil, fmt.Errorf("create gotenberg client: %w", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	botContext := &BotContext{
 		ctx:       ctx,
 		cancel:    cancel,
-		scheduler: gocron.NewScheduler(time.FixedZone("CST", 8*60*60)),
+		scheduler: gocron.NewScheduler(schedulerLocation()),
 		Logger:    ctxLogger,
 		Config:    cfg,
-		Store:     NewStore(),
+		Store:     NewStore[model.RequestInfo](),
 		Gotenberg: client,
 	}
 
 	botContext.cmdHandler = NewCommandsHandler(botContext)
 
-	// init telegram bot
-	defaultHandlerInstance := &defaultHandler{
-		cmd: botContext.cmdHandler,
-	}
-
 	telegramBot, err := bot.New(config.TelegramToken(), []bot.Option{
-		bot.WithDefaultHandler(defaultHandlerInstance.Handler),
-		bot.WithHTTPClient(time.Minute, &http.Client{
-			Timeout: 2 * time.Minute,
-		}),
-		// bot.WithDebug(),
+		bot.WithDefaultHandler((&defaultHandler{cmd: botContext.cmdHandler}).Handler),
+		bot.WithHTTPClient(time.Minute, &http.Client{Timeout: 2 * time.Minute}),
 	}...)
 	if err != nil {
 		return nil, err
 	}
-
 	botContext.Bot = telegramBot
 
-	if err = botContext.initBot(); err != nil {
+	if err := botContext.initBot(); err != nil {
 		return nil, err
 	}
-	if botContext.processor, err = NewInfoProcessor(botContext); err == nil {
-		return botContext, nil
-	} else {
+
+	processor, err := NewInfoProcessor(botContext)
+	if err != nil {
 		return nil, err
 	}
+	botContext.processor = processor
+	return botContext, nil
+}
+
+// schedulerLocation returns the Asia/Shanghai location, falling back to a
+// fixed +08:00 zone on hosts without tzdata (the distroless image ships none).
+func schedulerLocation() *time.Location {
+	if loc, err := time.LoadLocation("Asia/Shanghai"); err == nil {
+		return loc
+	}
+	return time.FixedZone("CST", 8*60*60)
 }
 
 func (ctx *BotContext) initBot() error {
 	cmdHandler := ctx.cmdHandler
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Me, bot.MatchTypePrefix, MeHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Debug, bot.MatchTypePrefix, DebugHandler)
-	sHandler := &startHandler{cmdHandler: cmdHandler}
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Start, bot.MatchTypePrefix, sHandler.Handler)
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Start, bot.MatchTypePrefix, (&startHandler{cmdHandler: cmdHandler}).Handler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.AddKeyword, bot.MatchTypePrefix, cmdHandler.AddKeywordHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.DeleteKeyword, bot.MatchTypePrefix, cmdHandler.DeleteKeywordHandler)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.EditKeyword, bot.MatchTypePrefix, cmdHandler.EditKeywordHandler)
@@ -170,13 +183,10 @@ func (ctx *BotContext) initBot() error {
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Retry, bot.MatchTypePrefix, managerHandler.Retry)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Clean, bot.MatchTypePrefix, managerHandler.Clean)
 
-	if _, err := ctx.Bot.SetMyCommands(context.Background(), &bot.SetMyCommandsParams{
+	_, err := ctx.Bot.SetMyCommands(ctx.context(), &bot.SetMyCommandsParams{
 		Commands: TelegramCommands(),
-	}); err != nil {
-		return err
-	} else {
-		return nil
-	}
+	})
+	return err
 }
 
 func (ctx *BotContext) Start() {
@@ -214,13 +224,25 @@ func (ctx *BotContext) Stop() {
 	ctx.processor.Release()
 	ctx.scheduler.Stop()
 	ctx.scheduler.StopBlockingChan()
-	ctx.shutdownWebhook()
+	if ctx.shutdownWebhook != nil {
+		ctx.shutdownWebhook()
+	}
 }
 
+// startWebhookServer serves the Gotenberg callback endpoint. The request id is
+// a path wildcard, so the handler can reject unknown ids before reading a body.
 func (ctx *BotContext) startWebhookServer() {
-	server := &http.Server{Addr: fmt.Sprintf(":%d", ctx.Config.PDF.WebhookServerPort)}
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST "+constant.PDFEndPoint+"{id}", newWebhooker(ctx).WebhookHandler)
 
-	http.HandleFunc(constant.PDFEndPoint, newWebhooker(ctx).WebhookHandler)
+	server := &http.Server{
+		Addr:              fmt.Sprintf(":%d", ctx.Config.PDF.WebhookServerPort),
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       time.Minute,
+		WriteTimeout:      time.Minute,
+		IdleTimeout:       2 * time.Minute,
+	}
 
 	go func() {
 		if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
