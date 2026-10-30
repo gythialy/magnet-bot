@@ -368,9 +368,16 @@ func (r *InfoProcessor) sendProject(st *projectPushState, project *Project, chun
 
 	// A notice with a table too complex to flatten is delivered as the original
 	// page: the body only carries a placeholder, so attach the PDF as a reply.
+	// The text already reached the user, so a failed attachment does not roll
+	// the claim back: it is queued and retried by the AttachmentRetrier.
 	if isSuccessful && project.HasComplexTable {
 		if err := r.sendProjectPDF(ctx, st.userId, lastMessageID, project); err != nil {
-			logger.Error().Stack().Err(err).Msg("send project pdf")
+			logger.Error().Stack().Err(err).
+				Int64("chatId", st.userId).
+				Str("code", project.OpenTenderCode).
+				Str("url", pageURL).
+				Msg("send project pdf")
+			r.enqueuePendingPDF(st.userId, lastMessageID, project)
 		}
 	}
 
@@ -460,11 +467,43 @@ func (r *InfoProcessor) sendProjectPDF(ctx context.Context, chatID int64, replyT
 	return nil
 }
 
+// enqueuePendingPDF records a failed attachment so the background retrier can
+// deliver it once the converter is reachable again. Without a Gotenberg client
+// there is nothing to retry with, so the row is not written.
+func (r *InfoProcessor) enqueuePendingPDF(userID int64, replyTo int, project *Project) {
+	if r.ctx.Gotenberg == nil {
+		return
+	}
+
+	now := time.Now()
+	err := dal.EnqueueAttachment(&model.PendingAttachment{
+		UserID:        userID,
+		URL:           project.Pageurl,
+		ReplyTo:       replyTo,
+		Title:         project.Title,
+		TenderCode:    project.OpenTenderCode,
+		NextAttemptAt: now.Add(attachmentBackoff[0]),
+		CreatedAt:     now,
+	})
+	if err != nil {
+		r.ctx.Logger.Error().Stack().Err(err).
+			Int64("chatId", userID).
+			Str("url", project.Pageurl).
+			Msg("queue pending attachment")
+	}
+}
+
 // attachmentName builds a safe file name for the attached notice.
 func attachmentName(project *Project) string {
-	name := strings.TrimSpace(project.OpenTenderCode)
+	return attachmentFilename(project.OpenTenderCode, project.Title)
+}
+
+// attachmentFilename sanitises the notice's tender code — or its title when the
+// code is missing — into a name Telegram accepts.
+func attachmentFilename(tenderCode, title string) string {
+	name := strings.TrimSpace(tenderCode)
 	if name == "" {
-		name = strings.TrimSpace(project.Title)
+		name = strings.TrimSpace(title)
 	}
 	if name == "" {
 		name = "notice"

@@ -90,7 +90,8 @@ services:
     image: gotenberg/gotenberg:8
     container_name: gotenberg
     restart: unless-stopped
-    command: ["--api-timeout=120s"]
+    environment:
+      API_TIMEOUT: "120s"  # 转换时限，默认 30s；必须小于 bot 侧 3 分钟 HTTP 超时
     shm_size: "1gb"        # Chromium 需要，太小会崩
 ```
 
@@ -105,6 +106,8 @@ services:
   ```
 
 - Gotenberg 必须能出网访问公告站点（转换是它去抓页面）。
+- 调整 Gotenberg 参数用环境变量（如 `API_TIMEOUT`），**不要**用 `command:`：它会覆盖镜像
+  默认的启动参数，容器直接起不来，bot 侧只会看到没有信息的 `request sending failed`。
 - 镜像里已内置 `TZ=Asia/Shanghai`；调度器固定用 Asia/Shanghai，无 tzdata 时回退 +08:00。
 
 启动：
@@ -125,7 +128,7 @@ docker compose logs -f magnet-bot
 docker network create magnet
 
 docker run -d --name gotenberg --network magnet --restart unless-stopped \
-  --shm-size=1gb gotenberg/gotenberg:8 --api-timeout=120s
+  --shm-size=1gb -e API_TIMEOUT=120s gotenberg/gotenberg:8
 
 docker run -d --name magnet-bot --network magnet --restart unless-stopped \
   -e TELEGRAM_BOT_TOKEN=123456:ABC... \
@@ -253,15 +256,23 @@ docker run ... ghcr.io/gythialy/magnet-bot:<上一个版本>
 
 **Q：Gotenberg 转换超时 / 502**
 
-- 页面很长时把 `--api-timeout` 调到 120s（bot 侧 HTTP 超时是 2 分钟）；
+- 用环境变量 `API_TIMEOUT`（默认 30s，建议 120s）调整转换时限。写成
+  `command: ["--api-timeout=120s"]` 会让容器起不来，现象是 bot 只报
+  `request sending failed`；
+- bot 侧 HTTP 超时是 3 分钟，**必须大于** `API_TIMEOUT`：两者相同时客户端先失败，
+  Gotenberg 返回的 504 和错误体就看不到了；
 - `shm_size` 至少 1GB，否则 Chromium 容易崩；
 - 确认 Gotenberg 容器本身能出网访问公告站点。
 
 **Q：复杂表格公告没有收到附件**
 
 - 正文出现「（表格较大，已省略；完整内容见附件 PDF）」表示识别为复杂表格；
-- 附件发送失败只记日志、不回滚推送（正文已送达），检查 `send project pdf` 日志；
-- 未配置 `PDF_SERVER_URL` 时该功能不可用。
+- 附件转换/上传失败不回滚推送（正文已送达），失败记录会写入 `pending_attachments`
+  表，由后台 worker 按 1m / 5m / 15m / 30m / 1h / 2h 退避自动补发；
+- 成功或放弃（6 次或超过 24 小时）后该行被删除：看 `resent notice pdf` 表示补发成功，
+  `giving up on notice pdf` 表示放弃，`last_error` 列保存最后一次失败原因；
+- 同一用户同一公告只排一条，多实例共享 `bot.db` 时用 `locked_until` 租约互斥；
+- `PDF_SERVER_URL` 为空时 bot 启动即失败（Gotenberg 是必填依赖）。
 
 **Q：重复推送了历史公告**
 
