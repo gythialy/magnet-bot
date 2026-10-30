@@ -21,7 +21,11 @@ const (
 	// gotenbergHTTPTimeout bounds the HTTP client used for PDF/IMG conversion
 	// requests. Without a timeout a hung Gotenberg instance would leave the
 	// conversion goroutine and its webhook request state stuck forever.
-	gotenbergHTTPTimeout = 2 * time.Minute
+	//
+	// It must stay above Gotenberg's own request limit (API_TIMEOUT, 30s by
+	// default): when the two deadlines coincide the client fires first and the
+	// server's descriptive 504 never reaches the bot.
+	gotenbergHTTPTimeout = 3 * time.Minute
 	// gotenbergErrorBodyLimit caps how much of an error response is quoted.
 	gotenbergErrorBodyLimit = 4 << 10
 	// maxAttachmentBytes keeps an attachment inside Telegram's 50 MB bot limit.
@@ -34,8 +38,60 @@ type GotenbergClient struct {
 	token   string
 }
 
+// transportErrorKey carries a *transportError through a request context.
+type transportErrorKey struct{}
+
+// transportError remembers why the underlying round trip failed. The Gotenberg
+// client replaces every transport failure with a fixed "request sending
+// failed", so without this recorder the real cause — DNS, connection refused,
+// TLS, timeout — would be lost before it reaches the logs.
+type transportError struct {
+	err error
+}
+
+// recordingTransport stores the transport error of the request it serves. The
+// recorder is per request (carried by the context), so concurrent conversions
+// cannot overwrite each other.
+type recordingTransport struct {
+	base http.RoundTripper
+}
+
+func (t recordingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+
+	resp, err := base.RoundTrip(req)
+	if err != nil {
+		if holder, ok := req.Context().Value(transportErrorKey{}).(*transportError); ok && holder != nil {
+			holder.err = err
+		}
+	}
+	return resp, err
+}
+
+// withTransportRecorder attaches a recorder to ctx and returns it, so the
+// caller can recover the underlying cause of a failed request.
+func withTransportRecorder(ctx context.Context) (context.Context, *transportError) {
+	failure := new(transportError)
+	return context.WithValue(ctx, transportErrorKey{}, failure), failure
+}
+
+// describeTransportError prefers the recorded transport failure over the
+// library's opaque placeholder.
+func describeTransportError(failure *transportError, err error) error {
+	if failure != nil && failure.err != nil {
+		return failure.err
+	}
+	return err
+}
+
 func NewGotenbergClient(host, hookURL, token string) (*GotenbergClient, error) {
-	client, err := gotenberg.NewClient(host, &http.Client{Timeout: gotenbergHTTPTimeout})
+	client, err := gotenberg.NewClient(host, &http.Client{
+		Timeout:   gotenbergHTTPTimeout,
+		Transport: recordingTransport{base: http.DefaultTransport},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -60,8 +116,9 @@ func (g *GotenbergClient) URLToPDF(ctx context.Context, u string) (string, error
 	req.SetWebhookMethod(http.MethodPost)
 	req.UseWebhook(hookURL, hookURL)
 
+	ctx, failure := withTransportRecorder(ctx)
 	resp, err := g.client.Send(ctx, req)
-	if err := checkGotenbergResponse("URLToPDF", resp, err); err != nil {
+	if err := checkGotenbergResponse("URLToPDF", resp, describeTransportError(failure, err)); err != nil {
 		return "", err
 	}
 	return requestID, nil
@@ -81,8 +138,9 @@ func (g *GotenbergClient) HtmlToImage(ctx context.Context, content string) (stri
 	req.SetWebhookMethod(http.MethodPost)
 	req.UseWebhook(hookURL, hookURL)
 
+	ctx, failure := withTransportRecorder(ctx)
 	resp, err := g.client.Screenshot(ctx, req)
-	if err := checkGotenbergResponse("HtmlToImage", resp, err); err != nil {
+	if err := checkGotenbergResponse("HtmlToImage", resp, describeTransportError(failure, err)); err != nil {
 		return "", err
 	}
 	return requestID, nil
@@ -96,8 +154,9 @@ func (g *GotenbergClient) URLToImage(ctx context.Context, u string) (string, err
 	req.SetWebhookMethod(http.MethodPost)
 	req.UseWebhook(hookURL, hookURL)
 
+	ctx, failure := withTransportRecorder(ctx)
 	resp, err := g.client.Screenshot(ctx, req)
-	if err := checkGotenbergResponse("URLToImage", resp, err); err != nil {
+	if err := checkGotenbergResponse("URLToImage", resp, describeTransportError(failure, err)); err != nil {
 		return "", err
 	}
 	return requestID, nil
@@ -107,16 +166,20 @@ func (g *GotenbergClient) URLToImage(ctx context.Context, u string) (string, err
 // it does not use a webhook, so it suits the push pipeline where the caller
 // wants the bytes in hand before sending them as an attachment.
 func (g *GotenbergClient) FetchPDF(ctx context.Context, u string) ([]byte, error) {
+	started := time.Now()
+	ctx, failure := withTransportRecorder(ctx)
+
 	resp, err := g.client.Send(ctx, gotenberg.NewURLRequest(u))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("convert %s failed after %s: %w",
+			u, time.Since(started).Round(time.Millisecond), describeTransportError(failure, err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, gotenbergErrorBodyLimit))
-		return nil, fmt.Errorf("gotenberg convert returned status %d: %s",
-			resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("gotenberg convert returned status %d after %s: %s",
+			resp.StatusCode, time.Since(started).Round(time.Millisecond), strings.TrimSpace(string(body)))
 	}
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxAttachmentBytes+1))

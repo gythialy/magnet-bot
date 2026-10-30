@@ -61,6 +61,7 @@ type BotContext struct {
 	cancel          context.CancelFunc
 	scheduler       *gocron.Scheduler
 	processor       *InfoProcessor
+	retrier         *AttachmentRetrier
 	cmdHandler      *CommandsHandler
 	shutdownWebhook func()
 }
@@ -97,7 +98,13 @@ func NewBotContext() (*BotContext, error) {
 		return nil, err
 	}
 
-	if err := db.AutoMigrate(&model.Keyword{}, &model.History{}, &model.Alarm{}, &model.KeywordNotice{}); err != nil {
+	if err := db.AutoMigrate(
+		&model.Keyword{},
+		&model.History{},
+		&model.Alarm{},
+		&model.KeywordNotice{},
+		&model.PendingAttachment{},
+	); err != nil {
 		return nil, err
 	}
 	dal.SetDefault(db)
@@ -154,6 +161,7 @@ func NewBotContext() (*BotContext, error) {
 		return nil, err
 	}
 	botContext.processor = processor
+	botContext.retrier = NewAttachmentRetrier(botContext)
 	return botContext, nil
 }
 
@@ -222,6 +230,11 @@ func (ctx *BotContext) Start() {
 	ctx.scheduler.StartAsync()
 	ctx.startWebhookServer()
 	go ctx.Bot.Start(ctx.ctx)
+	// Attachments that failed to convert are retried here, independently of the
+	// crawl schedule: a Gotenberg restart would otherwise cost the whole window.
+	if ctx.retrier != nil {
+		go ctx.retrier.Start(ctx.ctx)
+	}
 }
 
 func (ctx *BotContext) Stop() {
