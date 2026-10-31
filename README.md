@@ -21,7 +21,8 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full deployment guide
 | `TELEGRAM_BOT_TOKEN` | ✅ | - | Telegram bot token from @BotFather |
 | `TELEGRAM_BOT_NAME` | - | - | Bot username, used when building `/alarm` share links |
 | `SERVER_URL` | ✅ | - | Host of the notice API, e.g. `https://example.com` (no trailing slash) |
-| `MANAGER_ID` | - | - | Telegram user ID allowed to run admin commands (`/retry`, `/clean`) |
+| `MANAGER_ID` | - | - | Comma-separated Telegram user IDs allowed to run admin commands (`/retry`, `/clean`, `/settings`) and manage access, e.g. `10001,10002` |
+| `ALLOWED_USER_IDS` | - | - | Optional comma-separated seed list of regular users, synced into the `users` table on startup only (first-time rollout) |
 | `SCHEDULE_INTERVAL` | - | `1` | How often the crawler runs, in hours |
 | `CRAWL_DAYS` | - | `1` | How many days back the crawler looks for notices |
 | `CONFIG_PATH` | - | working dir | Directory for `bot.db` and `bot.log` |
@@ -44,3 +45,9 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full deployment guide
 > `/healthz` and the internal Gotenberg callback. The webhook ingress setup
 > (Caddy, cloudflared, Cloudflare caveats and rollback) is documented in
 > [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) §8.
+
+> Access control — `off` vs `restricted`, the administrator list and the Mini
+> App's Settings tab — is documented in
+> [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) §9. A database with no administrator
+> starts in `off` mode; `MANAGER_ID` / `ALLOWED_USER_IDS` are startup seeds only,
+> and day-to-day changes belong in the Settings tab.

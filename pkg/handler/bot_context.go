@@ -240,6 +240,11 @@ func (ctx *BotContext) initBot() error {
 	register(constant.ConvertIMG, cmdHandler.ConvertURLToIMGHandler)
 	register(constant.Statistics, cmdHandler.StaticHandler)
 
+	// /settings is administrator-only but deliberately not retired: it must
+	// keep working in both modes, and the handler enforces the role itself. It
+	// therefore bypasses the retirement switch above and is registered directly.
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, SettingsCommand, bot.MatchTypePrefix, ctx.adminSettingsHandler)
+
 	// The callback handlers stay registered regardless of the Mini App: they
 	// serve messages users already have in their chats, and a stale "stats:",
 	// "search:" or "today:" button must not start failing.

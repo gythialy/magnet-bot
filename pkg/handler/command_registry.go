@@ -33,6 +33,7 @@ var commandSpecs = []CommandSpec{
 	{Command: constant.ConvertPDF, Description: "Convert URL to PDF", Usage: "<url>"},
 	{Command: constant.ConvertIMG, Description: "Convert URL to image", Usage: "<url>"},
 	{Command: constant.Alarm, Description: "Get alarm details", Usage: "<id>"},
+	{Command: SettingsCommand, Description: "Open admin settings", AdminOnly: true},
 	{Command: constant.Retry, Description: "Retry failed tasks", AdminOnly: true},
 	{Command: constant.Clean, Description: "Clean cache files", AdminOnly: true},
 }
