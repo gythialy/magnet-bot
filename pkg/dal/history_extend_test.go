@@ -397,3 +397,239 @@ func TestHistoryNormalizeURLs(t *testing.T) {
 		t.Fatalf("second NormalizeURLs() = (%d, %v), want (0, nil)", rows, err)
 	}
 }
+
+// setupAlarmTestDB opens a throwaway database that holds only the alarms table.
+// setupTestDB migrates histories only, and each test rebinds the global DAO to
+// its own file, so the two helpers cannot see each other's rows.
+func setupAlarmTestDB(t *testing.T) {
+	t.Helper()
+
+	db, err := gorm.Open(sqlite.Open(t.TempDir()+"/alarm.db"), &gorm.Config{
+		// These tests assert on rows, not SQL; the echo would only bury a
+		// failure.
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.Alarm{}); err != nil {
+		t.Fatal(err)
+	}
+	SetDefault(db)
+}
+
+// TestHistoryDao_SearchPaged covers the offset-based query the Mini App API
+// uses: optional time bound, optional title filter, newest first, and a total
+// that counts the whole filtered set rather than the returned page.
+func TestHistoryDao_SearchPaged(t *testing.T) {
+	setupTestDB(t)
+
+	const (
+		userID      = int64(1)
+		otherUserID = int64(2)
+	)
+	now := time.Now().Truncate(time.Second)
+
+	if err := History.Insert([]*model.History{
+		{UserID: userID, URL: "https://example.com/a", Title: "Tender A", UpdatedAt: now},
+		{UserID: userID, URL: "https://example.com/b", Title: "Tender B", UpdatedAt: now.Add(-time.Hour)},
+		{UserID: userID, URL: "https://example.com/c", Title: "Other C", UpdatedAt: now.Add(-2 * time.Hour)},
+		{UserID: userID, URL: "https://example.com/old", Title: "tender old", UpdatedAt: now.AddDate(0, 0, -10)},
+		{UserID: otherUserID, URL: "https://example.com/z", Title: "Tender other", UpdatedAt: now},
+	}); err != nil {
+		t.Fatalf("insert history: %v", err)
+	}
+
+	t.Run("no filters returns every row of the user, newest first", func(t *testing.T) {
+		result, total, err := History.SearchPaged(userID, nil, "", 0, 10)
+		if err != nil {
+			t.Fatalf("SearchPaged() error: %v", err)
+		}
+		if total != 4 {
+			t.Fatalf("total = %d, want 4", total)
+		}
+		want := []string{
+			"https://example.com/a",
+			"https://example.com/b",
+			"https://example.com/c",
+			"https://example.com/old",
+		}
+		if len(result) != len(want) {
+			t.Fatalf("rows = %d, want %d", len(result), len(want))
+		}
+		for i, url := range want {
+			if result[i].URL != url {
+				t.Errorf("row[%d] = %q, want %q", i, result[i].URL, url)
+			}
+		}
+	})
+
+	t.Run("since excludes older rows", func(t *testing.T) {
+		since := now.AddDate(0, 0, -7)
+
+		result, total, err := History.SearchPaged(userID, &since, "", 0, 10)
+		if err != nil {
+			t.Fatalf("SearchPaged() error: %v", err)
+		}
+		if total != 3 || len(result) != 3 {
+			t.Fatalf("total = %d rows = %d, want 3 and 3", total, len(result))
+		}
+		for _, row := range result {
+			if row.UpdatedAt.Before(since) {
+				t.Errorf("row %q is older than the lower bound", row.URL)
+			}
+		}
+	})
+
+	t.Run("term filters the title", func(t *testing.T) {
+		// LIKE is case-insensitive for ASCII in SQLite, so this also covers the
+		// mixed-case "tender old" row.
+		result, total, err := History.SearchPaged(userID, nil, "Tender", 0, 10)
+		if err != nil {
+			t.Fatalf("SearchPaged() error: %v", err)
+		}
+		if total != 3 || len(result) != 3 {
+			t.Fatalf("total = %d rows = %d, want 3 and 3", total, len(result))
+		}
+		for _, row := range result {
+			if !strings.Contains(strings.ToLower(row.Title), "tender") {
+				t.Errorf("row %q does not match the term", row.Title)
+			}
+		}
+	})
+
+	t.Run("term and since combine", func(t *testing.T) {
+		since := now.AddDate(0, 0, -7)
+
+		_, total, err := History.SearchPaged(userID, &since, "Tender", 0, 10)
+		if err != nil {
+			t.Fatalf("SearchPaged() error: %v", err)
+		}
+		if total != 2 {
+			t.Fatalf("total = %d, want 2", total)
+		}
+	})
+
+	t.Run("offset and limit page the filtered set", func(t *testing.T) {
+		result, total, err := History.SearchPaged(userID, nil, "", 1, 2)
+		if err != nil {
+			t.Fatalf("SearchPaged() error: %v", err)
+		}
+		if total != 4 {
+			t.Fatalf("total = %d, want 4 (the whole filtered set)", total)
+		}
+		if len(result) != 2 {
+			t.Fatalf("rows = %d, want 2", len(result))
+		}
+		if result[0].URL != "https://example.com/b" || result[1].URL != "https://example.com/c" {
+			t.Fatalf("page = [%q %q], want b and c", result[0].URL, result[1].URL)
+		}
+	})
+
+	t.Run("offset past the end returns no rows but the real total", func(t *testing.T) {
+		result, total, err := History.SearchPaged(userID, nil, "", 10, 5)
+		if err != nil {
+			t.Fatalf("SearchPaged() error: %v", err)
+		}
+		if len(result) != 0 {
+			t.Fatalf("rows = %d, want 0", len(result))
+		}
+		if total != 4 {
+			t.Fatalf("total = %d, want 4", total)
+		}
+	})
+
+	t.Run("another user sees only their rows", func(t *testing.T) {
+		result, total, err := History.SearchPaged(otherUserID, nil, "", 0, 10)
+		if err != nil {
+			t.Fatalf("SearchPaged() error: %v", err)
+		}
+		if total != 1 || len(result) != 1 {
+			t.Fatalf("total = %d rows = %d, want 1 and 1", total, len(result))
+		}
+		if result[0].URL != "https://example.com/z" {
+			t.Fatalf("row = %q, want the other user's row", result[0].URL)
+		}
+	})
+}
+
+// TestAlarmDao_SearchPaged covers the offset-based alarm query: optional
+// credit-name filter, newest start date first, real total, and user scoping.
+func TestAlarmDao_SearchPaged(t *testing.T) {
+	setupAlarmTestDB(t)
+
+	const (
+		userID      = int64(1)
+		otherUserID = int64(2)
+	)
+	now := time.Now().Truncate(time.Second)
+
+	if err := Alarm.Insert([]*model.Alarm{
+		{UserID: userID, BusinessID: "BIZ-1", CreditName: "Alpha Corp", CreditCode: "CODE-1", StartDate: now, PageUrl1: "https://example.com/1", NoticeID: "N-1"},
+		{UserID: userID, BusinessID: "BIZ-2", CreditName: "Beta Ltd", CreditCode: "CODE-2", StartDate: now.AddDate(0, 0, -1), PageUrl1: "https://example.com/2", NoticeID: "N-2"},
+		{UserID: userID, BusinessID: "BIZ-3", CreditName: "Alpha Holdings", CreditCode: "CODE-3", StartDate: now.AddDate(0, 0, -2), PageUrl1: "https://example.com/3", NoticeID: "N-3"},
+		{UserID: otherUserID, BusinessID: "BIZ-Z", CreditName: "Alpha Other", CreditCode: "CODE-Z", StartDate: now, PageUrl1: "https://example.com/z", NoticeID: "N-Z"},
+	}); err != nil {
+		t.Fatalf("insert alarms: %v", err)
+	}
+
+	t.Run("newest start date first", func(t *testing.T) {
+		result, total, err := Alarm.SearchPaged(userID, "", 0, 10)
+		if err != nil {
+			t.Fatalf("SearchPaged() error: %v", err)
+		}
+		if total != 3 {
+			t.Fatalf("total = %d, want 3", total)
+		}
+		want := []string{"BIZ-1", "BIZ-2", "BIZ-3"}
+		if len(result) != len(want) {
+			t.Fatalf("rows = %d, want %d", len(result), len(want))
+		}
+		for i, businessID := range want {
+			if result[i].BusinessID != businessID {
+				t.Errorf("row[%d] = %q, want %q", i, result[i].BusinessID, businessID)
+			}
+		}
+	})
+
+	t.Run("term filters the credit name", func(t *testing.T) {
+		result, total, err := Alarm.SearchPaged(userID, "Alpha", 0, 10)
+		if err != nil {
+			t.Fatalf("SearchPaged() error: %v", err)
+		}
+		if total != 2 || len(result) != 2 {
+			t.Fatalf("total = %d rows = %d, want 2 and 2", total, len(result))
+		}
+		for _, row := range result {
+			if !strings.Contains(strings.ToLower(row.CreditName), "alpha") {
+				t.Errorf("row %q does not match the term", row.CreditName)
+			}
+		}
+	})
+
+	t.Run("offset and limit page the filtered set", func(t *testing.T) {
+		result, total, err := Alarm.SearchPaged(userID, "", 1, 1)
+		if err != nil {
+			t.Fatalf("SearchPaged() error: %v", err)
+		}
+		if total != 3 {
+			t.Fatalf("total = %d, want 3", total)
+		}
+		if len(result) != 1 || result[0].BusinessID != "BIZ-2" {
+			t.Fatalf("page = %v, want BIZ-2", result)
+		}
+	})
+
+	t.Run("another user sees only their rows", func(t *testing.T) {
+		result, total, err := Alarm.SearchPaged(otherUserID, "", 0, 10)
+		if err != nil {
+			t.Fatalf("SearchPaged() error: %v", err)
+		}
+		if total != 1 || len(result) != 1 {
+			t.Fatalf("total = %d rows = %d, want 1 and 1", total, len(result))
+		}
+		if result[0].BusinessID != "BIZ-Z" {
+			t.Fatalf("row = %q, want the other user's row", result[0].BusinessID)
+		}
+	})
+}

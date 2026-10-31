@@ -103,6 +103,34 @@ func (h *history) CountByUserId(userId int64) int64 {
 	return count
 }
 
+// SearchPaged returns one page of a user's notice history, newest first.
+//
+// since is an optional lower bound on updated_at: nil means "no time limit",
+// which is how the Mini App asks for its "all" range. term is an optional
+// substring of the title; empty means no title filter. The returned total
+// counts every row matching the same filters, not just the returned page, so a
+// client can render "N of M" without a second query.
+//
+// Unlike SearchByTitle this takes a raw offset instead of a 1-based page,
+// which is what an offset/limit API exposes directly, and it returns the error
+// instead of collapsing it to an empty page — the endpoint must be able to
+// answer 500 rather than pretend the user has no records.
+func (h *history) SearchPaged(userId int64, since *time.Time, term string, offset, limit int) ([]*model.History, int64, error) {
+	query := h.Where(h.UserID.Eq(userId))
+	if since != nil {
+		query = query.Where(h.UpdatedAt.Gte(*since))
+	}
+	if term != "" {
+		query = query.Where(h.Title.Like("%" + term + "%"))
+	}
+
+	result, total, err := query.Order(h.UpdatedAt.Desc()).FindByPage(offset, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	return result, total, nil
+}
+
 func (h *history) GetTodayByUserId(userId int64, page, pageSize int) ([]*model.History, int64) {
 	now := time.Now()
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())

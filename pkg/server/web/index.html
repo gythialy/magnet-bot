@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#ffffff" />
+    <title>magnet</title>
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/today.css" />
+    <link rel="stylesheet" href="css/keywords.css" />
+    <link rel="stylesheet" href="css/alarms.css" />
+  </head>
+  <body>
+    <!-- Shown only when Telegram did not inject initData. It replaces the whole
+         shell because every /api call would be rejected without credentials. -->
+    <div id="app-gate" hidden>
+      <div class="gate">
+        <h1 class="gate-title">Open this app from the bot.</h1>
+        <p class="gate-hint">This Mini App only works inside Telegram.</p>
+      </div>
+    </div>
+
+    <div id="app-shell">
+      <header id="app-header">
+        <h1 id="app-title">Today</h1>
+        <p id="app-subtitle" class="app-subtitle"></p>
+      </header>
+
+      <main id="view">
+        <section id="view-today" class="view" data-view="today">
+          <div class="skeleton" data-slot="loading">Loading…</div>
+          <div class="empty" data-slot="empty" hidden>No notices yet.</div>
+          <div class="error" data-slot="error" hidden></div>
+        </section>
+
+        <section id="view-keywords" class="view" data-view="keywords" hidden>
+          <div class="skeleton" data-slot="loading">Loading…</div>
+          <div class="empty" data-slot="empty" hidden>No keywords yet.</div>
+          <div class="error" data-slot="error" hidden></div>
+        </section>
+
+        <section id="view-alarms" class="view" data-view="alarms" hidden>
+          <div class="skeleton" data-slot="loading">Loading…</div>
+          <div class="empty" data-slot="empty" hidden>No alarm keywords yet.</div>
+          <div class="error" data-slot="error" hidden></div>
+        </section>
+      </main>
+
+      <nav id="tabbar" aria-label="Sections">
+        <a class="tab is-active" href="#/today" data-route="#/today">Today</a>
+        <a class="tab" href="#/keywords" data-route="#/keywords">Keywords</a>
+        <a class="tab" href="#/alarms" data-route="#/alarms">Alarms</a>
+      </nav>
+    </div>
+
+    <div id="toasts" role="status" aria-live="polite"></div>
+
+    <script src="js/core.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/today.js"></script>
+    <script src="js/keywords.js"></script>
+    <script src="js/alarms.js"></script>
+  </body>
+</html>

@@ -1,0 +1,141 @@
+/*
+ * Keywords view (read-only P2).
+ *
+ * base.css owns the palette (--tg-*), the shared components (.btn, .empty,
+ * .error, .skeleton) and the app chrome; this file only lays out the Keywords
+ * page and its rows.
+ *
+ * base.css is frozen for this change, so the handful of primitives this view
+ * needs that base does not define yet (.search-input, .icon-btn, .retry-btn,
+ * .error-actions) are declared here — and, identically, in alarms.css, so each
+ * stylesheet stays valid on its own instead of depending on load order.
+ */
+
+/* Toolbar ---------------------------------------------------------------- */
+
+.kw-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.kw-toolbar .search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* 40px is the touch-target floor used across the Mini App. */
+  min-height: 40px;
+  padding: 8px 12px;
+  background-color: var(--tg-secondary-bg);
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  color: var(--tg-text);
+  font-size: 15px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.kw-toolbar .search-input::placeholder {
+  color: var(--tg-hint);
+}
+
+.kw-toolbar .search-input:focus {
+  /* Inset outline reads as a border on iOS and still satisfies focus visibility. */
+  outline: 2px solid var(--tg-button);
+  outline-offset: -1px;
+}
+
+.kw-add {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* Rows ------------------------------------------------------------------- */
+
+.kw-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kw-list[hidden] {
+  display: none;
+}
+
+.kw-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.kw-row:last-child {
+  border-bottom: none;
+}
+
+.kw-id {
+  color: var(--tg-hint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Long keywords truncate instead of wrapping; the full text stays available
+   through the title attribute and to screen readers. */
+.kw-name {
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kw-count {
+  color: var(--tg-hint);
+  font-size: 12px;
+}
+
+.kw-actions {
+  display: flex;
+  gap: 4px;
+}
+
+/* Shared bits (mirrored in alarms.css) ----------------------------------- */
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.icon-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.error-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.retry-btn {
+  flex: 0 0 auto;
+}

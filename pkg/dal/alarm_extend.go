@@ -51,6 +51,27 @@ func (a *alarm) SearchByName(userId int64, term string, page, pageSize int) ([]*
 	return result, total
 }
 
+// SearchPaged returns one page of a user's alarm records, most recent start
+// date first, plus the total number matching the same filter.
+//
+// term is an optional substring of credit_name, the same field SearchByName
+// searches; empty means no filter. It exists next to SearchByName because the
+// Mini App pages with an offset while the command path pages with a 1-based
+// page number, and it returns the error instead of swallowing it so the
+// endpoint can distinguish "empty" from "broken".
+func (a *alarm) SearchPaged(userId int64, term string, offset, limit int) ([]*model.Alarm, int64, error) {
+	query := a.Where(a.UserID.Eq(userId))
+	if term != "" {
+		query = query.Where(a.CreditName.Like("%" + term + "%"))
+	}
+
+	result, total, err := query.Order(a.StartDate.Desc()).FindByPage(offset, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	return result, total, nil
+}
+
 func (a *alarm) Insert(data []*model.Alarm) error {
 	return a.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: a.UserID.ColumnName().String()}, {Name: a.CreditCode.ColumnName().String()}},
