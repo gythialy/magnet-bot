@@ -235,6 +235,10 @@ const (
 	webhookSetupTimeout = 10 * time.Second
 	// serverShutdownTimeout is the grace period given to in-flight requests.
 	serverShutdownTimeout = 5 * time.Second
+	// miniAppInitDataTTL bounds how long a signed initData is accepted. An hour
+	// matches the plan: long enough for a browsing session, short enough that a
+	// leaked payload stops working the same day.
+	miniAppInitDataTTL = time.Hour
 )
 
 // Start binds the HTTP listener, starts Telegram delivery in the mode the
@@ -260,12 +264,27 @@ func (ctx *BotContext) Start() error {
 		telegramUpdate = ctx.telegramWebhook(ctx.Bot.WebhookHandler())
 	}
 
+	// The Mini App is optional. When it is disabled neither its assets nor its
+	// API are registered, so a chat-only deployment exposes no extra surface on
+	// the internal listener.
+	var staticHandler, apiHandler http.Handler
+	if ctx.Config.MiniAppEnabled {
+		staticHandler = server.NewStaticHandler()
+		apiHandler = server.NewAPI(server.APIConfig{
+			BotToken:    config.TelegramToken(),
+			BotUsername: config.TelegramName(),
+			InitDataTTL: miniAppInitDataTTL,
+		})
+	}
+
 	// Bind before starting any background work: a port already in use must fail
 	// startup instead of leaving a process that silently receives nothing.
 	srv := server.New(server.Config{
 		Addr:            fmt.Sprintf(":%d", ctx.Config.PDF.WebhookServerPort),
 		TelegramWebhook: telegramUpdate,
 		PDFCallback:     newWebhooker(ctx).WebhookHandler,
+		Static:          staticHandler,
+		API:             apiHandler,
 		Logger:          ctx.Logger,
 	})
 	if err := srv.Start(); err != nil {
