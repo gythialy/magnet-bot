@@ -264,7 +264,7 @@ func TestRetainedCommandsKeepLiveHandlerWithApp(t *testing.T) {
 	ctx := newRetiredTestContext(true, retiredTestAppBaseURL)
 
 	for _, command := range []string{
-		constant.Me, constant.Start, constant.Alarm, constant.Debug, constant.Retry, constant.Clean,
+		constant.Me, constant.Start, constant.Debug, constant.Retry, constant.Clean,
 	} {
 		t.Run(command[1:], func(t *testing.T) {
 			before := len(api.ofMethod("sendMessage"))

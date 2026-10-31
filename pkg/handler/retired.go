@@ -13,11 +13,12 @@ import (
 // group answers the same way so the chat does not need to explain every command
 // individually.
 const (
-	retiredStatisticsPrompt = "Statistics are available in the Mini App."
-	retiredKeywordsPrompt   = "Keyword management is available in the Mini App."
-	retiredAlarmsPrompt     = "Alarm keywords are available in the Mini App."
-	retiredListsPrompt      = "Lists and search are available in the Mini App."
-	retiredConversionPrompt = "PDF and PNG conversion is available in the Mini App."
+	retiredStatisticsPrompt  = "Statistics are available in the Mini App."
+	retiredKeywordsPrompt    = "Keyword management is available in the Mini App."
+	retiredAlarmsPrompt      = "Alarm keywords are available in the Mini App."
+	retiredAlarmDetailPrompt = "Alarm details are available in the Mini App."
+	retiredListsPrompt       = "Lists and search are available in the Mini App."
+	retiredConversionPrompt  = "PDF and PNG conversion is available in the Mini App."
 
 	// appButtonText labels the inline button that opens the Mini App from a
 	// retired-command reply.
@@ -30,11 +31,14 @@ const (
 // the Mini App is available, a command listed here is answered with only its
 // prompt, and it is hidden from the command menu and the help text.
 var retiredCommands = map[string]string{
-	constant.Statistics:         retiredStatisticsPrompt,
-	constant.AddKeyword:         retiredKeywordsPrompt,
-	constant.EditKeyword:        retiredKeywordsPrompt,
-	constant.DeleteKeyword:      retiredKeywordsPrompt,
-	constant.AddAlarmKeyword:    retiredAlarmsPrompt,
+	constant.Statistics:      retiredStatisticsPrompt,
+	constant.AddKeyword:      retiredKeywordsPrompt,
+	constant.EditKeyword:     retiredKeywordsPrompt,
+	constant.DeleteKeyword:   retiredKeywordsPrompt,
+	constant.AddAlarmKeyword: retiredAlarmsPrompt,
+	// /alarm <id> stays reachable through the /start alarm_<id> deep link, which
+	// calls the handler directly instead of going through the retired switch.
+	constant.Alarm:              retiredAlarmDetailPrompt,
 	constant.SearchAlarmRecords: retiredListsPrompt,
 	constant.SearchHistory:      retiredListsPrompt,
 	constant.ListToday:          retiredListsPrompt,

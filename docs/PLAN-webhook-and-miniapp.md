@@ -132,7 +132,20 @@ Gotenberg 回调不走公网：仍是 `{WEBHOOK_SERVER_URL}:{WEBHOOK_SERVER_PORT
 
 - `+ Add alarm keyword`（批量添加）
 - 告警关键词行：`#id`、关键词、创建日期、`✏️` / `🗑`
-- 下方「Alarm records」区块：名称、日期、`↗`（取代 `/search_alarm_records`）
+
+#### Records
+
+- 只读告警记录列表：信用主体、`业务编号 · 开始日期`
+- 搜索（信用主体模糊匹配）+ `Load more` 游标分页
+- 点整行 → 应用内详情弹层：公告标题、信用代码、起止时间、处罚部门/单位、具体情形、处罚结果、公告链接
+- 弹层底部 `Open in chat` 用 `openTelegramLink` 回到对话（不再跳浏览器）
+- 取代 `/search_alarm_records` 与 `/alarm <id>`
+
+#### Settings（管理员）
+
+- 顶部 segmented 切换两个 pane：
+  - **People**：准入模式开关、人员 CRUD、最近被拒
+  - **About**：版本/构建时间、webhook 状态、计数
 
 **页面语言**：英文（与 bot 一致）；关键词内容原样展示。
 **主题**：使用 Telegram `themeParams`，监听 `themeChanged`；非 Telegram 环境打开时提示从 bot 进入。
@@ -171,8 +184,8 @@ Gotenberg 回调不走公网：仍是 `{WEBHOOK_SERVER_URL}:{WEBHOOK_SERVER_PORT
 | `/add_alarm_keywords` | 同上 | 保留 |
 | `/list_today` | 同上 | 保留 |
 | `/search_history_title` | 同上 | 保留 |
-| `/search_alarm_records` | 同上（进 App 的 Alarms） | 保留 |
-| `/alarm <id>` | 保留 | 保留 |
+| `/search_alarm_records` | 同上（进 App 的 Records） | 保留 |
+| `/alarm <id>` | 提示 + 打开 App 按钮（详情在 App 内展开） | 保留 |
 | `/convertpdf`、`/convertimg` | 提示 + 打开 App 按钮 | 保留 |
 | `/me`、`/start`、`/retry`、`/clean` | 保留 | 保留 |
 
@@ -437,7 +450,7 @@ Cloudflare 注意：
 | # | 状态 | bot 私聊 | Mini App | 后台推送 |
 |---|---|---|---|---|
 | 1 | 管理员（`role=1`，`enabled=1`） | 全部命令；App 启用时退役命令回「去 App」提示 + 按钮 | 全部页签 + Settings | 收 |
-| 2 | 已授权用户（`role=0`，`enabled=1`） | 未退役命令可用（`/start`、`/me`、`/alarm`）；退役命令只回提示；`/settings` 回 `Admins only.` | Today / Keywords / Alarms | 收 |
+| 2 | 已授权用户（`role=0`，`enabled=1`） | 未退役命令可用（`/start`、`/me`）；退役命令只回提示；`/settings` 回 `Admins only.` | Today / Keywords / Alarms / Records | 收 |
 | 3 | 撤销（行删除） | `Access denied. This bot is private. Ask the owner for access.`（10 分钟一次） | `/api/me` 403 `forbidden`，整页显示 `Access revoked. Ask the administrator.` | 跳过，数据保留 |
 | 4 | 停用（`enabled=0`） | 同撤销 | 同撤销 | 跳过，数据保留 |
 | 5 | `off` 模式 | 任何人可用 | 任何人可用（`/api/admin/*` 仍需管理员） | 按各自关键词推送 |

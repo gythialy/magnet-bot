@@ -39,9 +39,10 @@ func TestHelpTextHidesRetiredCommands(t *testing.T) {
 	}
 	// The commands that stay in the chat are still documented, including the
 	// argument placeholder that tells the user how to call them.
+	// /alarm <id> is retired too: the Mini App renders the record detail, so the
+	// help text must not send users back to the command.
 	for _, want := range []string{
 		constant.Me,
-		constant.Alarm + " <id>",
 		constant.Retry,
 		constant.Clean,
 		"(admin only)",
@@ -91,7 +92,7 @@ func TestTelegramCommandsHidesRetiredCommands(t *testing.T) {
 			t.Errorf("command menu still advertises retired command %s", command)
 		}
 	}
-	for _, command := range []string{constant.Me, constant.Alarm, constant.Retry, constant.Clean} {
+	for _, command := range []string{constant.Me, constant.Retry, constant.Clean} {
 		if !seen[command] {
 			t.Errorf("command menu is missing retained command %s", command)
 		}

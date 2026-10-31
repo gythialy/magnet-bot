@@ -42,7 +42,7 @@ Gotenberg 把公告转成 PDF / PNG。
 | --- | --- | --- | --- |
 | `TELEGRAM_BOT_TOKEN` | ✅ | - | @BotFather 给的 token |
 | `SERVER_URL` | ✅ | - | 公告站点根地址，如 `https://example.com`。只取 host，程序自己拼 `https://` |
-| `TELEGRAM_BOT_NAME` | - | - | bot 用户名，用于生成 `/alarm` 分享链接 |
+| `TELEGRAM_BOT_NAME` | - | - | bot 用户名，用于生成告警记录深链 |
 | `MANAGER_ID` | - | - | 管理员，逗号分隔的 Telegram 用户 ID（如 `10001,10002`）。可执行 `/retry`、`/clean`、`/settings` 并管理访问；启动时同步进 `users` 表，见 §9 |
 | `ALLOWED_USER_IDS` | - | - | 逗号分隔的普通用户初始白名单，**仅启动时同步**进 `users` 表，用于首次铺人；后续增删走 Settings 页，见 §9 |
 | `SCHEDULE_INTERVAL` | - | `1` | 抓取间隔（小时）；填 0、负数或非数字都按 1 处理 |
@@ -763,7 +763,7 @@ healthcheck；`/healthz` 上的非 GET 返回 405。未启用的能力（例如 
 | `/delete_keywords <id>...` | 删除（仅限本人） |
 | `/search_history_title <关键词>` | 搜索历史推送 |
 | `/list_today` | 今日公告 |
-| `/add_alarm_keywords` / `/alarm` / `/search_alarm_records` | 告警关键词与记录 |
+| `/add_alarm_keywords` / `/alarm` / `/search_alarm_records` | 告警关键词与记录（Records 页签 + 应用内详情） |
 | `/convertpdf <URL>` / `/convertimg <URL>` | 转 PDF / 截图（需 Gotenberg） |
 | `/statistics` | 运行统计 |
 | `/settings` | 管理员：打开 Mini App 的 Settings 页，管理名单与访问模式（见 §9.4） |
