@@ -1,0 +1,397 @@
+/*
+ * Design tokens.
+ *
+ * Every colour resolves through a --tg-* variable that js/core.js overwrites
+ * from Telegram themeParams. The values here are the light-theme fallback, so
+ * a browser that never touches Telegram (or a theme that omits a key) still
+ * gets a readable page instead of transparent-on-transparent.
+ */
+:root {
+  --tg-bg: #ffffff;
+  --tg-text: #000000;
+  --tg-hint: #707579;
+  --tg-button: #2481cc;
+  --tg-button-text: #ffffff;
+  --tg-secondary-bg: #f1f1f1;
+  --tg-link: #2481cc;
+
+  --app-radius: 12px;
+  --app-gap: 12px;
+  --app-pad: 16px;
+  --app-header-height: 56px;
+  --app-tabbar-height: 56px;
+  --app-border: rgba(0, 0, 0, 0.08);
+  --app-danger: #d7263d;
+  --app-success: #2e7d32;
+
+  color-scheme: light dark;
+}
+
+/*
+ * Telegram's own surface for the Mini App. The body paints --tg-bg so
+ * viewport-fit=cover areas (notch, home indicator) match the client chrome
+ * instead of flashing white on a dark theme.
+ */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background-color: var(--tg-bg);
+  color: var(--tg-text);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--tg-link);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* Application shell ------------------------------------------------------ */
+
+#app-shell {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+}
+
+#app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: var(--app-header-height);
+  padding: 8px var(--app-pad) 8px;
+  /* viewport-fit=cover lets the page run under the status bar; the inset keeps
+     the title below it on notched devices. */
+  padding-top: calc(8px + env(safe-area-inset-top));
+  background-color: var(--tg-bg);
+  border-bottom: 1px solid var(--app-border);
+}
+
+#app-title {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.app-subtitle {
+  margin-top: 2px;
+  color: var(--tg-hint);
+  font-size: 13px;
+}
+
+#view {
+  flex: 1 1 auto;
+  /* Top and bottom padding keep the first card clear of the header and the
+     last card clear of the fixed tab bar, including the home-indicator inset. */
+  padding: var(--app-gap) var(--app-pad);
+  padding-bottom: calc(var(--app-tabbar-height) + var(--app-gap) + env(safe-area-inset-bottom) + 8px);
+}
+
+.view[hidden] {
+  display: none;
+}
+
+/* Tab bar ---------------------------------------------------------------- */
+
+#tabbar {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: space-around;
+  align-items: stretch;
+  min-height: var(--app-tabbar-height);
+  padding-bottom: env(safe-area-inset-bottom);
+  background-color: var(--tg-secondary-bg);
+  border-top: 1px solid var(--app-border);
+}
+
+#tabbar .tab {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  /* 44px keeps the target above the 40px floor even with the 1px border. */
+  min-height: 44px;
+  color: var(--tg-hint);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  touch-action: manipulation;
+}
+
+#tabbar .tab.is-active {
+  color: var(--tg-button);
+}
+
+/* Cards and lists -------------------------------------------------------- */
+
+.card {
+  display: block;
+  padding: var(--app-gap) 14px;
+  background-color: var(--tg-secondary-bg);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+}
+
+.card + .card {
+  margin-top: 8px;
+}
+
+.card-title {
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.card-meta {
+  margin-top: 4px;
+  color: var(--tg-hint);
+  font-size: 12px;
+}
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* Buttons ---------------------------------------------------------------- */
+
+.btn,
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  /* 40px is the stated touch-target floor; padding keeps it there for text of
+     any reasonable length. */
+  min-height: 40px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.btn {
+  background-color: var(--tg-button);
+  color: var(--tg-button-text);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.btn-ghost {
+  background-color: transparent;
+  border-color: var(--app-border);
+  color: var(--tg-text);
+}
+
+.btn-ghost:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Chips ------------------------------------------------------------------ */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 6px 14px;
+  background-color: transparent;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  color: var(--tg-text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.chip.is-active {
+  background-color: var(--tg-button);
+  border-color: var(--tg-button);
+  color: var(--tg-button-text);
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* States ----------------------------------------------------------------- */
+
+.skeleton {
+  padding: 24px 0;
+  color: var(--tg-hint);
+  font-size: 14px;
+  text-align: center;
+}
+
+.empty {
+  padding: 32px 16px;
+  color: var(--tg-hint);
+  font-size: 14px;
+  text-align: center;
+}
+
+.error {
+  margin: 8px 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(215, 38, 61, 0.35);
+  border-radius: var(--app-radius);
+  background-color: rgba(215, 38, 61, 0.08);
+  color: var(--app-danger);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+/* Toasts ----------------------------------------------------------------- */
+
+#toasts {
+  position: fixed;
+  right: 0;
+  bottom: calc(var(--app-tabbar-height) + env(safe-area-inset-bottom) + 12px);
+  left: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  pointer-events: none;
+}
+
+.toast {
+  max-width: 420px;
+  width: fit-content;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background-color: rgba(23, 23, 23, 0.92);
+  color: #ffffff;
+  font-size: 14px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  overflow-wrap: anywhere;
+}
+
+.toast.is-info {
+  background-color: rgba(23, 23, 23, 0.92);
+}
+
+.toast.is-success {
+  background-color: var(--app-success);
+}
+
+.toast.is-error {
+  background-color: var(--app-danger);
+}
+
+/* Modal ------------------------------------------------------------------ */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  background-color: rgba(0, 0, 0, 0.45);
+}
+
+.modal-backdrop[hidden] {
+  display: none;
+}
+
+.modal {
+  width: 100%;
+  max-width: 520px;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 16px;
+  background-color: var(--tg-bg);
+  color: var(--tg-text);
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+
+.modal-close {
+  min-height: 40px;
+  padding: 8px 14px;
+  background: none;
+  border: none;
+  color: var(--tg-hint);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* Gate ------------------------------------------------------------------- */
+
+#app-gate {
+  display: flex;
+  min-height: 100vh;
+  min-height: 100dvh;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+}
+
+#app-gate[hidden] {
+  display: none;
+}
+
+.gate-title {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.gate-hint {
+  margin-top: 8px;
+  color: var(--tg-hint);
+  font-size: 14px;
+}
