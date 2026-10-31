@@ -36,7 +36,6 @@
   var VIEW = "settings";
   var SECTION_ID = "view-settings";
   var ROUTE_HASH = "#/settings";
-  var VIEW_TITLE = "Settings";
 
   var PEOPLE_PAGE_SIZE = 20;
   var SEARCH_DEBOUNCE_MS = 300;
@@ -301,8 +300,13 @@
     });
   }
 
-  function onAccessToggle() {
+  function onAccessToggle(event) {
     if (!els || access.saving) {
+      return;
+    }
+    // Only a real interaction may change the mode. Re-rendering the view (for
+    // example when a settings pane is shown) must never post a PATCH.
+    if (event && event.isTrusted === false) {
       return;
     }
 
@@ -362,12 +366,16 @@
       id +
       '" title="Edit access" aria-label="Edit access for #' +
       id +
-      '">\u270f\ufe0f</button>' +
+      '">' +
+      core.icon("edit") +
+      "</button>" +
       '<button type="button" class="icon-btn" data-action="revoke" data-user-id="' +
       id +
       '" title="Revoke access" aria-label="Revoke access for #' +
       id +
-      '">\ud83d\uddd1</button>' +
+      '">' +
+      core.icon("trash") +
+      "</button>" +
       "</span>" +
       "</li>"
     );
@@ -1153,6 +1161,7 @@
     if (!els) {
       els = build(section);
       bind();
+      showPane("people");
     }
 
     loadView();
@@ -1180,11 +1189,6 @@
       } else {
         tabs[j].removeAttribute("aria-current");
       }
-    }
-
-    var title = document.getElementById("app-title");
-    if (title) {
-      title.textContent = VIEW_TITLE;
     }
   }
 
@@ -1292,14 +1296,29 @@
       '<h2 class="revoked-title">Access revoked. Ask the administrator.</h2>' +
       "</div>" +
       '<div class="settings-content" data-slot="content" hidden>' +
+      // Two panes, one purpose each: People is the access surface an
+      // administrator works in, About answers "what is running here". Stacking
+      // both on one screen buried the status rows under the people list.
+      '<div class="segmented" role="tablist" data-role="pane-tabs" aria-label="Settings sections">' +
+      '<button type="button" class="segmented-btn is-active" role="tab" data-pane="people" aria-selected="true">People</button>' +
+      '<button type="button" class="segmented-btn" role="tab" data-pane="about" aria-selected="false">About</button>' +
+      "</div>" +
+      '<div class="settings-pane" data-pane-panel="people">' +
       '<section class="settings-card" data-card="access">' +
+      '<div class="settings-card-head">' +
       '<h2 class="settings-card-title">Access control</h2>' +
-      '<p class="access-mode" data-slot="access-mode"></p>' +
-      '<label class="switch-row">' +
+      '<span class="access-state" data-slot="access-mode"></span>' +
+      "</div>" +
+      '<div class="switch-row">' +
+      '<span class="switch-copy">' +
+      '<span class="switch-label">Restricted access</span>' +
+      '<span class="settings-hint" data-slot="access-hint"></span>' +
+      "</span>" +
+      '<label class="switch">' +
       '<input type="checkbox" class="switch-input" data-role="access-toggle" aria-label="Restricted access" />' +
-      '<span class="switch-text">Restricted access</span>' +
+      '<span class="switch-track" aria-hidden="true"></span>' +
       "</label>" +
-      '<p class="settings-hint" data-slot="access-hint"></p>' +
+      "</div>" +
       "</section>" +
       '<section class="settings-card" data-card="people">' +
       '<div class="settings-card-head">' +
@@ -1314,20 +1333,23 @@
       '<ul class="people-list" data-slot="people-list" hidden></ul>' +
       '<button type="button" class="btn-ghost load-more" data-role="people-more" hidden>Load more</button>' +
       "</section>" +
-      '<section class="settings-card" data-card="status">' +
-      '<h2 class="settings-card-title">Status</h2>' +
-      '<div class="status-grid" data-slot="status-grid"></div>' +
-      "</section>" +
       '<section class="settings-card" data-card="denied" hidden>' +
       '<h2 class="settings-card-title">Recent denied</h2>' +
       '<ul class="denied-list" data-slot="denied-list"></ul>' +
       "</section>" +
       "</div>" +
+      '<div class="settings-pane" data-pane-panel="about" hidden>' +
+      '<section class="settings-card" data-card="status">' +
+      '<h2 class="settings-card-title">About</h2>' +
+      '<div class="status-grid" data-slot="status-grid"></div>' +
+      "</section>" +
+      "</div>" +
+      "</div>" +
       '<div class="modal-backdrop settings-dialog" data-role="dialog" hidden>' +
       '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-dialog-title">' +
       '<div class="modal-head">' +
       '<h2 class="modal-title" id="settings-dialog-title" data-slot="dialog-title"></h2>' +
-      '<button class="modal-close" type="button" data-role="dialog-close" aria-label="Close dialog">\u2715</button>' +
+      '<button class="modal-close" type="button" data-role="dialog-close" aria-label="Close dialog">' + core.icon("close") + '</button>' +
       "</div>" +
       '<div class="dialog-body" data-slot="dialog-body"></div>' +
       '<p class="dialog-note" data-slot="dialog-note" role="alert" hidden></p>' +
@@ -1365,6 +1387,7 @@
       peopleEmpty: content.querySelector('[data-slot="people-empty"]'),
       peopleList: content.querySelector('[data-slot="people-list"]'),
       peopleMore: content.querySelector('[data-role="people-more"]'),
+      paneTabs: content.querySelector('[data-role="pane-tabs"]'),
       statusGrid: content.querySelector('[data-slot="status-grid"]'),
       deniedCard: content.querySelector('[data-card="denied"]'),
       deniedList: content.querySelector('[data-slot="denied-list"]'),
@@ -1527,7 +1550,32 @@
     }
   }
 
+  // showPane swaps the two settings panes and keeps the tablist honest for
+  // assistive tech. It is idempotent: mount() calls it on every visit.
+  function showPane(name) {
+    var panels = els.content.querySelectorAll("[data-pane-panel]");
+    var buttons = els.paneTabs.querySelectorAll("[data-pane]");
+    var i;
+
+    for (i = 0; i < panels.length; i++) {
+      panels[i].hidden = panels[i].getAttribute("data-pane-panel") !== name;
+    }
+    for (i = 0; i < buttons.length; i++) {
+      var active = buttons[i].getAttribute("data-pane") === name;
+      buttons[i].classList.toggle("is-active", active);
+      buttons[i].setAttribute("aria-selected", active ? "true" : "false");
+    }
+  }
+
   function bind() {
+    els.paneTabs.addEventListener("click", function (event) {
+      var target = event.target;
+      var button =
+        target && typeof target.closest === "function" ? target.closest("[data-pane]") : null;
+      if (button) {
+        showPane(button.getAttribute("data-pane"));
+      }
+    });
     els.accessToggle.addEventListener("change", onAccessToggle);
     els.addPerson.addEventListener("click", openAddDialog);
     els.peopleList.addEventListener("click", onPeopleClick);
