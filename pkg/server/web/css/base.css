@@ -1,37 +1,97 @@
 /*
  * Design tokens.
  *
- * Every colour resolves through a --tg-* variable that js/core.js overwrites
- * from Telegram themeParams. The values here are the light-theme fallback, so
- * a browser that never touches Telegram (or a theme that omits a key) still
- * gets a readable page instead of transparent-on-transparent.
+ * The vocabulary is shadcn/ui's (background, foreground, card, muted, border,
+ * input, ring, primary, destructive) because it makes every surface state a
+ * decision instead of a colour: a card is "background + 1px border", a control
+ * is "muted fill or transparent + 1px input border", and nothing else gets a
+ * fill.
+ *
+ * The values come from Telegram themeParams through js/core.js, so the app keeps
+ * following the client's light and dark themes while the system stays shadcn's.
  */
 :root {
-  --tg-bg: #ffffff;
-  --tg-text: #000000;
-  --tg-hint: #707579;
-  --tg-button: #2481cc;
-  --tg-button-text: #ffffff;
-  --tg-secondary-bg: #f1f1f1;
-  --tg-link: #2481cc;
+  /* One radius sells one idea: controls curve, printed rules do not. */
+  --radius: 0.375rem;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-mark: 2px;
 
-  --app-radius: 12px;
+  /* Raw Telegram palette. Every semantic token below resolves through these. */
+  --tg-bg: #ffffff;
+  --tg-text: #09090b;
+  --tg-hint: #71717a;
+  --tg-button: #18181b;
+  --tg-button-text: #fafafa;
+  --tg-secondary-bg: #f4f4f5;
+  --tg-link: #18181b;
+
+  /* Semantic layer. */
+  --background: var(--tg-bg);
+  --foreground: var(--tg-text);
+  --card: var(--tg-bg);
+  --card-foreground: var(--tg-text);
+  --muted: var(--tg-secondary-bg);
+  --muted-foreground: var(--tg-hint);
+  --popover: var(--tg-bg);
+  --popover-foreground: var(--tg-text);
+  --primary: var(--tg-button);
+  --primary-foreground: var(--tg-button-text);
+  --secondary: var(--tg-secondary-bg);
+  --secondary-foreground: var(--tg-text);
+  --destructive: #dc2626;
+  --destructive-foreground: #fafafa;
+  --border: rgba(9, 9, 11, 0.12);
+  --rule: rgba(9, 9, 11, 0.14);
+  --input: rgba(9, 9, 11, 0.14);
+  --app-accent-text: #1668a8;
+  --accent-mark: #1668a8;
+  --ring: var(--app-accent-text);
+  --accent-fill: rgba(9, 9, 11, 0.045);
+
+  /* Legacy aliases: the view stylesheets were written against these names. */
+  --app-radius-sm: var(--radius-md);
+  --app-radius: var(--radius-lg);
+  --app-radius-lg: var(--radius-xl);
   --app-gap: 12px;
   --app-pad: 16px;
-  --app-header-height: 56px;
-  --app-tabbar-height: 56px;
-  --app-border: rgba(0, 0, 0, 0.08);
-  --app-danger: #d7263d;
-  --app-success: #2e7d32;
+  --app-tabbar-height: 58px;
+  --app-border: var(--border);
+  --app-border-strong: var(--input);
+  --app-fill: var(--accent-fill);
+  --app-focus: var(--ring);
+  --app-danger: var(--destructive);
+  --app-success: #16a34a;
+  --app-shadow: 0 10px 38px rgba(9, 9, 11, 0.18);
+  --app-ease: cubic-bezier(0.22, 1, 0.36, 1);
 
   color-scheme: light dark;
 }
 
 /*
- * Telegram's own surface for the Mini App. The body paints --tg-bg so
- * viewport-fit=cover areas (notch, home indicator) match the client chrome
- * instead of flashing white on a dark theme.
+ * js/core.js sets data-theme from Telegram's colorScheme; the media query is the
+ * fallback for a browser that never loads the client (and for the gate page).
  */
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) {
+    --border: rgba(250, 250, 250, 0.14);
+    --rule: rgba(250, 250, 250, 0.2);
+    --input: rgba(250, 250, 250, 0.18);
+    --accent-fill: rgba(250, 250, 250, 0.06);
+    --app-shadow: 0 10px 38px rgba(0, 0, 0, 0.5);
+  }
+}
+
+html[data-theme="dark"] {
+  --border: rgba(250, 250, 250, 0.14);
+  --rule: rgba(250, 250, 250, 0.2);
+  --input: rgba(250, 250, 250, 0.18);
+  --accent-fill: rgba(250, 250, 250, 0.06);
+  --app-shadow: 0 10px 38px rgba(0, 0, 0, 0.5);
+}
+
 html,
 body {
   margin: 0;
@@ -40,14 +100,16 @@ body {
 }
 
 body {
-  background-color: var(--tg-bg);
-  color: var(--tg-text);
+  background-color: var(--background);
+  color: var(--foreground);
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 1.45;
+  font-size: 15px;
+  line-height: 1.5;
+  letter-spacing: -0.011em;
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
 }
 
 h1,
@@ -58,7 +120,8 @@ p {
 }
 
 a {
-  color: var(--tg-link);
+  color: var(--app-accent-text);
+  text-underline-offset: 2px;
 }
 
 button,
@@ -67,6 +130,30 @@ select,
 textarea {
   font: inherit;
   color: inherit;
+  letter-spacing: inherit;
+}
+
+/* The parts the page did not draw still belong to the page. */
+::selection {
+  background-color: var(--ring);
+  color: var(--primary-foreground);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--input) transparent;
+}
+
+/* Numbers that sit in columns (dates, ids, counters) align by digit width. */
+time,
+.tabular,
+.today-stat-value,
+.record-meta,
+.alarm-kw-date,
+.alarm-kw-id,
+.kw-count,
+.status-value {
+  font-variant-numeric: tabular-nums;
 }
 
 /* Application shell ------------------------------------------------------ */
@@ -77,40 +164,13 @@ textarea {
   flex-direction: column;
 }
 
-#app-header {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-height: var(--app-header-height);
-  padding: 8px var(--app-pad) 8px;
-  /* viewport-fit=cover lets the page run under the status bar; the inset keeps
-     the title below it on notched devices. */
-  padding-top: calc(8px + env(safe-area-inset-top));
-  background-color: var(--tg-bg);
-  border-bottom: 1px solid var(--app-border);
-}
-
-#app-title {
-  font-size: 20px;
-  font-weight: 600;
-  line-height: 1.2;
-}
-
-.app-subtitle {
-  margin-top: 2px;
-  color: var(--tg-hint);
-  font-size: 13px;
-}
-
 #view {
   flex: 1 1 auto;
-  /* Top and bottom padding keep the first card clear of the header and the
-     last card clear of the fixed tab bar, including the home-indicator inset. */
-  padding: var(--app-gap) var(--app-pad);
-  padding-bottom: calc(var(--app-tabbar-height) + var(--app-gap) + env(safe-area-inset-bottom) + 8px);
+  /* viewport-fit=cover lets the page run under the status bar; the insets keep
+     the first card below it and the last card clear of the fixed tab bar. */
+  padding: 16px var(--app-pad);
+  padding-top: calc(16px + env(safe-area-inset-top));
+  padding-bottom: calc(var(--app-tabbar-height) + 20px + env(safe-area-inset-bottom));
 }
 
 .view[hidden] {
@@ -126,50 +186,290 @@ textarea {
   left: 0;
   z-index: 20;
   display: flex;
-  justify-content: space-around;
   align-items: stretch;
-  min-height: var(--app-tabbar-height);
-  padding-bottom: env(safe-area-inset-bottom);
-  background-color: var(--tg-secondary-bg);
-  border-top: 1px solid var(--app-border);
+  gap: 2px;
+  padding: 0 8px env(safe-area-inset-bottom);
+  background-color: var(--background);
+  border-top: 1px solid var(--border);
 }
 
 #tabbar .tab {
+  position: relative;
   display: flex;
   flex: 1 1 0;
   align-items: center;
   justify-content: center;
   /* 44px keeps the target above the 40px floor even with the 1px border. */
-  min-height: 44px;
-  color: var(--tg-hint);
-  font-size: 13px;
+  min-height: var(--app-tabbar-height);
+  color: var(--muted-foreground);
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   text-decoration: none;
   touch-action: manipulation;
+  transition: color 160ms ease;
+}
+
+/* The active tab is marked by colour, weight and a drawn indicator: three
+   signals survive a monochrome theme and a screenshot far better than one. */
+#tabbar .tab::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 20px;
+  height: 2px;
+  border-radius: 2px;
+  background-color: transparent;
+  transform: translateX(-50%);
+  transition: background-color 160ms ease;
 }
 
 #tabbar .tab.is-active {
-  color: var(--tg-button);
+  color: var(--foreground);
+  font-weight: 700;
 }
 
-/* Cards and lists -------------------------------------------------------- */
+#tabbar .tab.is-active::before {
+  background-color: var(--accent-mark);
+}
+
+#tabbar .tab:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -4px;
+  border-radius: var(--radius-md);
+}
+
+/* Icons ------------------------------------------------------------------ */
+
+/* One stroked family, drawn in core.js. The icon inherits currentColor so it
+   takes the ink of whatever it sits in. */
+.icon {
+  display: block;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Row actions are quiet by default and only gain ink on press: a list of loud
+   buttons competes with the entry's lead line. */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--muted-foreground);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+.icon-btn:hover,
+.icon-btn:active {
+  background-color: var(--accent-fill);
+  color: var(--foreground);
+}
+
+.icon-btn[disabled] {
+  opacity: 0.4;
+  cursor: default;
+  background: none;
+}
+
+/* Destructive actions keep the same geometry and only turn red on press. */
+.icon-btn[data-action="delete"]:hover,
+.icon-btn[data-action="delete"]:active,
+.icon-btn[data-action="revoke"]:hover,
+.icon-btn[data-action="revoke"]:active {
+  color: var(--destructive);
+}
+
+/* Column head, stat strip, entries ---------------------------------------
+ *
+ * The reading surface is a printed column: a head band states what is being
+ * read, a packed strip carries the counters, and hairlines separate entries.
+ * Nothing here is a tile; a tile would invite the card vocabulary this world
+ * refuses.
+ */
+
+.column-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 2px 0 10px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.column-head-label {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* The count is the one number the range switch changes, so it is the one
+   element that animates on that switch. */
+.column-head-count {
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: opacity 160ms ease;
+}
+
+.column-head-count.is-updating {
+  opacity: 0.35;
+}
+
+.column-head-time {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-bottom: 1px solid var(--rule);
+}
+
+.stat-cell {
+  display: flex;
+  min-height: 62px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  padding: 10px 8px;
+  border-left: 1px solid var(--rule);
+}
+
+.stat-cell:first-child {
+  border-left: none;
+  padding-left: 0;
+}
+
+.stat-value {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 17px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stat-label {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+/* One entry per record. The lead line and its meta sit in a single column so
+   the eye scans one vertical rhythm; actions hang off the right edge. */
+.entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.entry-main {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.entry-lead {
+  color: var(--foreground);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.entry-meta {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+/* The single accent in the system: a 2px mark for "new since you last looked". */
+.entry-mark {
+  flex: 0 0 auto;
+  width: 2px;
+  align-self: stretch;
+  background-color: var(--accent-mark);
+  border-radius: var(--radius-mark);
+}
+
+.entry:last-child {
+  border-bottom: none;
+}
+
+/* Section label: the tracked caps line that names a group without a heading. */
+.section-label {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* Cards ------------------------------------------------------------------ */
 
 .card {
   display: block;
-  padding: var(--app-gap) 14px;
-  background-color: var(--tg-secondary-bg);
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius);
+  padding: 14px 0;
+  color: var(--card-foreground);
+  border-top: 1px solid var(--rule);
 }
 
-.card + .card {
-  margin-top: 8px;
+.card:last-child {
+  border-bottom: 1px solid var(--rule);
 }
 
 .card-title {
   font-size: 15px;
   font-weight: 600;
+  line-height: 1.35;
   overflow: hidden;
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -179,15 +479,15 @@ textarea {
 
 .card-meta {
   margin-top: 4px;
-  color: var(--tg-hint);
-  font-size: 12px;
+  color: var(--muted-foreground);
+  font-size: 13px;
 }
 
 .card-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 10px;
+  margin-top: 12px;
 }
 
 /* Buttons ---------------------------------------------------------------- */
@@ -201,59 +501,83 @@ textarea {
   /* 40px is the stated touch-target floor; padding keeps it there for text of
      any reasonable length. */
   min-height: 40px;
-  padding: 8px 16px;
-  border-radius: 10px;
+  padding: 9px 16px;
+  border-radius: var(--radius-md);
   border: 1px solid transparent;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   text-decoration: none;
   cursor: pointer;
   touch-action: manipulation;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    opacity 140ms ease;
 }
 
 .btn {
-  background-color: var(--tg-button);
-  color: var(--tg-button-text);
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.btn:hover {
+  opacity: 0.9;
 }
 
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: default;
 }
 
 .btn-ghost {
   background-color: transparent;
-  border-color: var(--app-border);
-  color: var(--tg-text);
+  border-color: var(--input);
+  color: var(--foreground);
+}
+
+.btn-ghost:hover {
+  background-color: var(--accent-fill);
 }
 
 .btn-ghost:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: default;
 }
 
-/* Chips ------------------------------------------------------------------ */
+.btn:focus-visible,
+.btn-ghost:focus-visible,
+.chip:focus-visible,
+.icon-btn:focus-visible,
+.segmented-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Chips and segmented controls ------------------------------------------- */
 
 .chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 40px;
-  padding: 6px 14px;
+  min-height: 34px;
+  padding: 5px 14px;
   background-color: transparent;
-  border: 1px solid var(--app-border);
+  border: 1px solid var(--input);
   border-radius: 999px;
-  color: var(--tg-text);
+  color: var(--foreground);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
   touch-action: manipulation;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease;
 }
 
 .chip.is-active {
-  background-color: var(--tg-button);
-  border-color: var(--tg-button);
-  color: var(--tg-button-text);
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
 }
 
 .chip-row {
@@ -262,31 +586,131 @@ textarea {
   gap: 8px;
 }
 
+/* Two mutually exclusive panes, sized like a control rather than a header. */
+.segmented {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  margin-bottom: 16px;
+  background-color: var(--muted);
+  border-radius: var(--radius-lg);
+}
+
+.segmented-btn {
+  flex: 1 1 0;
+  min-height: 34px;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  border-radius: calc(var(--radius-lg) - 3px);
+  color: var(--muted-foreground);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.segmented-btn.is-active {
+  background-color: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px rgba(9, 9, 11, 0.08);
+}
+
+/* Inputs ----------------------------------------------------------------- */
+
+.search-input,
+.settings-search {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-md);
+  background-color: var(--background);
+  color: var(--foreground);
+  font-size: 14px;
+  -webkit-appearance: none;
+  appearance: none;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.search-input::placeholder,
+.settings-search::placeholder {
+  color: var(--muted-foreground);
+}
+
+.search-input:focus,
+.settings-search:focus {
+  outline: none;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px rgba(22, 104, 168, 0.16);
+}
+
 /* States ----------------------------------------------------------------- */
 
 .skeleton {
-  padding: 24px 0;
-  color: var(--tg-hint);
+  padding: 28px 0;
+  color: var(--muted-foreground);
   font-size: 14px;
   text-align: center;
 }
 
+/* A skeleton that only says "Loading…" leaves the page still during the one
+   moment it is most noticeable; the sweep is the single authored motion of a
+   page load. */
+.skeleton::after {
+  content: "";
+  display: block;
+  width: 44px;
+  height: 2px;
+  margin: 12px auto 0;
+  border-radius: 2px;
+  background-color: var(--input);
+  animation: skeleton-sweep 1.1s var(--app-ease) infinite;
+}
+
+@keyframes skeleton-sweep {
+  0% {
+    opacity: 0.25;
+    transform: scaleX(0.4);
+  }
+  50% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+  100% {
+    opacity: 0.25;
+    transform: scaleX(0.4);
+  }
+}
+
 .empty {
-  padding: 32px 16px;
-  color: var(--tg-hint);
+  padding: 40px 16px;
+  color: var(--muted-foreground);
   font-size: 14px;
   text-align: center;
 }
 
 .error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
   margin: 8px 0;
   padding: 12px 14px;
-  border: 1px solid rgba(215, 38, 61, 0.35);
-  border-radius: var(--app-radius);
-  background-color: rgba(215, 38, 61, 0.08);
-  color: var(--app-danger);
+  border: 1px solid rgba(220, 38, 38, 0.35);
+  border-radius: var(--radius-lg);
+  background-color: rgba(220, 38, 38, 0.06);
+  color: var(--destructive);
   font-size: 14px;
   overflow-wrap: anywhere;
+}
+
+.error[hidden] {
+  display: none;
 }
 
 /* Toasts ----------------------------------------------------------------- */
@@ -309,29 +733,37 @@ textarea {
   max-width: 420px;
   width: fit-content;
   padding: 10px 16px;
-  border-radius: 999px;
-  background-color: rgba(23, 23, 23, 0.92);
-  color: #ffffff;
+  border-radius: var(--radius-lg);
+  background-color: var(--primary);
+  color: var(--primary-foreground);
   font-size: 14px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  font-weight: 500;
+  box-shadow: var(--app-shadow);
   overflow-wrap: anywhere;
+  animation: toast-in 220ms var(--app-ease);
 }
 
-.toast.is-info {
-  background-color: rgba(23, 23, 23, 0.92);
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
 }
 
 .toast.is-success {
   background-color: var(--app-success);
+  color: #ffffff;
 }
 
 .toast.is-error {
-  background-color: var(--app-danger);
+  background-color: var(--destructive);
+  color: var(--destructive-foreground);
 }
 
-/* Modal ------------------------------------------------------------------ */
+/* Dialogs and bottom sheets ---------------------------------------------- */
 
-.modal-backdrop {
+.modal-backdrop,
+.sheet-backdrop {
   position: fixed;
   inset: 0;
   z-index: 30;
@@ -340,33 +772,169 @@ textarea {
   justify-content: center;
   padding: 16px;
   padding-bottom: calc(16px + env(safe-area-inset-bottom));
-  background-color: rgba(0, 0, 0, 0.45);
+  background-color: rgba(0, 0, 0, 0.5);
+  animation: backdrop-in 200ms ease-out;
 }
 
-.modal-backdrop[hidden] {
+.modal-backdrop[hidden],
+.sheet-backdrop[hidden] {
   display: none;
 }
 
-.modal {
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.modal,
+.sheet {
   width: 100%;
   max-width: 520px;
-  max-height: 80vh;
+  max-height: 82vh;
   overflow-y: auto;
-  padding: 16px;
-  background-color: var(--tg-bg);
-  color: var(--tg-text);
-  border-radius: 16px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  padding: 18px;
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--app-shadow);
+  animation: sheet-in 260ms var(--app-ease);
+}
+
+@keyframes sheet-in {
+  from {
+    opacity: 0.6;
+    transform: translateY(28px);
+  }
+}
+
+/* The grab handle is drawn, not a glyph; it tells a first-time user the sheet
+   came from the bottom edge. */
+.sheet {
+  padding-top: 10px;
+}
+
+.sheet-grab {
+  width: 36px;
+  height: 4px;
+  margin: 0 auto 10px;
+  border-radius: 999px;
+  background-color: var(--input);
+}
+
+.modal-head,
+.sheet-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modal-title,
+.sheet-title {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.3;
 }
 
 .modal-close {
-  min-height: 40px;
-  padding: 8px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
   background: none;
-  border: none;
-  color: var(--tg-hint);
-  font-size: 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--muted-foreground);
   cursor: pointer;
+  touch-action: manipulation;
+}
+
+.modal-close:hover,
+.modal-close:active {
+  background-color: var(--accent-fill);
+  color: var(--foreground);
+}
+
+.icon-btn[disabled] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Dialog internals -------------------------------------------------------- */
+
+.dialog-body {
+  margin-top: 12px;
+}
+
+.dialog-textarea,
+.dialog-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 12px;
+  background-color: var(--background);
+  border: 1px solid var(--input);
+  border-radius: var(--radius-md);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 14px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.dialog-textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.dialog-textarea:focus,
+.dialog-input:focus {
+  outline: none;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px rgba(22, 104, 168, 0.16);
+}
+
+.dialog-textarea::placeholder,
+.dialog-input::placeholder {
+  color: var(--muted-foreground);
+}
+
+.dialog-message {
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.dialog-note {
+  margin-top: 10px;
+  color: var(--destructive);
+  font-size: 13px;
+}
+
+.dialog-note[hidden] {
+  display: none;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.dialog-actions .btn,
+.dialog-actions .btn-ghost {
+  flex: 1 1 0;
+}
+
+/* Destructive confirmation stays the only red button in the Mini App. */
+.dialog-actions .btn.is-danger {
+  background-color: var(--destructive);
+  color: var(--destructive-foreground);
 }
 
 /* Gate ------------------------------------------------------------------- */
@@ -392,6 +960,6 @@ textarea {
 
 .gate-hint {
   margin-top: 8px;
-  color: var(--tg-hint);
+  color: var(--muted-foreground);
   font-size: 14px;
 }

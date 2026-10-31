@@ -55,7 +55,7 @@
     '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="kw-dialog-title">' +
     '<div class="modal-head">' +
     '<h2 class="modal-title" id="kw-dialog-title" data-slot="dialog-title"></h2>' +
-    '<button class="modal-close" type="button" data-role="dialog-close" aria-label="Close dialog">\u2715</button>' +
+    '<button class="modal-close" type="button" data-role="dialog-close" aria-label="Close dialog">' + core.icon("close") + '</button>' +
     "</div>" +
     '<div class="dialog-body" data-slot="dialog-body"></div>' +
     '<div class="dialog-actions">' +
@@ -155,6 +155,7 @@
   /* Rendering ------------------------------------------------------------ */
 
   function iconButton(action, id, label, glyph) {
+    // glyph is the icon name in the shared family, never a character.
     return (
       '<button type="button" class="icon-btn" data-action="' +
       action +
@@ -165,7 +166,7 @@
       '" aria-label="' +
       core.escapeHTML(label) +
       '">' +
-      glyph +
+      core.icon(glyph) +
       "</button>"
     );
   }
@@ -190,8 +191,8 @@
       "</span>" +
       "</span>" +
       '<span class="kw-actions">' +
-      iconButton("rename", item.id, "Rename keyword", "\u270f\ufe0f") +
-      iconButton("delete", item.id, "Delete keyword", "\ud83d\uddd1") +
+      iconButton("rename", item.id, "Rename keyword", "edit") +
+      iconButton("delete", item.id, "Delete keyword", "trash") +
       "</span>" +
       "</li>"
     );

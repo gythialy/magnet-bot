@@ -19,33 +19,49 @@
 .today-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
 }
 
+/* Packed cells divided by hairline rules: the counters belong to one strip, not
+   to four tiles. The fixed height keeps the strip still while values change. */
 .today-stat {
-  padding: 10px 6px;
-  background-color: var(--tg-secondary-bg);
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius);
-  text-align: center;
+  display: flex;
+  min-height: 62px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  padding: 10px 8px;
+  border-left: 1px solid var(--rule);
+}
+
+.today-stat:first-child {
+  border-left: none;
+  padding-left: 0;
 }
 
 .today-stat-value {
   display: block;
-  /* Tabular figures keep the bar from shifting when a count changes. */
+  max-width: 100%;
+  /* Tabular figures keep the bar from shifting when a count changes, and the
+     nowrap+ellipsis pair stops a long count from wrapping into a second line. */
   font-variant-numeric: tabular-nums;
-  font-size: 16px;
-  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 17px;
+  font-weight: 650;
   line-height: 1.25;
-  overflow-wrap: anywhere;
 }
 
 .today-stat-label {
   display: block;
-  margin-top: 2px;
-  color: var(--tg-hint);
+  max-width: 100%;
+  color: var(--muted-foreground);
   font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
   line-height: 1.2;
+  text-transform: uppercase;
 }
 
 .today-search {
@@ -57,10 +73,10 @@
   box-sizing: border-box;
   width: 100%;
   min-height: 40px;
-  padding: 8px 12px;
-  background-color: var(--tg-secondary-bg);
-  border: 1px solid var(--app-border);
-  border-radius: 10px;
+  padding: 9px 12px;
+  background-color: var(--background);
+  border: 1px solid var(--input);
+  border-radius: var(--app-radius);
   color: var(--tg-text);
   font-size: 14px;
   -webkit-appearance: none;
@@ -81,10 +97,20 @@
   display: block;
 }
 
+/* One printed entry: lead line, meta line, actions on the right edge. The
+   shared .card class supplies a top rule; entries separate only downward. */
 .today-card {
-  padding: 12px;
-  /* The card's own padding is part of the tap target for the detail sheet. */
+  display: block;
+  padding: 12px 0;
+  border-top: none;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 0;
+  background: none;
   cursor: pointer;
+}
+
+.today-card:last-child {
+  border-bottom: none;
 }
 
 .today-card-row {
@@ -120,8 +146,8 @@
   gap: 6px;
 }
 
-/* base.css already clamps .card-title; restated here so the Today card keeps
-   its two-line limit even if the shared class changes. */
+/* Two-line clamp on the lead line; restated here so the entry keeps its limit
+   even if the shared .card-title class changes. */
 .today-card-title {
   display: -webkit-box;
   flex: 1 1 auto;
@@ -136,10 +162,26 @@
   overflow-wrap: anywhere;
 }
 
-.today-flame {
+/* The tender mark is a tag, not an emoji: a drawn glyph plus a caps label. */
+.today-tag {
+  display: inline-flex;
   flex: 0 0 auto;
-  font-size: 13px;
-  line-height: 1.35;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px 1px 4px;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-sm);
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.today-tag .icon {
+  width: 12px;
+  height: 12px;
 }
 
 .today-card-meta {
@@ -163,8 +205,8 @@
   min-height: 40px;
   padding: 6px 12px;
   background-color: transparent;
-  border: 1px solid var(--app-border);
-  border-radius: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--app-radius);
   color: var(--tg-link);
   font-size: 13px;
   font-weight: 600;
@@ -193,15 +235,15 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  min-height: 40px;
-  padding: 6px 12px;
+  gap: 6px;
+  min-height: 36px;
+  padding: 5px 12px;
   background-color: transparent;
-  border: 1px solid var(--app-border);
-  border-radius: 10px;
-  color: var(--tg-text);
+  border: 1px solid var(--input);
+  border-radius: var(--radius-md);
+  color: var(--foreground);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
   touch-action: manipulation;
@@ -246,7 +288,7 @@
 }
 
 .today-retry {
-  border-color: rgba(215, 38, 61, 0.45);
+  border-color: rgba(220, 38, 38, 0.35);
   color: var(--app-danger);
 }
 
@@ -267,7 +309,7 @@
 .today-modal-title {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   line-height: 1.4;
   overflow-wrap: anywhere;
@@ -277,11 +319,11 @@
   flex: 0 0 auto;
   min-width: 40px;
   padding: 8px 10px;
-  border-radius: 10px;
+  border-radius: var(--app-radius);
 }
 
 .today-modal .modal-close:active {
-  background-color: var(--tg-secondary-bg);
+  background-color: var(--accent-fill);
 }
 
 .today-modal-meta {
@@ -347,6 +389,6 @@
   }
 
   .today-stat-label {
-    font-size: 10px;
+    font-size: 11px;
   }
 }

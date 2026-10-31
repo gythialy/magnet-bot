@@ -51,6 +51,9 @@
   var HTTPS_ONLY = /^https:\/\//i;
   var GROUP_SEPARATOR = /\B(?=(\d{3})+(?!\d))/g;
 
+  // The column head names the range in the same words the chips use.
+  var RANGE_LABELS = { today: "Today", "7d": "7 days", all: "All" };
+
   var RANGE_EMPTY_TEXT = {
     today: "No notices today.",
     "7d": "No notices in the last 7 days.",
@@ -61,8 +64,8 @@
   // button shows. The server validates the format again, so this table is only
   // the client-side contract.
   var CONVERT_FORMATS = {
-    pdf: { label: "PDF", glyph: "\ud83d\udcc4" },
-    png: { label: "PNG", glyph: "\ud83d\uddbc" },
+    pdf: { label: "PDF", icon: "pdf" },
+    png: { label: "PNG", icon: "png" },
   };
 
   // core.toast removes itself after 3s. The conversion flow needs a 2s
@@ -84,6 +87,8 @@
     // table can repeat a row when new notices land between two pages.
     seen: Object.create(null),
     nextOffset: null,
+    total: 0,
+    updatedAt: "",
     loading: false,
     loaded: false,
     failed: false,
@@ -265,7 +270,12 @@
 
   function toolbarHTML() {
     return (
-      '<div class="today-stats">' +
+      '<div class="column-head">' +
+      '<span class="column-head-label" data-slot="head-label">Today</span>' +
+      '<span class="column-head-count" data-slot="head-count">\u2014</span>' +
+      '<span class="column-head-time" data-slot="head-time"></span>' +
+      "</div>" +
+      '<div class="today-stats stat-strip">' +
       statHTML("history", "History") +
       statHTML("keywords", "Keywords") +
       statHTML("related", "Related notices") +
@@ -295,7 +305,7 @@
       '<div class="today-modal-head">' +
       '<h2 class="today-modal-title" id="today-detail-title" data-slot="detail-title"></h2>' +
       '<button class="modal-close" type="button" data-action="close-detail"' +
-      ' aria-label="Close details">✕</button>' +
+      ' aria-label="Close details">' + app.icon("close") + "</button>" +
       "</div>" +
       '<p class="today-modal-meta" data-slot="detail-meta"></p>' +
       '<div class="today-modal-actions">' +
@@ -356,6 +366,9 @@
     refs = {
       view: view,
       toolbar: toolbar,
+      headLabel: toolbar.querySelector('[data-slot="head-label"]'),
+      headCount: toolbar.querySelector('[data-slot="head-count"]'),
+      headTime: toolbar.querySelector('[data-slot="head-time"]'),
       stats: statNodes,
       search: toolbar.querySelector('[data-slot="search"]'),
       rangeChips: toolbar.querySelectorAll("[data-action='range']"),
@@ -392,9 +405,11 @@
   function cardHTML(item, index) {
     var title = item.title || "(no title)";
     var meta = metaHTML(item);
-    var flame = item.hasTenderCode
-      ? '<span class="today-flame" role="img" aria-label="Has tender code"' +
-        ' title="Has tender code">🔥</span>'
+    // A tender code is a fact about the notice, so it is marked with a drawn
+    // glyph plus its own label rather than a coloured emoji.
+    var tender = item.hasTenderCode
+      ? '<span class="today-tag" title="Has tender code">' +
+        app.icon("tender") + "<span>Tender</span></span>"
       : "";
     // Conversion and opening need a notice URL. The server re-checks ownership
     // and the host allow-list, so a card without an https URL simply offers no
@@ -404,7 +419,8 @@
         cardConvertButton(index, "pdf") +
         cardConvertButton(index, "png") +
         '<button class="today-open" type="button" data-action="open-link"' +
-        ' data-index="' + index + '" aria-label="Open notice page">↗ Open</button>' +
+        ' data-index="' + index + '" aria-label="Open notice page">' +
+        app.icon("external") + "<span>Open</span></button>" +
         "</div>"
       : "";
 
@@ -419,7 +435,7 @@
       ' data-index="' + index + '" aria-haspopup="dialog">' +
       '<span class="today-card-head">' +
       '<span class="card-title today-card-title">' + escape(title) + "</span>" +
-      flame +
+      tender +
       "</span>" +
       (meta ? '<span class="card-meta today-card-meta">' + meta + "</span>" : "") +
       "</button>" +
@@ -439,6 +455,7 @@
       html += cardHTML(state.items[i], i);
     }
     refs.list.innerHTML = html;
+    renderHead();
     // A re-render (new page, new search) drops the disabled attribute, so the
     // in-flight conversions have to be re-applied to the fresh buttons.
     syncConvertButtons();
@@ -532,6 +549,33 @@
       chip.classList.toggle("is-active", active);
       chip.setAttribute("aria-pressed", active ? "true" : "false");
     });
+    renderHead();
+  }
+
+  /* The head is the one strip whose text changes on a range switch; the count
+     fades rather than the page reflowing, so the list below never jumps. */
+  function renderHead() {
+    if (!refs) {
+      return;
+    }
+
+    if (refs.headLabel) {
+      refs.headLabel.textContent = RANGE_LABELS[state.range] || state.range;
+    }
+    if (refs.headCount) {
+      var shown = state.items.length;
+      var total = state.total > shown ? state.total : shown;
+      refs.headCount.textContent = state.loading
+        ? "Loading\u2026"
+        : total === 0
+          ? "No notices"
+          : total === shown
+            ? shown + (shown === 1 ? " notice" : " notices")
+            : shown + " of " + total + " notices";
+    }
+    if (refs.headTime) {
+      refs.headTime.textContent = state.updatedAt || "";
+    }
   }
 
   function syncSearchValue() {
@@ -591,6 +635,16 @@
     state.loaded = true;
     state.failed = false;
     state.errorMessage = "";
+
+    // The head reports the server's total so a partial page still tells the
+    // truth about how much is there; the clock tells the reader how stale the
+    // column is.
+    var total = payload && typeof payload.total === "number" ? payload.total : state.items.length;
+    state.total = total;
+    var now = new Date();
+    state.updatedAt =
+      "updated " + (now.getHours() < 10 ? "0" : "") + now.getHours() + ":" +
+      (now.getMinutes() < 10 ? "0" : "") + now.getMinutes();
 
     var next = payload ? payload.nextOffset : null;
     // Only accept a cursor that actually moves forward, and never offer a
@@ -781,7 +835,7 @@
       '<button class="today-convert" type="button" data-action="convert"' +
       ' data-format="' + format + '" data-index="' + index + '"' +
       ' aria-label="Send this notice as ' + meta.label + '">' +
-      meta.glyph + " " + meta.label + "</button>"
+      app.icon(meta.icon) + "<span>" + meta.label + "</span></button>"
     );
   }
 
@@ -791,7 +845,7 @@
       '<button class="btn-ghost" type="button" data-action="convert"' +
       ' data-format="' + format + '" data-scope="detail"' +
       ' aria-label="Send this notice as ' + meta.label + '">' +
-      meta.glyph + " " + meta.label + "</button>"
+      app.icon(meta.icon) + "<span>" + meta.label + "</span></button>"
     );
   }
 
