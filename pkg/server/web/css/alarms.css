@@ -1,1 +1,206 @@
-/* TODO(P2/P3): Alarms view styles — alarm keyword rows, alarm record list. */
+/*
+ * Alarms view (read-only P2).
+ *
+ * Two blocks — alarm keywords and alarm records — each with its own
+ * loading/empty/error state. base.css owns the palette (--tg-*), the shared
+ * components (.btn-ghost, .empty, .error, .skeleton) and the app chrome; this
+ * file only lays out the blocks and their rows.
+ *
+ * base.css is frozen for this change, so the primitives this view needs that
+ * base does not define yet (.search-input, .icon-btn, .retry-btn,
+ * .error-actions) are declared here — and, identically, in keywords.css, so
+ * each stylesheet stays valid on its own instead of depending on load order.
+ */
+
+/* Blocks ----------------------------------------------------------------- */
+
+.alarms-block {
+  margin-bottom: 20px;
+}
+
+.alarms-block:last-child {
+  margin-bottom: 0;
+}
+
+.alarms-block + .alarms-block {
+  margin-top: 4px;
+  padding-top: 16px;
+  border-top: 1px solid var(--app-border);
+}
+
+.block-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.block-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.block-add {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+[data-block="alarm-records"] .search-input {
+  width: 100%;
+  box-sizing: border-box;
+  /* 40px is the touch-target floor used across the Mini App. */
+  min-height: 40px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  background-color: var(--tg-secondary-bg);
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  color: var(--tg-text);
+  font-size: 15px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+[data-block="alarm-records"] .search-input::placeholder {
+  color: var(--tg-hint);
+}
+
+[data-block="alarm-records"] .search-input:focus {
+  outline: 2px solid var(--tg-button);
+  outline-offset: -1px;
+}
+
+/* Alarm keyword rows ----------------------------------------------------- */
+
+.alarm-kw-list,
+.record-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.alarm-kw-list[hidden],
+.record-list[hidden] {
+  display: none;
+}
+
+.alarm-kw-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.alarm-kw-row:last-child {
+  border-bottom: none;
+}
+
+.alarm-kw-id {
+  color: var(--tg-hint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.alarm-kw-name {
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alarm-kw-date {
+  color: var(--tg-hint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.alarm-kw-actions {
+  display: flex;
+  gap: 4px;
+}
+
+/* Alarm records ---------------------------------------------------------- */
+
+.record-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.record-row:last-child {
+  border-bottom: none;
+}
+
+.record-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  /* Without min-width:0 the ellipsis never engages inside a flex row. */
+  min-width: 0;
+}
+
+.record-name {
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.record-date {
+  color: var(--tg-hint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* btn-ghost declares display, which would override the user agent's [hidden]
+   rule; the explicit guard keeps the button hidden once the cursor is null. */
+.load-more {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.load-more[hidden] {
+  display: none;
+}
+
+/* Shared bits (mirrored in keywords.css) --------------------------------- */
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.icon-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.error-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.retry-btn {
+  flex: 0 0 auto;
+}

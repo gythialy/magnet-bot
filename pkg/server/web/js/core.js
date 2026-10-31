@@ -158,13 +158,16 @@
       return;
     }
 
-    state.stale.delete(name);
-
+    // The flag is cleared after mount() ran, not before: a view decides whether
+    // to reload by reading state.isStale(), so clearing it first would hide the
+    // invalidation that a write just requested. A throwing mount keeps the flag
+    // so the next visit retries instead of silently serving stale data.
     try {
       var result = view.mount();
       if (result && typeof result.then === "function") {
         result.catch(reportViewError);
       }
+      state.stale.delete(name);
     } catch (err) {
       reportViewError(err);
     }
