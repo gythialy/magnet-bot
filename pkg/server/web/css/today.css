@@ -1,1 +1,299 @@
-/* TODO(P2/P3): Today view styles — statistics bar, filter chips, notice cards, detail sheet. */
+/*
+ * today.css — the Today view.
+ *
+ * Everything here is mobile-first: one column of cards, a four-cell statistics
+ * bar, and controls that stay at or above the 40px touch-target floor. Colour
+ * only ever comes from the --tg-* / --app-* tokens base.css defines, so the
+ * view follows the Telegram light/dark theme without a second stylesheet.
+ *
+ * The JS builds the nodes this stylesheet names (see js/today.js); index.html
+ * only owns the three placeholder slots.
+ */
+
+/* Toolbar: counters, search, range chips -------------------------------- */
+
+.today-toolbar {
+  margin-bottom: var(--app-gap);
+}
+
+.today-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.today-stat {
+  padding: 10px 6px;
+  background-color: var(--tg-secondary-bg);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  text-align: center;
+}
+
+.today-stat-value {
+  display: block;
+  /* Tabular figures keep the bar from shifting when a count changes. */
+  font-variant-numeric: tabular-nums;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.today-stat-label {
+  display: block;
+  margin-top: 2px;
+  color: var(--tg-hint);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.today-search {
+  margin-top: 10px;
+}
+
+.today-search-input {
+  /* box-sizing is required for a 100% input that also carries padding. */
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  background-color: var(--tg-secondary-bg);
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  color: var(--tg-text);
+  font-size: 14px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.today-search-input::placeholder {
+  color: var(--tg-hint);
+}
+
+.today-ranges {
+  margin-top: 10px;
+}
+
+/* Notice list ----------------------------------------------------------- */
+
+.today-list {
+  display: block;
+}
+
+.today-card {
+  padding: 12px;
+  /* The card's own padding is part of the tap target for the detail sheet. */
+  cursor: pointer;
+}
+
+.today-card-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+/*
+ * The card body is a real button: clicking anywhere on the title/meta opens the
+ * detail sheet, and keyboard/assistive users get it for free. It is reset to
+ * look like text so the .card surface stays the only visible container.
+ */
+.today-card-body {
+  display: block;
+  flex: 1 1 auto;
+  /* min-width:0 is what lets the two-line clamp shrink inside the flex row. */
+  min-width: 0;
+  min-height: 44px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.today-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+/* base.css already clamps .card-title; restated here so the Today card keeps
+   its two-line limit even if the shared class changes. */
+.today-card-title {
+  display: -webkit-box;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.today-flame {
+  flex: 0 0 auto;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.today-card-meta {
+  display: block;
+  margin-top: 5px;
+  color: var(--tg-hint);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.today-sep {
+  padding: 0 2px;
+}
+
+.today-card-side {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+}
+
+.today-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 40px;
+  padding: 6px 12px;
+  background-color: transparent;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  color: var(--tg-link);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* Load more ------------------------------------------------------------- */
+
+.today-more-wrap {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+/* An author display value would otherwise beat the UA [hidden] rule. */
+.today-more-wrap[hidden] {
+  display: none;
+}
+
+.today-more {
+  min-width: 160px;
+}
+
+/* Static states --------------------------------------------------------- */
+
+/* The retry action stacks under the message rather than inline with it. */
+#view-today .error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+#view-today .error[hidden] {
+  display: none;
+}
+
+.today-retry {
+  border-color: rgba(215, 38, 61, 0.45);
+  color: var(--app-danger);
+}
+
+/* Detail sheet ---------------------------------------------------------- */
+
+.today-modal {
+  /* The sheet is the only scroll container on small screens. */
+  max-height: 80vh;
+}
+
+.today-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.today-modal-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.today-modal .modal-close {
+  flex: 0 0 auto;
+  min-width: 40px;
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+
+.today-modal .modal-close:active {
+  background-color: var(--tg-secondary-bg);
+}
+
+.today-modal-meta {
+  margin-top: 8px;
+  color: var(--tg-hint);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.today-modal-actions {
+  margin-top: 16px;
+}
+
+.today-modal-actions .btn {
+  width: 100%;
+}
+
+/* Focus ----------------------------------------------------------------- */
+
+/* Keyboard users need to see where they are; Telegram's shell draws no ring of
+   its own on the reset buttons above. */
+.today-card-body:focus-visible,
+.today-open:focus-visible,
+.today-more:focus-visible,
+.today-retry:focus-visible,
+.today-ranges .chip:focus-visible,
+.today-search-input:focus-visible,
+.today-modal .modal-close:focus-visible,
+.today-modal-actions .btn:focus-visible {
+  outline: 2px solid var(--tg-button);
+  outline-offset: 2px;
+}
+
+/* Narrow phones --------------------------------------------------------- */
+
+/* 320px-class screens cannot fit four 11px labels comfortably, so the labels
+   shrink rather than the numbers. */
+@media (max-width: 359px) {
+  .today-stat {
+    padding: 8px 4px;
+  }
+
+  .today-stat-value {
+    font-size: 15px;
+  }
+
+  .today-stat-label {
+    font-size: 10px;
+  }
+}
