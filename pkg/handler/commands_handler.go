@@ -20,6 +20,7 @@ import (
 	"github.com/gythialy/magnet/pkg/constant"
 	"github.com/gythialy/magnet/pkg/dal"
 	"github.com/gythialy/magnet/pkg/model"
+	"github.com/gythialy/magnet/pkg/utils"
 )
 
 const (
@@ -37,8 +38,26 @@ var (
 	spaceRegx   = regexp.MustCompile(`\s+`)
 
 	// titleFetchClient fetches a notice page to derive the output file name.
-	titleFetchClient = &http.Client{Timeout: 10 * time.Second}
+	// Redirects stay on the host the fetch started on: the allow-list names the
+	// server that may be contacted, not wherever that server redirects to.
+	titleFetchClient = &http.Client{
+		Timeout:       10 * time.Second,
+		CheckRedirect: keepNoticeHostRedirect,
+	}
 )
+
+// keepNoticeHostRedirect refuses a redirect that leaves the host the request
+// started on. Following one would let the notice server, or anything able to
+// answer for it, point the fetch at an unrelated and possibly internal address.
+func keepNoticeHostRedirect(req *http.Request, via []*http.Request) error {
+	if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
+		return errors.New("redirect to a non-http scheme is not allowed")
+	}
+	if len(via) > 0 && !strings.EqualFold(req.URL.Host, via[0].URL.Host) {
+		return errors.New("redirect to another host is not allowed")
+	}
+	return nil
+}
 
 type CommandsHandler struct {
 	ctx *BotContext
@@ -368,7 +387,11 @@ func (c *CommandsHandler) sendErrorMessage(ctx context.Context, b *bot.Bot, upda
 // falling back to the last path segment. It is a free function because the
 // conversion service uses it as well, and the two callers must agree on the
 // produced name.
-func extractFileName(ctx context.Context, u *url.URL) (string, error) {
+//
+// It re-checks the allow-list rather than trusting the caller, and builds the
+// request from the checked parts: this is the only place that fetches a
+// user-supplied URL.
+func extractFileName(ctx context.Context, u *url.URL, allowedHost string) (string, error) {
 	urlFileName := path.Base(u.Path)
 	if urlFileName == "/" {
 		urlFileName = ""
@@ -376,7 +399,19 @@ func extractFileName(ctx context.Context, u *url.URL) (string, error) {
 		urlFileName = strings.TrimSuffix(urlFileName, ".html")
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	parsed, err := utils.ValidateNoticeURL(u.String(), allowedHost)
+	if err != nil {
+		return "", err
+	}
+
+	// The scheme and host come from the checked values, so a user-supplied
+	// string can only ever select the path of the request.
+	target := parsed.Scheme + "://" + allowedHost + parsed.EscapedPath()
+	if parsed.RawQuery != "" {
+		target += "?" + parsed.RawQuery
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		return "", err
 	}
