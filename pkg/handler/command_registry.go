@@ -37,12 +37,22 @@ var commandSpecs = []CommandSpec{
 	{Command: constant.Clean, Description: "Clean cache files", AdminOnly: true},
 }
 
+// miniAppHelpHint is appended to the help text when commands retired in favour
+// of the Mini App. It points at the three workflows the chat no longer offers.
+const miniAppHelpHint = "Use the Mini App for statistics, keywords and conversions."
+
 // TelegramCommands returns the command list for SetMyCommands. Admin-only
 // commands are still exposed in the Telegram command menu (the handlers
 // enforce the permission), matching the previous behaviour.
-func TelegramCommands() []models.BotCommand {
+//
+// appEnabled removes the commands retired in favour of the Mini App: advertising
+// a command that only answers "use the app" would make the menu misleading.
+func TelegramCommands(appEnabled bool) []models.BotCommand {
 	cmds := make([]models.BotCommand, 0, len(commandSpecs))
 	for _, spec := range commandSpecs {
+		if appEnabled && isRetiredCommand(spec.Command) {
+			continue
+		}
 		desc := spec.Description
 		if spec.AdminOnly {
 			desc += " (admin only)"
@@ -55,11 +65,16 @@ func TelegramCommands() []models.BotCommand {
 	return cmds
 }
 
-// HelpText generates the /start help message from the command registry.
-func HelpText() string {
+// HelpText generates the /start help message from the command registry. When
+// the Mini App is available the retired commands are omitted and a closing line
+// points at the app instead.
+func HelpText(appEnabled bool) string {
 	var b strings.Builder
 	b.WriteString("Here are the commands you can use:\n")
 	for _, spec := range commandSpecs {
+		if appEnabled && isRetiredCommand(spec.Command) {
+			continue
+		}
 		line := spec.Command
 		if spec.Usage != "" {
 			line += " " + spec.Usage
@@ -71,5 +86,15 @@ func HelpText() string {
 		b.WriteString(line)
 		b.WriteString("\n")
 	}
+	if appEnabled {
+		b.WriteString(miniAppHelpHint)
+	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// isRetiredCommand reports whether command is retired while the Mini App is
+// available. The retired set itself lives in retired.go.
+func isRetiredCommand(command string) bool {
+	_, retired := retiredPrompt(command)
+	return retired
 }
