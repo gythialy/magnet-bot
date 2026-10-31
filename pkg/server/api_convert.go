@@ -3,9 +3,9 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -13,6 +13,7 @@ import (
 
 	"github.com/gythialy/magnet/pkg/dal"
 	"github.com/gythialy/magnet/pkg/model"
+	"github.com/gythialy/magnet/pkg/utils"
 )
 
 const (
@@ -193,16 +194,14 @@ func (h *convertHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	noticeURL := strings.TrimSpace(body.URL)
-	parsedURL, err := url.Parse(noticeURL)
-	if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") || parsedURL.Host == "" {
-		WriteError(w, http.StatusBadRequest, "bad_request")
-		return
-	}
-
 	// Host allow-list first, ownership second: an attacker learns nothing
 	// about which URLs exist for other users.
-	if !strings.EqualFold(parsedURL.Host, h.allowedHost) {
-		WriteError(w, http.StatusForbidden, "forbidden")
+	if _, err := utils.ValidateNoticeURL(noticeURL, h.allowedHost); err != nil {
+		if errors.Is(err, utils.ErrNoticeURLHost) {
+			WriteError(w, http.StatusForbidden, "forbidden")
+			return
+		}
+		WriteError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
 

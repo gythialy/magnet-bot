@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
 	"time"
 
 	"github.com/go-telegram/bot"
 
 	"github.com/gythialy/magnet/pkg/constant"
 	"github.com/gythialy/magnet/pkg/model"
+	"github.com/gythialy/magnet/pkg/utils"
 )
 
 const (
@@ -50,19 +50,19 @@ func (c *BotContext) StartConversion(ctx context.Context, chatID int64, noticeUR
 		return "", fmt.Errorf("unsupported conversion type %d", kind)
 	}
 
-	parsedURL, err := url.Parse(noticeURL)
+	// Only notices from the configured server may be converted: the Mini App
+	// hands the URL to Gotenberg and extractFileName fetches it, so this is
+	// the one allow-list both entry points share.
+	parsedURL, err := utils.ValidateNoticeURL(noticeURL, c.Config.MessageServerUrl)
 	if err != nil {
+		if errors.Is(err, utils.ErrNoticeURLHost) {
+			return "", ErrDomainNotAllowed
+		}
 		return "", fmt.Errorf("parse notice url: %w", err)
-	}
-	// Only notices from the configured server may be converted: Gotenberg
-	// fetches whatever URL it is given, so this is the allow-list that keeps
-	// it from being pointed at arbitrary hosts.
-	if parsedURL.Host != c.Config.MessageServerUrl {
-		return "", ErrDomainNotAllowed
 	}
 
 	fileName := ""
-	if name, nameErr := extractFileName(ctx, parsedURL); nameErr == nil {
+	if name, nameErr := extractFileName(ctx, parsedURL, c.Config.MessageServerUrl); nameErr == nil {
 		fileName = name + extension
 	} else {
 		c.Logger.Error().Stack().Err(nameErr).Msg("derive conversion file name")
