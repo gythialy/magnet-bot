@@ -64,6 +64,7 @@ type BotContext struct {
 	retrier    *AttachmentRetrier
 	cmdHandler *CommandsHandler
 	httpServer *server.Server
+	access     accessGuard
 }
 
 // context returns the process-wide context so background work honours
@@ -117,10 +118,22 @@ func NewBotContext() (*BotContext, error) {
 		&model.Alarm{},
 		&model.KeywordNotice{},
 		&model.PendingAttachment{},
+		&model.User{},
+		&model.Setting{},
 	); err != nil {
 		return nil, err
 	}
 	dal.SetDefault(db)
+
+	// The access tables are the first thing every update reads, so they must be
+	// migrated and seeded before the bot serves anything. A bootstrap failure
+	// is fatal on purpose: starting with a half-written authorisation table
+	// would either lock every account out or let everybody in.
+	accessMode, err := dal.EnsureBootstrap(cfg.ManagerIDs, cfg.AllowedUserIDs)
+	if err != nil {
+		return nil, fmt.Errorf("bootstrap access control: %w", err)
+	}
+	logAccessBootstrap(ctxLogger, accessMode, cfg.ManagerIDs)
 
 	// Backfill: history rows written before links were absolute carry a
 	// scheme-less URL, which would no longer match the claim key of new pushes
@@ -157,6 +170,10 @@ func NewBotContext() (*BotContext, error) {
 	botContext.cmdHandler = NewCommandsHandler(botContext)
 
 	botOptions := []bot.Option{
+		// The access middleware wraps every handler, including the default
+		// handler, so an unauthorised account is rejected before any command
+		// or fallback logic sees the update.
+		bot.WithMiddlewares(botContext.accessMiddleware),
 		bot.WithDefaultHandler((&defaultHandler{cmd: botContext.cmdHandler}).Handler),
 		bot.WithHTTPClient(time.Minute, &http.Client{Timeout: 2 * time.Minute}),
 	}
@@ -307,6 +324,10 @@ func (ctx *BotContext) Start() error {
 			// convention instead of two that can drift.
 			Conversion:  ctx,
 			AllowedHost: ctx.Config.MessageServerUrl,
+			// The admin status page reads the same in-memory denial log and the
+			// Telegram webhook state this context already owns, so no second
+			// client or copy of that state is needed.
+			Status: ctx,
 		})
 	}
 

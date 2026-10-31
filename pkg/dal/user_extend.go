@@ -196,6 +196,38 @@ func (u *user) UpsertFromEnv(userID int64, role int32) error {
 	return nil
 }
 
+// CreateManual inserts an account managed through the admin UI rather than the
+// environment. from_env stays false so later role and enabled edits are allowed
+// by the guards; the environment would otherwise re-assert the row on every
+// start and make manual changes pointless.
+//
+// It reports an error when the row already exists, so a concurrent batch cannot
+// silently overwrite an account it did not mean to touch.
+func (u *user) CreateManual(userID int64, role int32, remark string) (*model.User, error) {
+	if userID <= 0 {
+		return nil, fmt.Errorf("dal: invalid user id %d", userID)
+	}
+	if role != model.RoleUser && role != model.RoleAdmin {
+		return nil, fmt.Errorf("dal: invalid role %d", role)
+	}
+
+	now := time.Now()
+	row := &model.User{
+		UserID:    userID,
+		Remark:    remark,
+		Role:      role,
+		Enabled:   true,
+		FromEnv:   false,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := Q.db.Create(row).Error; err != nil {
+		return nil, err
+	}
+	u.Invalidate()
+	return row, nil
+}
+
 // applyEnvUser is the shared create-or-promote step of UpsertFromEnv and
 // SyncFromEnv. It reports whether a row was created.
 func applyEnvUser(db *gorm.DB, userID int64, role int32) (bool, error) {

@@ -1,9 +1,13 @@
 package server
 
 import (
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/gythialy/magnet/pkg/dal"
+	"github.com/gythialy/magnet/pkg/model"
 )
 
 // The Mini App API is mounted by pkg/server as a subtree: mux.Handle("/api/",
@@ -35,7 +39,8 @@ const (
 	convertRateWindow = time.Minute
 )
 
-// APIConfig configures the read-only Mini App API.
+// APIConfig configures the Mini App API: the read endpoints, the keyword/alarm
+// writes, the optional conversion endpoint and the administrator surface.
 type APIConfig struct {
 	// BotToken authenticates every initData signature. An empty token makes
 	// the middleware fail closed, which is what a deployment that lost this
@@ -60,6 +65,11 @@ type APIConfig struct {
 	// comes from SERVER_URL, so a crafted request cannot turn the bot into a
 	// screenshot service for arbitrary pages.
 	AllowedHost string
+
+	// Status supplies the deployment facts the admin status screen shows
+	// (webhook state, recently rejected accounts). It is optional: without it
+	// the screen reports those fields as unavailable instead of inventing them.
+	Status AdminStatusProvider
 }
 
 // apiHandler holds the per-deployment constants shared by every endpoint.
@@ -76,9 +86,13 @@ type apiHandler struct {
 	now func() time.Time
 }
 
-// NewAPI builds the read-only Mini App API: five JSON endpoints behind the
-// initData authentication middleware. Mount the result at "/api/" — it expects
-// the full, unstripped request path.
+// NewAPI builds the Mini App API: the read endpoints, the keyword/alarm writes,
+// the optional conversion route, /api/me and the administrator surface.
+//
+// Every route sits behind two gates: initData proves who the caller is, and
+// requireAllowed decides whether the access policy serves them. The admin routes
+// add requireAdmin on top. Mount the result at "/api/" — it expects the full,
+// unstripped request path.
 func NewAPI(cfg APIConfig) http.Handler {
 	return newAPI(cfg, time.Now)
 }
@@ -111,7 +125,13 @@ func newAPI(cfg APIConfig, now func() time.Time) http.Handler {
 
 	// Write (CRUD) routes and their per-user rate limiter live in api_write.go;
 	// this call keeps the read table above focused on GETs.
-	newWriteAPI().register(mux)
+	write := newWriteAPI()
+	write.register(mux)
+
+	// Account and admin routes live in admin_api.go. They take the same writeAPI
+	// so admin mutations share the keyword endpoints' per-user budget instead of
+	// granting a second allowance.
+	newAdminAPI(cfg.Status, write).register(mux)
 
 	// Conversion is registered only when a starter is configured. Gotenberg is
 	// an optional sidecar, and a route that answers 502 for every request would
@@ -124,9 +144,59 @@ func newAPI(cfg APIConfig, now func() time.Time) http.Handler {
 		}))
 	}
 
-	// Authentication wraps the whole subtree, including the not-found handler:
-	// an unauthenticated caller must not be able to probe which endpoints exist.
-	return NewInitDataMiddleware(cfg.BotToken, cfg.InitDataTTL)(mux)
+	// Authentication proves who the caller is; the access gate decides whether
+	// this deployment serves them at all. Both wrap the whole subtree — including
+	// the not-found handler and the convert route — so an anonymous caller can
+	// probe neither the endpoints nor the policy.
+	return NewInitDataMiddleware(cfg.BotToken, cfg.InitDataTTL)(requireAllowed(mux))
+}
+
+// requireAllowed rejects authenticated accounts the access policy does not
+// serve: in "restricted" mode that is every account without an enabled row.
+//
+// The gate is deliberately cheap on the allowed path — one cached IsAllowed
+// lookup — and only pays for a schema probe when it is about to deny. That probe
+// separates a policy decision from an unprovisioned deployment: a database that
+// predates the access-control migration has no settings table, so every lookup
+// fails closed and the API used to work there. Such a deployment is served as if
+// the mode were "off" (the value EnsureBootstrap writes for an empty database),
+// because the composition root migrates and bootstraps the tables before it
+// serves traffic. Once the settings table exists, every decision is the access
+// layer's and failures stay closed.
+func requireAllowed(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, ok := UserFromContext(r.Context())
+		if !ok {
+			WriteError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+
+		if !dal.User.IsAllowed(user.ID) {
+			if !accessControlProvisioned() {
+				slog.Debug("access control schema is not provisioned; serving the API as open")
+				next.ServeHTTP(w, r)
+				return
+			}
+			WriteError(w, http.StatusForbidden, "forbidden")
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// accessControlProvisioned reports whether the settings table (the access-policy
+// marker) exists. Only the deny path calls it, so a provisioned deployment pays
+// nothing for it on normal traffic.
+func accessControlProvisioned() bool {
+	db := accessDB()
+	if db == nil {
+		return false
+	}
+	// The table name is passed as a string on purpose: gorm's RunWithValue
+	// inherits the shared session's last table when given a model, so a probe
+	// with &model.Setting{} can answer for whatever query ran before it.
+	return db.Migrator().HasTable(model.TableNameSetting)
 }
 
 // handleAPINotFound answers a path under /api/ that has no handler.

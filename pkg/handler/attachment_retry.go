@@ -122,14 +122,40 @@ func (r *AttachmentRetrier) RunOnce(ctx context.Context) {
 		r.logger.Error().Stack().Err(err).Msg("list pending attachments")
 		return
 	}
+
+	enforced := backgroundAccessEnforced()
+	skipped := 0
+	attempts := 0
 	for i := range rows {
 		if ctx.Err() != nil {
 			return
 		}
-		if i > 0 && !sleepContext(ctx, r.sendGap) {
+		// Authorisation is checked before the lease is taken. Claiming a row
+		// only to drop it would hold the lease until it expired, hiding the
+		// attachment from a later sweep even after the account was allowed
+		// again. Leaving the row untouched keeps the queue honest: it stays in
+		// pending_attachments, keeps its attempt count and is delivered
+		// automatically by the first sweep after access is restored. That is
+		// deliberate — revoking access pauses delivery, it does not discard a
+		// conversion the user already triggered.
+		if enforced && !dal.User.IsAllowed(rows[i].UserID) {
+			skipped++
+			continue
+		}
+		if attempts > 0 && !sleepContext(ctx, r.sendGap) {
 			return
 		}
 		r.deliver(ctx, &rows[i])
+		attempts++
+	}
+
+	// One summary line per sweep, so an operator can see a paused backlog
+	// without per-row noise.
+	if skipped > 0 {
+		r.logger.Debug().
+			Int("skipped", skipped).
+			Int("due", len(rows)).
+			Msg("skipped attachments for users without access")
 	}
 }
 
