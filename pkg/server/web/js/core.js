@@ -18,11 +18,15 @@
   "use strict";
 
   var DEFAULT_ROUTE = "today";
-  var ROUTES = ["today", "keywords", "alarms"];
+  // The settings view is registered by its own script and stays hidden for
+  // everyone who is not an administrator; the route exists here so the router
+  // can host it instead of normalising #/settings back to #/today.
+  var ROUTES = ["today", "keywords", "alarms", "settings"];
   var VIEW_TITLES = {
     today: "Today",
     keywords: "Keywords",
     alarms: "Alarms",
+    settings: "Settings",
   };
 
   // Telegram themeParams key -> CSS custom property consumed by css/base.css.

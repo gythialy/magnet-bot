@@ -1,0 +1,577 @@
+/*
+ * Settings view (admin only).
+ *
+ * base.css owns the palette (--tg-*), the shared components (.btn, .btn-ghost,
+ * .modal, .modal-backdrop, .empty, .error, .skeleton) and the app chrome; this
+ * file lays out the admin screen: the access-control switch, the people list,
+ * the read-only status grid, the recently denied block and the write dialogs.
+ *
+ * base.css is frozen for this change, so the primitives this view needs that
+ * base does not define yet are declared here.
+ */
+
+/* The nav entry ships hidden until js/settings.js confirms the admin role.
+   base.css gives #tabbar .tab an author display value, which would otherwise
+   beat the user agent's [hidden] rule. */
+#tabbar .tab[hidden] {
+  display: none;
+}
+
+/* Page stack ------------------------------------------------------------- */
+
+.settings-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-content[hidden] {
+  display: none;
+}
+
+.settings-card {
+  padding: 14px;
+  background-color: var(--tg-secondary-bg);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+}
+
+.settings-card[hidden] {
+  display: none;
+}
+
+.settings-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.settings-card-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings-hint {
+  margin-top: 6px;
+  color: var(--tg-hint);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* Access control --------------------------------------------------------- */
+
+.access-mode {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* 44px keeps the whole row above the 40px touch-target floor. */
+  min-height: 44px;
+  margin-top: 10px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.switch-input {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  accent-color: var(--tg-button);
+}
+
+.switch-input:disabled {
+  opacity: 0.5;
+}
+
+.switch-text {
+  font-size: 15px;
+}
+
+/* People ----------------------------------------------------------------- */
+
+.settings-add {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.settings-search {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  background-color: var(--tg-bg);
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  color: var(--tg-text);
+  font-size: 15px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.settings-search::placeholder {
+  color: var(--tg-hint);
+}
+
+.settings-search:focus {
+  outline: 2px solid var(--tg-button);
+  outline-offset: -1px;
+}
+
+.people-list,
+.denied-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.people-list[hidden] {
+  display: none;
+}
+
+.person-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.person-row:last-child {
+  border-bottom: none;
+}
+
+/* Monospaced and right-aligned so ids line up column-wise. */
+.person-id {
+  min-width: 68px;
+  color: var(--tg-hint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.person-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.person-remark {
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.person-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+  color: var(--tg-hint);
+  font-size: 12px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.badge-admin {
+  background-color: var(--tg-button);
+  color: var(--tg-button-text);
+}
+
+.badge-user {
+  border: 1px solid var(--app-border);
+  color: var(--tg-hint);
+}
+
+.person-state.is-active {
+  color: var(--app-success);
+  font-weight: 600;
+}
+
+.person-state.is-disabled {
+  color: var(--app-danger);
+  font-weight: 600;
+}
+
+.person-seen {
+  font-variant-numeric: tabular-nums;
+}
+
+.person-lock {
+  font-size: 12px;
+}
+
+.person-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.load-more {
+  width: 100%;
+  margin-top: 12px;
+}
+
+/* .btn-ghost declares display, which would override the UA [hidden] rule. */
+.load-more[hidden] {
+  display: none;
+}
+
+/* Status ----------------------------------------------------------------- */
+
+.status-grid {
+  margin-top: 4px;
+}
+
+.status-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.status-row:last-child {
+  border-bottom: none;
+}
+
+.status-key {
+  flex: 0 0 auto;
+  color: var(--tg-hint);
+  font-size: 12px;
+}
+
+.status-value {
+  min-width: 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+/* Recent denied ---------------------------------------------------------- */
+
+.denied-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 48px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.denied-row:last-child {
+  border-bottom: none;
+}
+
+.denied-line {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.denied-allow {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 6px 14px;
+}
+
+/* Section states --------------------------------------------------------- */
+
+.settings-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.empty-title {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.empty-hint {
+  color: var(--tg-hint);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.settings-revoked {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* "Whole page" means the notice owns the viewport the shell would have used. */
+  min-height: 70vh;
+  padding: 24px;
+  text-align: center;
+}
+
+.settings-revoked[hidden] {
+  display: none;
+}
+
+.revoked-title {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+/* A revoked account cannot navigate anywhere, so the tab bar goes away and
+   the notice takes the full height. */
+body.is-access-revoked #tabbar {
+  display: none;
+}
+
+body.is-access-revoked #view {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 16px);
+}
+
+#view-settings .error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+#view-settings .error[hidden] {
+  display: none;
+}
+
+.error-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.retry-btn {
+  flex: 0 0 auto;
+}
+
+/* Dialog ----------------------------------------------------------------- */
+
+.settings-dialog .modal {
+  max-height: 85vh;
+}
+
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.modal-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.settings-dialog .modal-close {
+  flex: 0 0 auto;
+  min-width: 40px;
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+
+.settings-dialog .modal-close:active {
+  background-color: var(--tg-secondary-bg);
+}
+
+.dialog-body {
+  margin-top: 12px;
+}
+
+.dialog-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dialog-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dialog-label {
+  color: var(--tg-hint);
+  font-size: 12px;
+}
+
+.dialog-input,
+.dialog-textarea,
+.dialog-select {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  background-color: var(--tg-secondary-bg);
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  color: var(--tg-text);
+  font: inherit;
+  font-size: 15px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.dialog-textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.dialog-input::placeholder,
+.dialog-textarea::placeholder {
+  color: var(--tg-hint);
+}
+
+.dialog-input:disabled,
+.dialog-textarea:disabled,
+.dialog-select:disabled,
+.dialog-check input:disabled {
+  opacity: 0.6;
+}
+
+.dialog-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  cursor: pointer;
+}
+
+.dialog-check input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--tg-button);
+}
+
+.dialog-message {
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.dialog-hint {
+  margin: 0;
+  color: var(--tg-hint);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.dialog-note {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(215, 38, 61, 0.35);
+  border-radius: 8px;
+  background-color: rgba(215, 38, 61, 0.08);
+  color: var(--app-danger);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.dialog-note[hidden] {
+  display: none;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.dialog-actions .btn,
+.dialog-actions .btn-ghost {
+  flex: 1 1 0;
+}
+
+/* Destructive confirmation: the same red used by the other destructive flows. */
+.dialog-actions .btn.is-danger {
+  background-color: var(--app-danger);
+  color: #ffffff;
+}
+
+/* Shared icon button ----------------------------------------------------- */
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.icon-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Focus ------------------------------------------------------------------ */
+
+.settings-add:focus-visible,
+.settings-search:focus-visible,
+.denied-allow:focus-visible,
+.icon-btn:focus-visible,
+.switch-input:focus-visible,
+.modal-close:focus-visible,
+.dialog-input:focus-visible,
+.dialog-textarea:focus-visible,
+.dialog-select:focus-visible,
+.dialog-check input:focus-visible,
+.dialog-actions .btn:focus-visible,
+.dialog-actions .btn-ghost:focus-visible {
+  outline: 2px solid var(--tg-button);
+  outline-offset: 2px;
+}
+
+/* Narrow phones ---------------------------------------------------------- */
+
+@media (max-width: 359px) {
+  .person-id {
+    min-width: 56px;
+  }
+
+  .access-mode {
+    font-size: 20px;
+  }
+}
