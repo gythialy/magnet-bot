@@ -21,14 +21,7 @@
   // The settings view is registered by its own script and stays hidden for
   // everyone who is not an administrator; the route exists here so the router
   // can host it instead of normalising #/settings back to #/today.
-  var ROUTES = ["today", "keywords", "alarms", "settings"];
-  var VIEW_TITLES = {
-    today: "Today",
-    keywords: "Keywords",
-    alarms: "Alarms",
-    settings: "Settings",
-  };
-
+  var ROUTES = ["today", "keywords", "alarms", "records", "settings"];
   // Telegram themeParams key -> CSS custom property consumed by css/base.css.
   var THEME_VARIABLES = {
     bg_color: "--tg-bg",
@@ -87,6 +80,71 @@
 
   /* Theme ---------------------------------------------------------------- */
 
+  // Telegram's button colour is chosen to sit under white text, not on top of
+  // the background: as link/tab text it lands around 4.1:1 on a light theme.
+  // The derived token keeps the client's hue while meeting the 4.5:1 floor.
+  function parseHex(value) {
+    var raw = String(value || "").trim().replace("#", "");
+    if (raw.length === 3) {
+      raw = raw[0] + raw[0] + raw[1] + raw[1] + raw[2] + raw[2];
+    }
+    if (!/^[0-9a-fA-F]{6}$/.test(raw)) {
+      return null;
+    }
+    return {
+      r: parseInt(raw.slice(0, 2), 16),
+      g: parseInt(raw.slice(2, 4), 16),
+      b: parseInt(raw.slice(4, 6), 16),
+    };
+  }
+
+  function relativeLuminance(rgb) {
+    var channels = [rgb.r, rgb.g, rgb.b].map(function (value) {
+      var c = value / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+  }
+
+  function contrastRatio(a, b) {
+    var la = relativeLuminance(a);
+    var lb = relativeLuminance(b);
+    var lighter = Math.max(la, lb);
+    var darker = Math.min(la, lb);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  function readableAccent(accent, background) {
+    var fg = parseHex(accent);
+    var bg = parseHex(background) || { r: 255, g: 255, b: 255 };
+    if (!fg) {
+      return "";
+    }
+
+    // Mix towards black or white (whichever the background is not) until the
+    // pair clears 4.5:1, keeping the hue the client chose.
+    var towardDark = relativeLuminance(bg) > 0.5;
+    var tinted = fg;
+    for (var step = 0; step < 20 && contrastRatio(tinted, bg) < 4.5; step++) {
+      tinted = {
+        r: towardDark ? tinted.r * 0.92 : tinted.r + (255 - tinted.r) * 0.08,
+        g: towardDark ? tinted.g * 0.92 : tinted.g + (255 - tinted.g) * 0.08,
+        b: towardDark ? tinted.b * 0.92 : tinted.b + (255 - tinted.b) * 0.08,
+      };
+    }
+
+    function hex(value) {
+      var part = Math.max(0, Math.min(255, Math.round(value))).toString(16);
+      return part.length === 1 ? "0" + part : part;
+    }
+
+    return "#" + hex(tinted.r) + hex(tinted.g) + hex(tinted.b);
+  }
+
+  function themeFallbackAccent(isDark) {
+    return isDark ? DARK_FALLBACKS.link_color : "#2481cc";
+  }
+
   function applyTheme() {
     var webApp = telegram();
     if (!webApp) {
@@ -105,7 +163,47 @@
       }
     });
 
+    // Link and active-tab text use the derived accent; buttons keep the raw
+    // Telegram colour because their label is provided white-on-colour.
+    var accentSource = params.link_color || params.button_color || themeFallbackAccent(isDark);
+    var background = params.bg_color || DARK_FALLBACKS.bg_color;
+    var accent = readableAccent(accentSource, background);
+    if (accent) {
+      root.style.setProperty("--app-accent-text", accent);
+    }
+
     root.setAttribute("data-theme", isDark ? "dark" : "light");
+  }
+
+
+  /* Icons ---------------------------------------------------------------- */
+
+  // One stroked family, drawn here so every view uses the same geometry and
+  // inherits currentColor. Font glyphs and emoji are banned by the design
+  // system: they render differently on every platform and carry their own
+  // colour.
+  var ICONS = {
+    edit: '<path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M14 6l4 4"/>',
+    trash: '<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/><path d="M10 11v6"/><path d="M14 11v6"/>',
+    pdf: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 13h6"/><path d="M9 17h4"/>',
+    png: '<path d="M4 5h16v14H4z"/><path d="M4 16l4.5-4.5L13 16"/><path d="M13 16l3-3 4 4"/><circle cx="9" cy="9" r="1.3"/>',
+    external: '<path d="M14 4h6v6"/><path d="M20 4l-8 8"/><path d="M18 14v6H4V6h6"/>',
+    close: '<path d="M6 6l12 12"/><path d="M18 6L6 18"/>',
+    tender: '<path d="M12 3l2.6 5.6 6.1.8-4.5 4.2 1.2 6-5.4-3-5.4 3 1.2-6L3.3 9.4l6.1-.8z"/>',
+  };
+
+  function icon(name) {
+    var body = ICONS[name];
+    if (!body) {
+      return "";
+    }
+    return (
+      '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" ' +
+      'fill="none" stroke="currentColor" stroke-width="1.6" ' +
+      'stroke-linecap="round" stroke-linejoin="round">' +
+      body +
+      "</svg>"
+    );
   }
 
   /* Gate ----------------------------------------------------------------- */
@@ -136,11 +234,6 @@
         section.hidden = route !== name;
       }
     });
-
-    var title = byId("app-title");
-    if (title) {
-      title.textContent = VIEW_TITLES[name] || VIEW_TITLES[DEFAULT_ROUTE];
-    }
 
     var tabs = document.querySelectorAll("#tabbar [data-route]");
     Array.prototype.forEach.call(tabs, function (tab) {
@@ -272,6 +365,9 @@
     return el;
   }
 
+  // openLink is for ordinary web targets. A t.me link handed to openLink
+  // opens the system browser first and only then bounces back into Telegram;
+  // openTelegramLink keeps the whole trip inside the client.
   function openLink(url) {
     var target = String(url == null ? "" : url);
     if (!target) {
@@ -285,6 +381,21 @@
     }
 
     window.open(target, "_blank", "noopener");
+  }
+
+  function openTelegramLink(url) {
+    var target = String(url == null ? "" : url);
+    if (!target) {
+      return;
+    }
+
+    var webApp = telegram();
+    if (webApp && typeof webApp.openTelegramLink === "function") {
+      webApp.openTelegramLink(target);
+      return;
+    }
+
+    openLink(target);
   }
 
   function escapeHTML(value) {
@@ -417,13 +528,9 @@
 
     state.initData = initData;
 
-    if (!initData) {
-      // Without credentials every request would be rejected, so stop before
-      // binding routes or touching the network.
-      showGate();
-      return;
-    }
-
+    // ready() must be called even when this page ends up showing the gate: the
+    // client keeps its own loading overlay up until the page reports ready, so
+    // the gate would otherwise stay hidden behind a spinner forever.
     if (webApp) {
       if (typeof webApp.ready === "function") {
         webApp.ready();
@@ -435,6 +542,13 @@
       if (typeof webApp.onEvent === "function") {
         webApp.onEvent("themeChanged", applyTheme);
       }
+    }
+
+    if (!initData) {
+      // Without credentials every request would be rejected, so stop before
+      // binding routes or touching the network.
+      showGate();
+      return;
     }
 
     bindRouting();
@@ -459,6 +573,8 @@
     route: route,
     toast: toast,
     openLink: openLink,
+    openTelegramLink: openTelegramLink,
+    icon: icon,
     escapeHTML: escapeHTML,
     debounce: debounce,
     request: request,

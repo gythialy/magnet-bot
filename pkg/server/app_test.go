@@ -119,10 +119,15 @@ func TestNewStaticHandlerServesIndex(t *testing.T) {
 	if !strings.Contains(body, `id="view-today"`) {
 		t.Fatal("index document is missing the today view")
 	}
-	// The client injects telegram-web-app.js; the page must not pull any code
-	// over the network, which would also break a strict CSP deployment.
-	if strings.Contains(body, "telegram-web-app.js") {
-		t.Fatal("index document must not reference telegram-web-app.js")
+	// Telegram provides the native bridge but not the window.Telegram object, so
+	// the page has to load the SDK itself. It must be the vendored copy: pulling
+	// it from telegram.org would break a strict CSP deployment and an offline
+	// one, and every script the page runs must come from this origin.
+	if strings.Contains(body, "telegram.org/js/telegram-web-app.js") {
+		t.Fatal("index document must not load the Telegram SDK from telegram.org")
+	}
+	if !strings.Contains(body, "js/telegram-web-app.js") {
+		t.Fatal("index document must load the vendored Telegram SDK")
 	}
 }
 
@@ -285,11 +290,13 @@ func TestIndexReferencesOnlyEmbeddedAssets(t *testing.T) {
 		"css/today.css",
 		"css/keywords.css",
 		"css/alarms.css",
+		"css/records.css",
 		"js/core.js",
 		"js/api.js",
 		"js/today.js",
 		"js/keywords.js",
 		"js/alarms.js",
+		"js/records.js",
 	}
 
 	refs := referencedAssets(string(index))
@@ -325,6 +332,9 @@ func referencedAssets(document string) map[string]bool {
 			continue
 		}
 		ref = strings.TrimPrefix(ref, "./")
+		if i := strings.IndexByte(ref, '?'); i >= 0 {
+			ref = ref[:i]
+		}
 		refs[ref] = true
 	}
 
