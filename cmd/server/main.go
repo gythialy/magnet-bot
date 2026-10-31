@@ -24,7 +24,9 @@ func main() {
 		log.Fatal().Stack().Err(err).Msg("NewBotContext")
 	}
 
-	botContext.Start()
+	if err := botContext.Start(); err != nil {
+		log.Fatal().Stack().Err(err).Msg("start")
+	}
 	<-ctx.Done()
 	botContext.Stop()
 }
