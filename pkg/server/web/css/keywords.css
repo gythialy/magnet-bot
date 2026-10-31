@@ -1,14 +1,15 @@
 /*
- * Keywords view (read-only P2).
+ * Keywords view (read + write).
  *
- * base.css owns the palette (--tg-*), the shared components (.btn, .empty,
- * .error, .skeleton) and the app chrome; this file only lays out the Keywords
- * page and its rows.
+ * base.css owns the palette (--tg-*), the shared components (.btn, .modal,
+ * .modal-backdrop, .empty, .error, .skeleton) and the app chrome; this file only
+ * lays out the Keywords page, its rows and its dialog.
  *
  * base.css is frozen for this change, so the handful of primitives this view
  * needs that base does not define yet (.search-input, .icon-btn, .retry-btn,
- * .error-actions) are declared here — and, identically, in alarms.css, so each
- * stylesheet stays valid on its own instead of depending on load order.
+ * .error-actions and the dialog internals) are declared here — and, identically,
+ * in alarms.css, so each stylesheet stays valid on its own instead of depending
+ * on load order.
  */
 
 /* Toolbar ---------------------------------------------------------------- */
@@ -107,6 +108,106 @@
   gap: 4px;
 }
 
+/* Dialog ----------------------------------------------------------------- */
+
+.kw-dialog .modal {
+  max-height: 85vh;
+}
+
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.modal-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.kw-dialog .modal-close {
+  flex: 0 0 auto;
+  min-width: 40px;
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+
+.kw-dialog .modal-close:active {
+  background-color: var(--tg-secondary-bg);
+}
+
+.dialog-body {
+  margin-top: 12px;
+}
+
+.dialog-textarea,
+.dialog-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  padding: 10px 12px;
+  background-color: var(--tg-secondary-bg);
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  color: var(--tg-text);
+  font: inherit;
+  font-size: 15px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.dialog-textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.dialog-textarea::placeholder,
+.dialog-input::placeholder {
+  color: var(--tg-hint);
+}
+
+.dialog-message {
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.dialog-actions .btn,
+.dialog-actions .btn-ghost {
+  flex: 1 1 0;
+}
+
+/* Destructive confirmation: the only red button in the Mini App. */
+.dialog-actions .btn.is-danger {
+  background-color: var(--app-danger);
+  color: #ffffff;
+}
+
+/* Focus ------------------------------------------------------------------ */
+
+.kw-add:focus-visible,
+.icon-btn:focus-visible,
+.modal-close:focus-visible,
+.dialog-input:focus-visible,
+.dialog-textarea:focus-visible,
+.dialog-actions .btn:focus-visible,
+.dialog-actions .btn-ghost:focus-visible {
+  outline: 2px solid var(--tg-button);
+  outline-offset: 2px;
+}
+
 /* Shared bits (mirrored in alarms.css) ----------------------------------- */
 
 .icon-btn {
@@ -122,6 +223,7 @@
   font-size: 16px;
   line-height: 1;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .icon-btn:disabled {

@@ -1,8 +1,9 @@
 /*
- * alarms.js — the read-only Alarms view.
+ * alarms.js — the Alarms view (read + write).
  *
  * Two independent blocks share one section:
- *   1. "Alarm keywords" — the user's alarm keywords, id/name/created on.
+ *   1. "Alarm keywords" — the user's alarm keywords, id/name/created on, plus
+ *      the batch-add / rename / delete flows in a reusable dialog.
  *   2. "Alarm records"  — paged alert history with a debounced server-side
  *      search and a deep link back into the bot for each row.
  *
@@ -10,8 +11,10 @@
  * records request never blanks the keyword list above it. Records page with the
  * API's nextOffset cursor; "Load more" disappears once the cursor is null.
  *
- * P2 is read-only: add/edit/delete are rendered but disabled, matching the
- * layout the write phase will need.
+ * Write rules mirror the Keywords page, with two additions: a successful write
+ * invalidates "alarms" and "today" (the statistics bar counts alarm keywords),
+ * and it reloads the records block in place so the page never shows a stale
+ * history next to freshly edited keywords.
  */
 (function (global) {
   "use strict";
@@ -32,6 +35,11 @@
   // instead of being handed to openLink.
   var TELEGRAM_LINK_PREFIX = "https://t.me/";
 
+  var ADD_HINT = "Comma-separated, e.g. 服务器, 防火墙";
+  var DELETE_TEXT =
+    "The alarm keyword is removed. Alarm records already delivered stay in your history.";
+  var MAX_KEYWORD_LENGTH = 128;
+
   var els = null;
 
   var keywords = { items: [], status: "idle", loaded: false };
@@ -46,12 +54,27 @@
     seq: 0,
   };
 
+  var dialog = {
+    el: null,
+    title: null,
+    body: null,
+    confirm: null,
+    cancel: null,
+    close: null,
+    field: null,
+    onConfirm: null,
+    confirmLabel: "Save",
+    pendingLabel: "Saving\u2026",
+    pending: false,
+    danger: false,
+    lastFocus: null,
+  };
+
   var TEMPLATE =
     '<section class="alarms-block" data-block="alarm-keywords">' +
     '<div class="block-head">' +
     '<h2 class="block-title">Alarm keywords</h2>' +
-    '<button type="button" class="btn block-add" disabled title="Available in the next release">' +
-    "+ Add alarm keyword</button>" +
+    '<button type="button" class="btn block-add" data-role="add-alarm">+ Add alarm keyword</button>' +
     "</div>" +
     '<div class="skeleton" data-slot="loading">Loading\u2026</div>' +
     '<div class="error" data-slot="error" role="alert" hidden></div>' +
@@ -67,7 +90,20 @@
     '<div class="empty" data-slot="empty" hidden></div>' +
     '<ul class="record-list" data-slot="list" hidden></ul>' +
     '<button type="button" class="btn-ghost load-more" data-role="load-more" hidden>Load more</button>' +
-    "</section>";
+    "</section>" +
+    '<div class="modal-backdrop alarms-dialog" data-role="dialog" hidden>' +
+    '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="alarms-dialog-title">' +
+    '<div class="modal-head">' +
+    '<h2 class="modal-title" id="alarms-dialog-title" data-slot="dialog-title"></h2>' +
+    '<button class="modal-close" type="button" data-role="dialog-close" aria-label="Close dialog">\u2715</button>' +
+    "</div>" +
+    '<div class="dialog-body" data-slot="dialog-body"></div>' +
+    '<div class="dialog-actions">' +
+    '<button class="btn-ghost" type="button" data-role="dialog-cancel">Cancel</button>' +
+    '<button class="btn" type="button" data-role="dialog-confirm" data-slot="dialog-confirm">Save</button>' +
+    "</div>" +
+    "</div>" +
+    "</div>";
 
   function api() {
     var apiNamespace = global.MagnetAPI;
@@ -101,9 +137,7 @@
       return /^\d{4}-\d{2}-\d{2}$/.test(prefix) ? prefix : "\u2014";
     }
 
-    return (
-      parsed.getFullYear() + "-" + pad2(parsed.getMonth() + 1) + "-" + pad2(parsed.getDate())
-    );
+    return parsed.getFullYear() + "-" + pad2(parsed.getMonth() + 1) + "-" + pad2(parsed.getDate());
   }
 
   function safeTelegramLink(value) {
@@ -158,12 +192,26 @@
     return typeof value === "number" && isFinite(value) && value >= 0 ? value : null;
   }
 
+  function findKeyword(id) {
+    var wanted = String(id);
+    for (var i = 0; i < keywords.items.length; i++) {
+      if (String(keywords.items[i].id) === wanted) {
+        return keywords.items[i];
+      }
+    }
+    return null;
+  }
+
   /* Rendering ------------------------------------------------------------ */
 
-  function actionButton(label, glyph, disabledTitle) {
+  function iconButton(action, id, label, glyph) {
     return (
-      '<button type="button" class="icon-btn" disabled title="' +
-      core.escapeHTML(disabledTitle || "Available in the next release") +
+      '<button type="button" class="icon-btn" data-action="' +
+      action +
+      '" data-id="' +
+      core.escapeHTML(String(id)) +
+      '" title="' +
+      core.escapeHTML(label) +
       '" aria-label="' +
       core.escapeHTML(label) +
       '">' +
@@ -189,8 +237,8 @@
       esc(formatDate(item.createdAt)) +
       "</span>" +
       '<span class="alarm-kw-actions">' +
-      actionButton("Edit alarm keyword", "\u270f\ufe0f") +
-      actionButton("Delete alarm keyword", "\ud83d\uddd1") +
+      iconButton("rename", item.id, "Rename alarm keyword", "\u270f\ufe0f") +
+      iconButton("delete", item.id, "Delete alarm keyword", "\ud83d\uddd1") +
       "</span>" +
       "</li>"
     );
@@ -200,7 +248,12 @@
     var label = "Open alarm record in Telegram";
 
     if (!link) {
-      return actionButton(label, "\u2197", "No link available");
+      return (
+        '<button type="button" class="icon-btn" disabled title="No link available" ' +
+        'aria-label="' +
+        core.escapeHTML(label) +
+        '">\u2197</button>'
+      );
     }
 
     return (
@@ -272,11 +325,14 @@
 
     if (showEmpty) {
       els.kwEmpty.textContent =
-        "No alarm keywords yet. Add alarm keywords from the bot, then reopen this page.";
+        "No alarm keywords yet. Add alarm keywords from the bot or with + Add alarm keyword.";
     }
 
     if (showList) {
       els.kwList.innerHTML = state.items.map(alarmKeywordRow).join("");
+    } else {
+      // Clear stale rows when the list is hidden; the empty state replaces them.
+      els.kwList.innerHTML = "";
     }
   }
 
@@ -308,7 +364,262 @@
 
     if (state.items.length > 0) {
       els.recList.innerHTML = state.items.map(recordRow).join("");
+    } else {
+      els.recList.innerHTML = "";
     }
+  }
+
+  /* Dialog --------------------------------------------------------------- */
+
+  function refreshConfirm() {
+    if (!dialog.el) {
+      return;
+    }
+
+    var empty = dialog.field ? dialog.field.value.trim() === "" : false;
+    dialog.confirm.disabled = dialog.pending || empty;
+    dialog.cancel.disabled = dialog.pending;
+    dialog.close.disabled = dialog.pending;
+  }
+
+  function setDialogPending(pending) {
+    dialog.pending = pending;
+    dialog.confirm.textContent = pending ? dialog.pendingLabel : dialog.confirmLabel;
+    refreshConfirm();
+  }
+
+  function openDialog(config) {
+    dialog.title.textContent = config.title;
+    dialog.body.textContent = "";
+    dialog.body.appendChild(config.content);
+
+    dialog.field = config.field || null;
+    dialog.onConfirm = config.onConfirm;
+    dialog.confirmLabel = config.confirmLabel || "Save";
+    dialog.pendingLabel = config.pendingLabel || "Saving\u2026";
+    dialog.danger = Boolean(config.danger);
+    dialog.pending = false;
+
+    dialog.confirm.textContent = dialog.confirmLabel;
+    dialog.confirm.className = dialog.danger ? "btn is-danger" : "btn";
+    dialog.cancel.disabled = false;
+    dialog.close.disabled = false;
+
+    dialog.lastFocus = document.activeElement;
+    dialog.el.hidden = false;
+    refreshConfirm();
+
+    var focusTarget = config.focus || dialog.confirm;
+    if (focusTarget && typeof focusTarget.focus === "function") {
+      focusTarget.focus();
+    }
+  }
+
+  function closeDialog() {
+    if (!dialog.el || dialog.el.hidden) {
+      return;
+    }
+
+    dialog.el.hidden = true;
+    dialog.body.textContent = "";
+    dialog.field = null;
+    dialog.onConfirm = null;
+    dialog.pending = false;
+
+    if (dialog.lastFocus && typeof dialog.lastFocus.focus === "function") {
+      dialog.lastFocus.focus();
+    }
+    dialog.lastFocus = null;
+  }
+
+  function confirmDialog() {
+    if (dialog.pending || !dialog.onConfirm) {
+      return;
+    }
+
+    var result;
+    try {
+      result = dialog.onConfirm();
+    } catch (err) {
+      handleWriteError(err);
+      return;
+    }
+
+    if (!result || typeof result.then !== "function") {
+      return;
+    }
+
+    setDialogPending(true);
+    result.then(
+      function () {
+        setDialogPending(false);
+      },
+      function () {
+        setDialogPending(false);
+      }
+    );
+  }
+
+  function onDialogKeydown(event) {
+    if (!dialog.el || dialog.el.hidden) {
+      return;
+    }
+
+    var key = event.key || "";
+    if (key === "Escape" || key === "Esc") {
+      event.preventDefault();
+      closeDialog();
+      return;
+    }
+
+    // Enter submits from the single-line rename field; the batch textarea keeps
+    // Enter for a newline.
+    if (key === "Enter" && dialog.field && dialog.field.tagName === "INPUT" && !dialog.pending) {
+      event.preventDefault();
+      confirmDialog();
+    }
+  }
+
+  /* Write actions -------------------------------------------------------- */
+
+  function invalidateWrites() {
+    // The statistics bar counts alarm keywords, so Today has to reload as well.
+    core.state.invalidate("alarms");
+    core.state.invalidate("today");
+  }
+
+  // Every successful write reloads the records block: its rows come from the
+  // same account, and the page must not show a history that predates the edit
+  // the user just confirmed.
+  function refreshAfterWrite() {
+    invalidateWrites();
+    loadRecords(true);
+  }
+
+  function handleWriteError(err) {
+    var statusCode = err && err.status;
+
+    if (statusCode === 429) {
+      core.toast("Too many requests, try again in a minute", "error");
+      return;
+    }
+    if (statusCode === 404) {
+      closeDialog();
+      core.toast("That alarm keyword no longer exists", "error");
+      loadKeywords();
+      loadRecords(true);
+      return;
+    }
+
+    core.toast((err && err.message) || "Something went wrong. Please try again.", "error");
+  }
+
+  function openAddDialog() {
+    var textarea = document.createElement("textarea");
+    textarea.className = "dialog-textarea";
+    textarea.rows = 3;
+    textarea.placeholder = ADD_HINT;
+    textarea.setAttribute("aria-label", "Alarm keywords, comma-separated");
+    textarea.value = "";
+    textarea.addEventListener("input", refreshConfirm);
+
+    openDialog({
+      title: "Add alarm keywords",
+      content: textarea,
+      field: textarea,
+      confirmLabel: "Add",
+      pendingLabel: "Adding\u2026",
+      focus: textarea,
+      onConfirm: function () {
+        var raw = textarea.value.trim();
+        if (!raw) {
+          return;
+        }
+
+        return api()
+          .createAlarms(raw)
+          .then(function (payload) {
+            var added = payload && Array.isArray(payload.added) ? payload.added : [];
+            var skipped = payload && Array.isArray(payload.skipped) ? payload.skipped : [];
+            var message = "Added " + added.length;
+            if (skipped.length > 0) {
+              message += ", skipped " + skipped.length;
+            }
+
+            core.toast(message, "success");
+            closeDialog();
+            return loadKeywords().then(refreshAfterWrite);
+          })
+          .catch(handleWriteError);
+      },
+    });
+  }
+
+  function openRenameDialog(item) {
+    var input = document.createElement("input");
+    input.type = "text";
+    input.className = "dialog-input";
+    input.value = item.keyword;
+    input.maxLength = MAX_KEYWORD_LENGTH;
+    input.setAttribute("aria-label", "Alarm keyword");
+    input.addEventListener("input", refreshConfirm);
+
+    openDialog({
+      title: "Rename alarm keyword",
+      content: input,
+      field: input,
+      confirmLabel: "Save",
+      pendingLabel: "Saving\u2026",
+      focus: input,
+      onConfirm: function () {
+        var next = input.value.trim();
+        if (!next) {
+          return;
+        }
+
+        return api()
+          .renameAlarm(item.id, next)
+          .then(function (payload) {
+            item.keyword = payload && typeof payload.keyword === "string" ? payload.keyword : next;
+            renderKeywordBlock();
+            core.toast("Alarm keyword updated", "success");
+            closeDialog();
+            refreshAfterWrite();
+          })
+          .catch(handleWriteError);
+      },
+    });
+  }
+
+  function openDeleteDialog(item) {
+    var message = document.createElement("p");
+    message.className = "dialog-message";
+    message.textContent = DELETE_TEXT;
+
+    openDialog({
+      title: "Delete alarm keyword",
+      content: message,
+      confirmLabel: "Delete",
+      pendingLabel: "Deleting\u2026",
+      danger: true,
+      // Cancel is the safe default for a destructive action.
+      focus: dialog.cancel,
+      onConfirm: function () {
+        return api()
+          .deleteAlarm(item.id)
+          .then(function () {
+            var index = keywords.items.indexOf(item);
+            if (index !== -1) {
+              keywords.items.splice(index, 1);
+            }
+            renderKeywordBlock();
+            core.toast("Alarm keyword deleted", "success");
+            closeDialog();
+            refreshAfterWrite();
+          })
+          .catch(handleWriteError);
+      },
+    });
   }
 
   /* Data ----------------------------------------------------------------- */
@@ -388,6 +699,27 @@
 
   /* Events --------------------------------------------------------------- */
 
+  function onKeywordListClick(event) {
+    var target = event.target;
+    var button =
+      target && typeof target.closest === "function" ? target.closest("button[data-action]") : null;
+    if (!button) {
+      return;
+    }
+
+    var item = findKeyword(button.getAttribute("data-id"));
+    if (!item) {
+      return;
+    }
+
+    var action = button.getAttribute("data-action");
+    if (action === "rename") {
+      openRenameDialog(item);
+    } else if (action === "delete") {
+      openDeleteDialog(item);
+    }
+  }
+
   function onRecordClick(event) {
     var target = event.target;
     var button =
@@ -414,6 +746,13 @@
     var keywordBlock = section.querySelector('[data-block="alarm-keywords"]');
     var recordBlock = section.querySelector('[data-block="alarm-records"]');
 
+    dialog.el = section.querySelector('[data-role="dialog"]');
+    dialog.title = section.querySelector('[data-slot="dialog-title"]');
+    dialog.body = section.querySelector('[data-slot="dialog-body"]');
+    dialog.confirm = section.querySelector('[data-role="dialog-confirm"]');
+    dialog.cancel = section.querySelector('[data-role="dialog-cancel"]');
+    dialog.close = section.querySelector('[data-role="dialog-close"]');
+
     return {
       kwLoading: slot(keywordBlock, "loading"),
       kwError: slot(keywordBlock, "error"),
@@ -423,6 +762,7 @@
       recError: slot(recordBlock, "error"),
       recEmpty: slot(recordBlock, "empty"),
       recList: slot(recordBlock, "list"),
+      addAlarm: section.querySelector('[data-role="add-alarm"]'),
       search: section.querySelector('[data-role="record-search"]'),
       loadMore: section.querySelector('[data-role="load-more"]'),
     };
@@ -443,6 +783,21 @@
         loadRecords(false);
       }
     });
+
+    els.addAlarm.addEventListener("click", openAddDialog);
+    els.kwList.addEventListener("click", onKeywordListClick);
+
+    dialog.close.addEventListener("click", closeDialog);
+    dialog.cancel.addEventListener("click", closeDialog);
+    dialog.confirm.addEventListener("click", confirmDialog);
+    dialog.el.addEventListener("click", function (event) {
+      // The backdrop closes; a click inside the panel does not.
+      if (event.target === dialog.el) {
+        closeDialog();
+      }
+    });
+
+    document.addEventListener("keydown", onDialogKeydown);
   }
 
   function mount() {
@@ -457,7 +812,8 @@
     }
 
     // The two blocks load independently: a failure in one must not block the
-    // other, and each owns its skeleton.
+    // other, and each owns its skeleton. A write invalidates the view, which is
+    // what makes the next visit reload instead of showing the edited list.
     if (!keywords.loaded || core.state.isStale(VIEW)) {
       loadKeywords();
     }
