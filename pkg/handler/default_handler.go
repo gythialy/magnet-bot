@@ -34,6 +34,20 @@ func (d *defaultHandler) Handler(ctx context.Context, b *bot.Bot, update *models
 	userId := message.Chat.ID
 	command := message.Text
 
+	// The registered handlers normally intercept these commands first. This is
+	// the fallback dispatch, and it must reach the same retirement decision:
+	// with the Mini App available a retired command must never run its old
+	// implementation from here either.
+	if d.cmd.ctx.miniAppEnabled() {
+		for _, prefix := range retiredPrefixCommands {
+			if strings.HasPrefix(command, prefix) {
+				prompt, _ := retiredPrompt(prefix)
+				d.cmd.ctx.sendRetiredPrompt(ctx, b, update, prompt)
+				return
+			}
+		}
+	}
+
 	// Handle specific commands
 	switch {
 	case strings.HasPrefix(command, constant.ConvertPDF):

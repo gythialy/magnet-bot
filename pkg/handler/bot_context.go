@@ -197,33 +197,61 @@ func schedulerLocation() *time.Location {
 
 func (ctx *BotContext) initBot() error {
 	cmdHandler := ctx.cmdHandler
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Me, bot.MatchTypePrefix, MeHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Debug, bot.MatchTypePrefix, DebugHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Start, bot.MatchTypePrefix, (&startHandler{cmdHandler: cmdHandler}).Handler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.AddKeyword, bot.MatchTypePrefix, cmdHandler.AddKeywordHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.DeleteKeyword, bot.MatchTypePrefix, cmdHandler.DeleteKeywordHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.EditKeyword, bot.MatchTypePrefix, cmdHandler.EditKeywordHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.AddAlarmKeyword, bot.MatchTypePrefix, cmdHandler.AddAlarmKeywordHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.SearchAlarmRecords, bot.MatchTypePrefix, cmdHandler.SearchAlarmRecordHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Alarm, bot.MatchTypePrefix, cmdHandler.AlarmRecordHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.SearchHistory, bot.MatchTypePrefix, cmdHandler.SearchHistoryHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.ListToday, bot.MatchTypePrefix, cmdHandler.ListTodayHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.ConvertPDF, bot.MatchTypePrefix, cmdHandler.ConvertURLToPDFHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.ConvertIMG, bot.MatchTypePrefix, cmdHandler.ConvertURLToIMGHandler)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Statistics, bot.MatchTypePrefix, cmdHandler.StaticHandler)
+	miniApp := ctx.miniAppEnabled()
+
+	// One registration decision for every command: while the Mini App is
+	// available, a retired command is answered with its prompt instead of the
+	// live handler. Registration and the fallback dispatch share the same
+	// retired set, so the two cannot drift apart.
+	register := func(command string, handler bot.HandlerFunc) {
+		ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, command, bot.MatchTypePrefix,
+			ctx.commandHandler(command, handler))
+	}
+
+	register(constant.Me, MeHandler)
+	register(constant.Debug, DebugHandler)
+	register(constant.Start, (&startHandler{cmdHandler: cmdHandler}).Handler)
+	register(constant.AddKeyword, cmdHandler.AddKeywordHandler)
+	register(constant.DeleteKeyword, cmdHandler.DeleteKeywordHandler)
+	register(constant.EditKeyword, cmdHandler.EditKeywordHandler)
+	register(constant.AddAlarmKeyword, cmdHandler.AddAlarmKeywordHandler)
+	register(constant.SearchAlarmRecords, cmdHandler.SearchAlarmRecordHandler)
+	register(constant.Alarm, cmdHandler.AlarmRecordHandler)
+	register(constant.SearchHistory, cmdHandler.SearchHistoryHandler)
+	register(constant.ListToday, cmdHandler.ListTodayHandler)
+	register(constant.ConvertPDF, cmdHandler.ConvertURLToPDFHandler)
+	register(constant.ConvertIMG, cmdHandler.ConvertURLToIMGHandler)
+	register(constant.Statistics, cmdHandler.StaticHandler)
+
+	// The callback handlers stay registered regardless of the Mini App: they
+	// serve messages users already have in their chats, and a stale "stats:",
+	// "search:" or "today:" button must not start failing.
 	ctx.Bot.RegisterHandler(bot.HandlerTypeCallbackQueryData, constant.SearchCallback, bot.MatchTypePrefix, cmdHandler.HandleCallbackQuery)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeCallbackQueryData, constant.AlarmCallback, bot.MatchTypePrefix, cmdHandler.HandleCallbackQuery)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeCallbackQueryData, constant.TodayCallback, bot.MatchTypePrefix, cmdHandler.HandleCallbackQuery)
 	ctx.Bot.RegisterHandler(bot.HandlerTypeCallbackQueryData, constant.StatisticsCallback, bot.MatchTypePrefix, cmdHandler.StatisticsCallback)
 
 	managerHandler := NewManagerHandler(ctx)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Retry, bot.MatchTypePrefix, managerHandler.Retry)
-	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, constant.Clean, bot.MatchTypePrefix, managerHandler.Clean)
+	register(constant.Retry, managerHandler.Retry)
+	register(constant.Clean, managerHandler.Clean)
 
 	_, err := ctx.Bot.SetMyCommands(ctx.context(), &bot.SetMyCommandsParams{
-		Commands: TelegramCommands(),
+		Commands: TelegramCommands(miniApp),
 	})
-	return err
+	if err != nil {
+		return err
+	}
+
+	// The menu button is an affordance on top of the command list: a failed
+	// update must not keep the bot from starting, so it is only logged.
+	if button := ctx.chatMenuButton(); button != nil {
+		if _, err := ctx.Bot.SetChatMenuButton(ctx.context(), &bot.SetChatMenuButtonParams{
+			MenuButton: *button,
+		}); err != nil {
+			ctx.Logger.Warn().Err(err).Msg("telegram setChatMenuButton failed")
+		}
+	}
+	return nil
 }
 
 const (
