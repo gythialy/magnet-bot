@@ -1,6 +1,7 @@
 # magnet-bot 功能规划：公网 Webhook + Mini App + 转换入口
 
-> 状态：方案已确认，待实施
+> 状态：P1 实施中（`feat/p1-webhook`）——HTTP server、配置校验、`/healthz` 已合入，
+> webhook 接入与部署文档随本阶段完成；P2–P4（Mini App）未开始
 > 日期：2026-10-30
 > 基线：`main` @ `2a205a4`
 
