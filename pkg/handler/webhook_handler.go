@@ -71,6 +71,15 @@ func (wh *webhooker) deliver(req model.RequestInfo, data []byte) {
 		wh.ctx.Logger.Error().Msgf("Failed to delete message: %v", err)
 	}
 
+	// Telegram rejects reply_parameters carrying message_id 0, and a
+	// conversion started from the Mini App has no command message to answer.
+	// Sending no reply at all is the only valid shape for that case; sending
+	// one anyway would make Telegram reject the upload and lose the file.
+	var replyParameters *models.ReplyParameters
+	if req.ReplyMessageId > 0 {
+		replyParameters = &models.ReplyParameters{MessageID: req.ReplyMessageId}
+	}
+
 	switch req.Type {
 	case model.PDF:
 		if _, err := wh.ctx.Bot.SendDocument(ctx, &bot.SendDocumentParams{
@@ -79,10 +88,8 @@ func (wh *webhooker) deliver(req model.RequestInfo, data []byte) {
 				Filename: req.FileName,
 				Data:     bytes.NewReader(data),
 			},
-			Caption: req.Message,
-			ReplyParameters: &models.ReplyParameters{
-				MessageID: req.ReplyMessageId,
-			},
+			Caption:         req.Message,
+			ReplyParameters: replyParameters,
 		}); err != nil {
 			wh.ctx.Logger.Error().Stack().Err(err).Msg("")
 		}
@@ -93,10 +100,8 @@ func (wh *webhooker) deliver(req model.RequestInfo, data []byte) {
 				Filename: req.FileName,
 				Data:     bytes.NewReader(data),
 			},
-			Caption: req.Message,
-			ReplyParameters: &models.ReplyParameters{
-				MessageID: req.ReplyMessageId,
-			},
+			Caption:         req.Message,
+			ReplyParameters: replyParameters,
 		}); err != nil {
 			wh.ctx.Logger.Error().Stack().Err(err).Msg("")
 		}

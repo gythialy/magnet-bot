@@ -274,6 +274,11 @@ func (ctx *BotContext) Start() error {
 			BotToken:    config.TelegramToken(),
 			BotUsername: config.TelegramName(),
 			InitDataTTL: miniAppInitDataTTL,
+			// The bot context itself starts conversions, so the API and the
+			// chat command share one code path and one placeholder message
+			// convention instead of two that can drift.
+			Conversion:  ctx,
+			AllowedHost: ctx.Config.MessageServerUrl,
 		})
 	}
 

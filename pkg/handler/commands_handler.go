@@ -289,17 +289,18 @@ func parseCallbackData(data string) (prefix string, page int, term string, err e
 }
 
 func (c *CommandsHandler) ConvertURLToPDFHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	c.convertURL(ctx, b, update, constant.ConvertPDF, model.PDF, constant.PDFExtension, "PDF")
+	c.convertURL(ctx, b, update, constant.ConvertPDF, model.PDF)
 }
 
 func (c *CommandsHandler) ConvertURLToIMGHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	c.convertURL(ctx, b, update, constant.ConvertIMG, model.IMG, constant.ImgExtension, "IMG")
+	c.convertURL(ctx, b, update, constant.ConvertIMG, model.IMG)
 }
 
-// convertURL starts one Gotenberg conversion: the file itself arrives later on
-// the webhook, keyed by the request id stored here.
+// convertURL starts one conversion for a chat command. The shared service owns
+// the placeholder message, the file name and the Gotenberg submission, so the
+// command and POST /api/convert behave identically.
 func (c *CommandsHandler) convertURL(ctx context.Context, b *bot.Bot, update *models.Update,
-	cmd string, kind model.FileType, extension, label string,
+	cmd string, kind model.FileType,
 ) {
 	userID := update.Message.Chat.ID
 
@@ -308,53 +309,17 @@ func (c *CommandsHandler) convertURL(ctx context.Context, b *bot.Bot, update *mo
 		c.sendErrorMessage(ctx, b, update, "Invalid URL format")
 		return
 	}
-	// Only notices from the configured server may be converted.
-	if parsedURL.Host != c.ctx.Config.MessageServerUrl {
-		c.sendErrorMessage(ctx, b, update, "URL domain is not allowed")
-		return
-	}
 
-	fileName := ""
-	if f, ferr := c.extractFileName(ctx, parsedURL); ferr == nil {
-		fileName = f + extension
-	} else {
-		c.ctx.Logger.Error().Stack().Err(ferr).Msg("")
-	}
-
-	processingMsg, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: userID,
-		Text:   fmt.Sprintf("Converting URL to %s(%s). Please wait...⌛", label, fileName),
-	})
-	if err != nil {
-		c.ctx.Logger.Error().Stack().Err(err).Msg("")
-		return
-	}
-
-	request := model.RequestInfo{
-		ChatId:         userID,
-		MessageId:      processingMsg.ID,
-		Message:        parsedURL.String(),
-		ReplyMessageId: msgId,
-		FileName:       fileName,
-		Type:           kind,
-	}
-	go func() {
-		var (
-			requestID string
-			convErr   error
-		)
-		switch kind {
-		case model.PDF:
-			requestID, convErr = c.ctx.Gotenberg.URLToPDF(c.ctx.context(), request.Message)
-		case model.IMG:
-			requestID, convErr = c.ctx.Gotenberg.URLToImage(c.ctx.context(), request.Message)
-		}
-		if convErr != nil {
-			c.ctx.Logger.Error().Stack().Err(convErr).Msg("")
+	if _, err := c.ctx.StartConversion(ctx, userID, parsedURL.String(), kind, msgId); err != nil {
+		// A rejected host is the one failure the user can fix with another
+		// link. Later failures already replaced the placeholder with a notice,
+		// so they are only logged here.
+		if errors.Is(err, ErrDomainNotAllowed) {
+			c.sendErrorMessage(ctx, b, update, "URL domain is not allowed")
 			return
 		}
-		c.ctx.Store.Set(requestID, request, DefaultCacheDuration)
-	}()
+		c.ctx.Logger.Error().Stack().Err(err).Msg("start conversion")
+	}
 }
 
 func (c *CommandsHandler) sendOrEditMessage(ctx context.Context, b *bot.Bot, chatID int64, messageID int, text string, replyMarkup *models.InlineKeyboardMarkup) {
@@ -400,8 +365,10 @@ func (c *CommandsHandler) sendErrorMessage(ctx context.Context, b *bot.Bot, upda
 }
 
 // extractFileName derives the output file name from the notice page title,
-// falling back to the last path segment.
-func (c *CommandsHandler) extractFileName(ctx context.Context, u *url.URL) (string, error) {
+// falling back to the last path segment. It is a free function because the
+// conversion service uses it as well, and the two callers must agree on the
+// produced name.
+func extractFileName(ctx context.Context, u *url.URL) (string, error) {
 	urlFileName := path.Base(u.Path)
 	if urlFileName == "/" {
 		urlFileName = ""
