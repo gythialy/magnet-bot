@@ -3,8 +3,9 @@
 Telegram 公告订阅机器人：定时抓取采购公告 → 按用户关键词匹配 → 推送消息；可选接入
 Gotenberg 把公告转成 PDF / PNG。
 
-- 机器人通过 **Telegram 长轮询**工作，自身只需出网访问 Telegram 与公告站点。
-- 只有 PDF/PNG 转换功能需要 **Gotenberg 能访问到 bot 的 webhook 端口**（同一 Docker
+- 默认通过 **Telegram 长轮询**工作，自身只需出网访问 Telegram 与公告站点；配置
+  `PUBLIC_BASE_URL` 后改用 **Webhook** 推送（见 §8），这时才需要公网入口。
+- 只有 PDF/PNG 转换功能需要 **Gotenberg 能访问到 bot 的 HTTP 端口**（同一 Docker
   网络即可，不必公网）。
 
 ---
@@ -58,6 +59,10 @@ Gotenberg 把公告转成 PDF / PNG。
 > **只有 `TELEGRAM_BOT_TOKEN` 和 `SERVER_URL` 是必填的**，其余不配就走默认值：
 > 不配 `SCHEDULE_INTERVAL` 即每小时抓一次，不配 `CRAWL_DAYS` 即每轮回溯 1 天，
 > 不配 `CONFIG_PATH` 即用进程工作目录。
+
+> 启用公网 Webhook / Mini App 时另有 4 个变量（`PUBLIC_BASE_URL`、`TELEGRAM_WEBHOOK_SECRET`、
+> `TELEGRAM_WEBHOOK_ENABLED`、`MINI_APP_ENABLED`），且 `WEBHOOK_SERVER_PORT` 变为必填，
+> 见 §8.2。
 
 ---
 
@@ -210,7 +215,255 @@ journalctl -u magnet-bot -f
 
 ---
 
-## 8. 数据、日志与备份
+## 8. 公网接入（Webhook）
+
+长轮询模式不需要任何公网入口。想让 Telegram 主动把更新推给 bot（以及后续的 Mini App）
+时才需要本章：一个域名、一个 TLS 入口，bot 自己仍然只监听明文端口。
+
+### 8.1 数据流
+
+```text
+Telegram 服务器 / Telegram 客户端
+        │  POST https://bot.example.com/telegram/webhook
+        │  GET  https://bot.example.com/app/、/api/*
+        ▼
+Cloudflare 边缘（公共 TLS 终止，443）
+        │  cloudflared 隧道（本端主动外连，不开放入站端口）
+        ▼
+cloudflared（本地常驻进程）
+        │  service: https://caddy:443（originRequest.noTLSVerify）
+        ▼
+Caddy（本地反代，TLS 终止点）
+        │  reverse_proxy magnet-bot:8080（明文 HTTP）
+        ▼
+magnet-bot（单端口、明文、仅 Compose 内网）
+```
+
+bot 内的路由与来源：
+
+| 路由 | 用途 | 从哪里进来 |
+| --- | --- | --- |
+| `POST /telegram/webhook` | Telegram 推送；先校验 secret header，不匹配直接 403 | Cloudflare → Caddy → bot |
+| `GET /healthz` | 健康检查，始终注册，返回 `ok` | Cloudflare → Caddy → bot |
+| `GET /app/`、`/api/*` | Mini App 页面与 API；由 `MINI_APP_ENABLED` 控制，P2 起提供 | Cloudflare → Caddy → bot |
+| `POST /pdf/{id}` | Gotenberg 转换回执 | 内网直连，不经 Caddy / Cloudflare |
+
+要点：
+
+- **bot 不处理证书、不监听 TLS**：HTTPS 在 Cloudflare 边缘（或 Caddy）终止，到 bot 的
+  永远是明文 HTTP，所以 bot 里没有任何证书文件或 ACME 逻辑。
+- 公网只有一个入口端口（`WEBHOOK_SERVER_PORT`，如 `8080`）：webhook、健康检查、后续的
+  Mini App 共用它。
+- Gotenberg 回调仍走内网 `WEBHOOK_SERVER_URL:WEBHOOK_SERVER_PORT`，与公网入口互不影响。
+- 已知限制：**单实例假设**。一个 bot 进程对应一条 webhook 注册；两个实例会各自
+  `SetWebhook` 互相覆盖，同一条更新也可能被重复投递。当前不支持多副本，不要用横向扩容
+  解决吞吐问题。
+
+---
+
+### 8.2 新增环境变量
+
+| 变量 | 必需 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `PUBLIC_BASE_URL` | 启用公网时 ✅ | - | 对外入口，**必须 https 且自带 scheme**，如 `https://bot.example.com`；结尾 `/` 会被自动去掉。**留空 = 保持轮询模式**：不注册 webhook、没有公网入口，本地仍监听 `WEBHOOK_SERVER_PORT` 供 Gotenberg 回调与 `/healthz` 使用 |
+| `TELEGRAM_WEBHOOK_SECRET` | 启用公网时 ✅ | - | 1–256 个 `[A-Za-z0-9_-]` 字符；Telegram 每次推送带 `X-Telegram-Bot-Api-Secret-Token`，不匹配直接 403 |
+| `TELEGRAM_WEBHOOK_ENABLED` | - | `true` | 设为 `false` 时，即使配了 `PUBLIC_BASE_URL` 也继续用 `getUpdates` 轮询 |
+| `MINI_APP_ENABLED` | - | `true` | 控制是否注册 `/app/`、`/api/`；设为 `false` 时旧文本命令保持可用（App 页面 P2 起提供） |
+| `WEBHOOK_SERVER_PORT` | 启用公网时 ✅ | `0` | bot HTTP 监听端口（如 `8080`），**公网模式下必须非 0**；它同时是 Gotenberg 回调端口，不要再开第二个 |
+
+派生路径（固定，不需要在反代里逐个配置）：
+
+```
+{PUBLIC_BASE_URL}/telegram/webhook    Telegram 推送
+{PUBLIC_BASE_URL}/healthz             健康检查
+{PUBLIC_BASE_URL}/app/                Mini App 页面（P2 起）
+{PUBLIC_BASE_URL}/api/                Mini App API（P2 起）
+```
+
+> Telegram 侧限制：webhook URL 必须是 HTTPS，且端口只能是 **443 / 80 / 88 / 8443**。
+> 所以 `PUBLIC_BASE_URL` 不要带自定义端口，端口由公网入口统一收口。
+
+生成 secret（写进 `.env` 或 secret manager，不要提交仓库、不要贴进聊天记录）：
+
+```bash
+openssl rand -hex 32
+```
+
+启动校验（以 `pkg/config` 的 `Validate()` 为准）：
+
+1. `PUBLIC_BASE_URL` 为空 → 直接通过（轮询模式），其余变量都不校验；
+2. 非空时必须能解析成 URL、scheme 必须是 `https`、必须带 host，否则启动失败并打印原因；
+3. `TELEGRAM_WEBHOOK_ENABLED=false` → 校验到此为止，不要求 secret 与端口；
+4. 启用 webhook 时：`TELEGRAM_WEBHOOK_SECRET` 必填且匹配 `^[A-Za-z0-9_-]{1,256}$`；
+   `WEBHOOK_SERVER_PORT` 必须非 0（不设等于随机端口，webhook 回调都不通）。
+
+---
+
+### 8.3 Caddy
+
+`Caddyfile`：
+
+```caddy
+bot.example.com {
+    encode zstd gzip
+    reverse_proxy magnet-bot:8080
+}
+```
+
+- **路径不需要在 Caddy 里单独配置**：`reverse_proxy` 会原样透传 URI，`/telegram/webhook`、
+  `/healthz`、`/app/`、`/api/` 都由 bot 自己的 mux 注册，Caddy 只负责 TLS 与转发；
+  只有当某个子路径要交给别的服务时，才需要 `handle` 按路径拆分。
+- `magnet-bot:8080` 依赖同一 Compose 网络里的服务名解析；bot 与 Caddy 不在同一个
+  compose 项目时，要显式接到同一个外部网络。
+- 证书：公网侧由 Cloudflare 边缘提供，Caddy 与 cloudflared 之间用内部证书即可，所以 8.4 里
+  要 `noTLSVerify: true`。若坚持让 Caddy 自己申请 Let's Encrypt 证书，必须保证 ACME 校验能
+  到达 Caddy（HTTP-01 要在隧道里额外暴露 80 端口，或用 DNS-01），否则签发会一直失败。
+
+Compose 片段（只列公网入口相关的服务，其余沿用 §4）：
+
+```yaml
+services:
+  magnet-bot:
+    environment:
+      WEBHOOK_SERVER_PORT: "8080"
+      PUBLIC_BASE_URL: "https://bot.example.com"
+      TELEGRAM_WEBHOOK_SECRET: "${TELEGRAM_WEBHOOK_SECRET}"
+      TELEGRAM_WEBHOOK_ENABLED: "true"
+      MINI_APP_ENABLED: "true"
+    # 不需要 ports: —— Caddy 在同一网络内直连 magnet-bot:8080
+
+  caddy:
+    image: caddy:2
+    container_name: caddy
+    restart: unless-stopped
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy_data:/data
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    command: tunnel --config /etc/cloudflared/config.yml run
+    volumes:
+      - ./cloudflared:/etc/cloudflared:ro
+```
+
+---
+
+### 8.4 cloudflared
+
+`./cloudflared/config.yml`：
+
+```yaml
+tunnel: <TUNNEL_UUID>
+credentials-file: /etc/cloudflared/<TUNNEL_UUID>.json
+ingress:
+  - hostname: bot.example.com
+    service: https://caddy:443
+    originRequest:
+      noTLSVerify: true
+  - service: http_status:404
+```
+
+- `noTLSVerify: true` 是给 Caddy 的本地证书用的：Cloudflare 边缘到本机这一段不做证书校验，
+  公网侧仍是有效的 Let's Encrypt 证书。
+- 末尾的 `service: http_status:404` 是兜底规则，**必须保留**：cloudflared 要求 ingress
+  覆盖所有 hostname，缺这条会拒绝启动。
+- 想跳过 Caddy（让隧道直接对 bot 讲 HTTP）就把 `service` 改成 `http://magnet-bot:8080`，
+  这时不需要 `noTLSVerify`，链路也少一跳。
+- cloudflared 是**主动外连**，不需要在路由器上做端口映射，也不需要公网 IP。
+
+---
+
+### 8.5 启动顺序与失败行为
+
+1. 读配置并 `Validate()`：不通过 → 打印明确错误并退出（规则见 8.2）；
+2. 绑定 `:{WEBHOOK_SERVER_PORT}`：失败（端口被占、地址非法）→ **直接退出**，不会悄悄降级成
+   轮询。理由：Caddy 已经在往这个端口转发，半启动的进程只会让更新静默丢失；
+3. 后台开始 `Serve` 处理请求，`/healthz` 立即可用；
+4. 调 `SetWebhook` 注册 `{PUBLIC_BASE_URL}/telegram/webhook`：失败**不阻塞启动**，后台
+   每 **30 秒**重试一次并记日志（幂等，可以安全重试）；
+5. 收到 SIGTERM 正常退出：**不删除 webhook**。更新在 Telegram 侧最多保留 24 小时，
+   重启后继续投递，不需要人工重新注册；
+6. 反之，轮询模式的启动流程是：先 `DeleteWebhook` 清掉残留，再 `getUpdates`——残留的
+   webhook 会让 `getUpdates` 一直收不到更新（报告 409）。
+
+> `SetWebhook` 失败期间 bot 本身是健康的，`/healthz` 照样返回 `ok`，但 Telegram 不会推送。
+> 以 `getWebhookInfo` 的 `url` 是否为空为准，不要只看容器状态或健康检查。
+
+---
+
+### 8.6 自检
+
+```bash
+# 1) 健康检查：期望输出 ok
+curl -sS "${PUBLIC_BASE_URL}/healthz"; echo
+
+# 2) Telegram 侧注册状态
+curl -sS "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo" \
+  | jq '{url, last_error_message, pending_update_count}'
+```
+
+判定标准：
+
+- `url` 等于 `{PUBLIC_BASE_URL}/telegram/webhook`；
+- `last_error_message` 缺失或为空字符串；
+- `pending_update_count` 归零（刚重启时会短暂非 0，稳定后必须为 0）。
+
+若公网 `/healthz` 不通，先确认 bot 自己在监听：临时给 bot 加 `ports: ["8080:8080"]`，
+`curl -sS http://127.0.0.1:8080/healthz`，排完再删掉这段映射。本机通、公网不通，问题就在
+Caddy / cloudflared / Cloudflare 这条链路上。
+
+---
+
+### 8.7 Cloudflare 注意事项
+
+- **关闭该 hostname 的 Bot Fight Mode**，或对 `/telegram/webhook` 加 WAF **Skip** 规则；
+  否则 Telegram 的 POST 可能被 challenge/拦截，表现为 `getWebhookInfo` 里
+  `last_error_message` 是 `403` 或错误码 `1010`。
+- 用 IP 规则放行时可加 Telegram 来源网段 `149.154.160.0/20`、`91.108.4.0/22`；注意跳过
+  规则要覆盖这些请求，否则放行之后仍可能被托管规则挑战。
+- **不要**对 `/telegram/webhook` 开启缓存、请求体改写、Header 改写或任何 Transform Rule：
+  secret header 与 body 必须原样到达 bot。
+- Telegram 要求的 webhook 端口只有 443 / 80 / 88 / 8443，这也正好是 Cloudflare 代理支持的
+  端口，所以 `PUBLIC_BASE_URL` 不要带自定义端口。
+- Telegram 与 bot 出网是两条独立链路：入口通了但 bot 出不了网，一样收不到更新。
+
+---
+
+### 8.8 回滚
+
+```bash
+# 1) 清空 PUBLIC_BASE_URL（.env 里注释掉或留空）
+# 2) 重启 bot
+docker compose up -d magnet-bot
+docker compose logs -f magnet-bot | grep -iE "webhook|polling"
+```
+
+- 启动时检测到 `PUBLIC_BASE_URL` 为空 → 回到轮询；启动过程会先 `DeleteWebhook` 清掉残留，
+  **不需要手工调 Bot API**。
+- 想彻底下线公网入口：停掉 cloudflared（或在 Cloudflare 面板停用该 hostname 的路由），
+  Caddy 站点留着也无害。
+- `WEBHOOK_SERVER_PORT` **不要一起清掉**：Gotenberg 回调还在用它。
+- 回滚不需要动 `bot.db`，也不影响已推送历史。
+
+---
+
+### 8.9 排障：常见 `last_error_message`
+
+| 现象 | 含义 | 处理 |
+| --- | --- | --- |
+| 错误码 `1010`，或 403 且响应体是 Cloudflare 错误页 | Cloudflare 拦截（Bot Fight Mode / WAF / 托管规则） | 加 WAF Skip 规则或关闭 Bot Fight Mode（见 8.7） |
+| `403` 且响应体很干净、没有 Cloudflare 字样 | bot 自己的 secret 校验没过 | 改过 `TELEGRAM_WEBHOOK_SECRET` 后要重启，让 `SetWebhook` 带上新值；确认中间层没改写 header |
+| `404` | 路径或反代配置错 | 核对 URL 是否为 `/telegram/webhook`、Caddy 是否 `reverse_proxy magnet-bot:8080`、`WEBHOOK_SERVER_PORT` 与容器实际监听端口是否一致 |
+| `502` / `521` / `522` | Cloudflare 到源站不通 | cloudflared 是否在线、Caddy 是否在跑、`service:` 是否指向正确的容器与协议 |
+| `409` 或 `terminated by other getUpdates request` | 同一 token 有两个消费者 | 只保留一个 bot 实例；确认旧容器已停、没有残留 webhook 同时推送 |
+| `url` 为空、`pending_update_count` 一直是 0 | `SetWebhook` 一直失败 | 看 bot 日志里的重试记录；多为公网不可达（先按 8.6 自检）或 token 错误 |
+
+---
+
+## 9. 数据、日志与备份
 
 | 文件 | 说明 |
 | --- | --- |
@@ -227,7 +480,7 @@ sqlite3 data/bot.db ".backup 'backup-$(date +%F).db'"
 
 ---
 
-## 9. 升级与回滚
+## 10. 升级与回滚
 
 ```bash
 # 升级（镜像方式）
@@ -243,7 +496,7 @@ docker run ... ghcr.io/gythialy/magnet-bot:<上一个版本>
 
 ---
 
-## 10. 常见问题
+## 11. 常见问题
 
 **Q：`/convertpdf` 一直收不到文件**
 
@@ -286,15 +539,18 @@ docker run ... ghcr.io/gythialy/magnet-bot:<上一个版本>
 
 - 多为 `TELEGRAM_BOT_TOKEN` 无效、`CONFIG_PATH` 不可写（uid 65532）、或
   `PDF_SERVER_URL` 格式非法（空值可以，非法 URL 会直接报错）。
+- 公网配置错误也在这里退出：`PUBLIC_BASE_URL` 不是 https，或启用了 webhook 却缺
+  `TELEGRAM_WEBHOOK_SECRET` / `WEBHOOK_SERVER_PORT=0`（校验规则见 §8.2）。
 
-**Q：没有健康检查端点**
+**Q：健康检查端点是什么**
 
-bot 只暴露 `POST /pdf/{id}` 一个路由，GET 返回 405/404。编排层请用进程存活
-（`restart: unless-stopped`）或日志判活，不要配 HTTP healthcheck。
+`GET /healthz` 始终注册，返回 `200` 与纯文本 `ok`（无鉴权），可以直接用作 HTTP
+healthcheck；`/healthz` 上的非 GET 返回 405。未启用的能力（例如 Mini App 的 `/app/`、
+`/api/`，P2 之前）不注册路由，访问得到 404。
 
 ---
 
-## 11. 运维命令
+## 12. 运维命令
 
 | 命令 | 说明 |
 | --- | --- |
@@ -311,7 +567,7 @@ bot 只暴露 `POST /pdf/{id}` 一个路由，GET 返回 405/404。编排层请�
 
 ---
 
-## 12. 从源码构建镜像
+## 13. 从源码构建镜像
 
 ```bash
 docker build -t magnet-bot:local .

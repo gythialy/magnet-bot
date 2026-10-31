@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/gythialy/magnet/pkg/constant"
 	"github.com/rs/zerolog"
@@ -59,6 +60,46 @@ func MessageServerUrl() string {
 		return parse.Host
 	}
 	return u
+}
+
+// PublicBaseURL returns PUBLIC_BASE_URL without trailing slashes, or "" when
+// the public entry point is not configured. An empty value means polling mode,
+// so callers must treat it as "not configured" rather than invalid.
+func PublicBaseURL() string {
+	return strings.TrimRight(os.Getenv(constant.PublicBaseURL), "/")
+}
+
+// TelegramWebhookSecret returns TELEGRAM_WEBHOOK_SECRET, the value Telegram
+// echoes back in X-Telegram-Bot-Api-Secret-Token. It is returned verbatim
+// because whitespace would be rejected by the header check anyway.
+func TelegramWebhookSecret() string {
+	return os.Getenv(constant.TelegramWebhookSecret)
+}
+
+// TelegramWebhookEnabled reports TELEGRAM_WEBHOOK_ENABLED, defaulting to true.
+// Setting it to false keeps polling even when PUBLIC_BASE_URL is configured.
+func TelegramWebhookEnabled() bool {
+	return boolEnv(constant.TelegramWebhookEnabled, true)
+}
+
+// MiniAppEnabled reports MINI_APP_ENABLED, defaulting to true. Disabling it
+// keeps the legacy text commands instead of serving /app and /api.
+func MiniAppEnabled() bool {
+	return boolEnv(constant.MiniAppEnabled, true)
+}
+
+// boolEnv parses the boolean spellings people actually put in compose files.
+// Unrecognised values fall back to fallback so a typo cannot silently disable
+// a feature that was meant to stay on.
+func boolEnv(name string, fallback bool) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
+	case "1", "true", "on":
+		return true
+	case "0", "false", "off":
+		return false
+	default:
+		return fallback
+	}
 }
 
 // TelegramToken returns TELEGRAM_BOT_TOKEN.

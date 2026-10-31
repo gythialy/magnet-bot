@@ -27,10 +27,20 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full deployment guide
 | `CONFIG_PATH` | - | working dir | Directory for `bot.db` and `bot.log` |
 | `LOG_LEVEL` | - | `debug` | zerolog level: `trace`, `debug`, `info`, `warn`, `error`. `trace` also enables the crawler's HTTP debug logging (very noisy) |
 | `WEBHOOK_SERVER_URL` | - | - | Public URL of the webhook server (Gotenberg callback target) |
-| `WEBHOOK_SERVER_PORT` | - | - | Local port the webhook server listens on |
+| `WEBHOOK_SERVER_PORT` | public mode | `0` | Local HTTP port the unified server listens on; also the Gotenberg callback port. Must be non-zero when `PUBLIC_BASE_URL` is set |
 | `WEBHOOK_TOKEN` | - | - | Shared secret for webhook callbacks; enables auth when set |
 | `PDF_SERVER_URL` | - | - | Gotenberg service URL for PDF/PNG conversion |
+| `PUBLIC_BASE_URL` | public mode | empty | Public HTTPS origin, e.g. `https://bot.example.com` (scheme included, no trailing slash). **Empty = legacy polling mode**: no webhook registration and no public entry point |
+| `TELEGRAM_WEBHOOK_SECRET` | with webhook | - | 1–256 characters of `[A-Za-z0-9_-]`; Telegram echoes it in `X-Telegram-Bot-Api-Secret-Token` |
+| `TELEGRAM_WEBHOOK_ENABLED` | - | `true` | Set `false` to keep polling even when `PUBLIC_BASE_URL` is set |
+| `MINI_APP_ENABLED` | - | `true` | Set `false` to keep the legacy text commands instead of serving `/app/` and `/api/` |
 
 > All credential-like values (`TELEGRAM_BOT_TOKEN`, `WEBHOOK_TOKEN`, etc.)
 > should be provided via environment variables or secrets management at
 > deploy time. Never commit real values to the repository.
+
+> Leaving `PUBLIC_BASE_URL` empty keeps the legacy polling mode: no webhook is
+> registered and nothing has to be public — `WEBHOOK_SERVER_PORT` still serves
+> `/healthz` and the internal Gotenberg callback. The webhook ingress setup
+> (Caddy, cloudflared, Cloudflare caveats and rollback) is documented in
+> [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) §8.

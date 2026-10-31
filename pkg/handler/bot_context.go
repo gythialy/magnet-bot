@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"path"
@@ -12,6 +11,7 @@ import (
 	"github.com/gythialy/magnet/pkg/constant"
 	"github.com/gythialy/magnet/pkg/dal"
 	"github.com/gythialy/magnet/pkg/model"
+	"github.com/gythialy/magnet/pkg/server"
 	"github.com/gythialy/magnet/pkg/utils"
 
 	"github.com/glebarez/sqlite"
@@ -52,18 +52,18 @@ func (dl *dbLogger) Trace(_ context.Context, begin time.Time, fc func() (string,
 }
 
 type BotContext struct {
-	Bot             *bot.Bot
-	Store           *Store[model.RequestInfo]
-	Logger          *utils.Logger
-	Config          *config.ServiceConfig
-	Gotenberg       *GotenbergClient
-	ctx             context.Context
-	cancel          context.CancelFunc
-	scheduler       *gocron.Scheduler
-	processor       *InfoProcessor
-	retrier         *AttachmentRetrier
-	cmdHandler      *CommandsHandler
-	shutdownWebhook func()
+	Bot        *bot.Bot
+	Store      *Store[model.RequestInfo]
+	Logger     *utils.Logger
+	Config     *config.ServiceConfig
+	Gotenberg  *GotenbergClient
+	ctx        context.Context
+	cancel     context.CancelFunc
+	scheduler  *gocron.Scheduler
+	processor  *InfoProcessor
+	retrier    *AttachmentRetrier
+	cmdHandler *CommandsHandler
+	httpServer *server.Server
 }
 
 // context returns the process-wide context so background work honours
@@ -78,6 +78,12 @@ func (ctx *BotContext) context() context.Context {
 
 func NewBotContext() (*BotContext, error) {
 	cfg := config.NewServiceConfig()
+	// Validate before anything is built: a malformed PUBLIC_BASE_URL, or a
+	// webhook enabled without its secret, must stop the process at startup
+	// instead of turning every Telegram delivery into a 403.
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
 
 	ctxLogger := utils.Configure(utils.Config{
 		ConsoleLoggingEnabled: true,
@@ -90,6 +96,13 @@ func NewBotContext() (*BotContext, error) {
 		MaxAge:                7,
 		LogLevel:              cfg.LogLevel,
 	})
+
+	// Not fatal: the Mini App is served from the same listener, so it stays
+	// usable against a local reverse proxy while debugging.
+	if cfg.MiniAppEnabled && !cfg.PublicEnabled() {
+		ctxLogger.Warn().
+			Msg("MINI_APP_ENABLED is true but PUBLIC_BASE_URL is empty: the Mini App is only reachable locally")
+	}
 
 	db, err := gorm.Open(sqlite.Open(path.Join(cfg.BaseDir, constant.DatabaseFile)), &gorm.Config{
 		Logger: &dbLogger{ctxLogger},
@@ -143,10 +156,18 @@ func NewBotContext() (*BotContext, error) {
 
 	botContext.cmdHandler = NewCommandsHandler(botContext)
 
-	telegramBot, err := bot.New(config.TelegramToken(), []bot.Option{
+	botOptions := []bot.Option{
 		bot.WithDefaultHandler((&defaultHandler{cmd: botContext.cmdHandler}).Handler),
 		bot.WithHTTPClient(time.Minute, &http.Client{Timeout: 2 * time.Minute}),
-	}...)
+	}
+	// Only set the secret when one is configured. The library would treat an
+	// empty value as "no check" anyway, but leaving the option out keeps the
+	// intent visible instead of relying on that coincidence.
+	if cfg.WebhookSecret != "" {
+		botOptions = append(botOptions, bot.WithWebhookSecretToken(cfg.WebhookSecret))
+	}
+
+	telegramBot, err := bot.New(config.TelegramToken(), botOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +226,68 @@ func (ctx *BotContext) initBot() error {
 	return err
 }
 
-func (ctx *BotContext) Start() {
+const (
+	// webhookRetryInterval is how long a failed setWebhook waits before the
+	// registration is attempted again.
+	webhookRetryInterval = 30 * time.Second
+	// webhookSetupTimeout bounds the synchronous deleteWebhook call so an
+	// unreachable API cannot stall startup for the HTTP client's full timeout.
+	webhookSetupTimeout = 10 * time.Second
+	// serverShutdownTimeout is the grace period given to in-flight requests.
+	serverShutdownTimeout = 5 * time.Second
+)
+
+// Start binds the HTTP listener, starts Telegram delivery in the mode the
+// configuration selects, and launches the background workers. The only error
+// returned is a listener that could not bind: everything after that is retried
+// or logged, because a bot whose Telegram API is temporarily unreachable still
+// serves the Gotenberg callback and the scheduler.
+func (ctx *BotContext) Start() error {
+	if ctx.Config.PDF.WebhookServerPort == 0 && !ctx.Config.PublicEnabled() {
+		// Port 0 picks an ephemeral port nobody knows, so Gotenberg's callback
+		// to {WEBHOOK_SERVER_URL}:0 can never arrive.
+		ctx.Logger.Warn().
+			Msg("WEBHOOK_SERVER_PORT is 0 and PUBLIC_BASE_URL is empty: the Gotenberg callback address is unreachable")
+	}
+
+	// Telegram accepts updates through getUpdates or the webhook, never both,
+	// so the push endpoint is mounted only in webhook mode. In polling mode a
+	// leftover `/telegram/webhook` would be an unauthenticated way to inject
+	// updates into the process; leaving it unregistered answers 404 instead.
+	webhookMode := ctx.Config.PublicEnabled() && ctx.Config.TelegramWebhookEnabled
+	var telegramUpdate http.HandlerFunc
+	if webhookMode {
+		telegramUpdate = ctx.telegramWebhook(ctx.Bot.WebhookHandler())
+	}
+
+	// Bind before starting any background work: a port already in use must fail
+	// startup instead of leaving a process that silently receives nothing.
+	srv := server.New(server.Config{
+		Addr:            fmt.Sprintf(":%d", ctx.Config.PDF.WebhookServerPort),
+		TelegramWebhook: telegramUpdate,
+		PDFCallback:     newWebhooker(ctx).WebhookHandler,
+		Logger:          ctx.Logger,
+	})
+	if err := srv.Start(); err != nil {
+		return fmt.Errorf("start HTTP server: %w", err)
+	}
+	ctx.httpServer = srv
+	ctx.Logger.Info().Str("addr", srv.Addr()).Msg("HTTP server listening")
+
+	// Telegram accepts updates through getUpdates or the webhook, never both.
+	// Webhook mode publishes the URL in the background and consumes pushes;
+	// polling mode first clears a leftover registration, otherwise Telegram
+	// keeps pushing to it and getUpdates fails with 409 Conflict.
+	if webhookMode {
+		ctx.Logger.Info().Str("url", ctx.Config.WebhookURL()).Msg("starting in webhook mode")
+		go ctx.registerWebhook()
+		go ctx.Bot.StartWebhook(ctx.ctx)
+	} else {
+		ctx.Logger.Info().Msg("starting in polling mode")
+		ctx.deleteWebhook()
+		go ctx.Bot.Start(ctx.ctx)
+	}
+
 	scheduleInterval := config.ScheduleInterval()
 
 	job, _ := ctx.scheduler.Every(scheduleInterval).Hours().Name("fetch_info").SingletonMode().Do(func() error {
@@ -229,54 +311,84 @@ func (ctx *BotContext) Start() {
 	)
 
 	ctx.scheduler.StartAsync()
-	ctx.startWebhookServer()
-	go ctx.Bot.Start(ctx.ctx)
 	// Attachments that failed to convert are retried here, independently of the
 	// crawl schedule: a Gotenberg restart would otherwise cost the whole window.
 	if ctx.retrier != nil {
 		go ctx.retrier.Start(ctx.ctx)
 	}
+	return nil
 }
 
+// Stop shuts the process down. The webhook registration is deliberately kept:
+// Telegram retains undelivered updates for up to 24 hours and resumes delivery
+// to the same URL, so deleting it would only add a registration gap.
 func (ctx *BotContext) Stop() {
 	if ctx.cancel != nil {
 		ctx.cancel()
 	}
+	// Drain the listener first so no new update is accepted while the processor
+	// and the scheduler are being released.
+	if ctx.httpServer != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), serverShutdownTimeout)
+		defer cancel()
+
+		if err := ctx.httpServer.Shutdown(shutdownCtx); err != nil {
+			ctx.Logger.Error().Err(err).Msg("HTTP server shutdown error")
+		}
+	}
 	ctx.processor.Release()
 	ctx.scheduler.Stop()
 	ctx.scheduler.StopBlockingChan()
-	if ctx.shutdownWebhook != nil {
-		ctx.shutdownWebhook()
+}
+
+// registerWebhook publishes the webhook URL to Telegram and keeps retrying
+// until it succeeds or the bot shuts down. It runs in the background so an
+// unreachable Telegram API delays deliveries instead of startup. The call is
+// idempotent (setWebhook replaces the same registration), so retrying one that
+// actually succeeded but reported a timeout is harmless.
+func (ctx *BotContext) registerWebhook() {
+	params := &bot.SetWebhookParams{
+		URL:            ctx.Config.WebhookURL(),
+		SecretToken:    ctx.Config.WebhookSecret,
+		AllowedUpdates: []string{"message", "callback_query", "edited_message"},
+		MaxConnections: 40,
+	}
+
+	for ctx.context().Err() == nil {
+		ok, err := ctx.Bot.SetWebhook(ctx.context(), params)
+		switch {
+		case err != nil && ctx.context().Err() != nil:
+			// Shutdown aborted the request; that is not a registration failure.
+			return
+		case err != nil:
+			ctx.Logger.Warn().Err(err).Str("url", params.URL).
+				Dur("retryIn", webhookRetryInterval).
+				Msg("telegram setWebhook failed")
+		case !ok:
+			ctx.Logger.Warn().Str("url", params.URL).
+				Dur("retryIn", webhookRetryInterval).
+				Msg("telegram setWebhook was not accepted")
+		default:
+			ctx.Logger.Info().Str("url", params.URL).Msg("telegram webhook registered")
+			return
+		}
+
+		select {
+		case <-ctx.context().Done():
+			return
+		case <-time.Tick(webhookRetryInterval):
+		}
 	}
 }
 
-// startWebhookServer serves the Gotenberg callback endpoint. The request id is
-// a path wildcard, so the handler can reject unknown ids before reading a body.
-func (ctx *BotContext) startWebhookServer() {
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST "+constant.PDFEndPoint+"{id}", newWebhooker(ctx).WebhookHandler)
+// deleteWebhook clears a registration left by an earlier webhook run. It is
+// best effort and bounded: polling cannot start while a webhook is set, but a
+// failed cleanup must not keep the bot from trying anyway.
+func (ctx *BotContext) deleteWebhook() {
+	timeoutCtx, cancel := context.WithTimeout(ctx.context(), webhookSetupTimeout)
+	defer cancel()
 
-	server := &http.Server{
-		Addr:              fmt.Sprintf(":%d", ctx.Config.PDF.WebhookServerPort),
-		Handler:           mux,
-		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       time.Minute,
-		WriteTimeout:      time.Minute,
-		IdleTimeout:       2 * time.Minute,
-	}
-
-	go func() {
-		if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-			ctx.Logger.Error().Err(err).Msg("Webhook server error")
-		}
-	}()
-
-	ctx.shutdownWebhook = func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			ctx.Logger.Error().Err(err).Msg("Webhook server shutdown error")
-		}
+	if _, err := ctx.Bot.DeleteWebhook(timeoutCtx, &bot.DeleteWebhookParams{}); err != nil {
+		ctx.Logger.Warn().Err(err).Msg("telegram deleteWebhook failed; a stale webhook may block getUpdates")
 	}
 }
