@@ -372,19 +372,21 @@ func (ctx *BotContext) Start() error {
 		ctx.processor.Process()
 		return nil
 	})
-	l := ctx.Logger.Debug()
+	// A zerolog Event is a single-use builder: sharing one across the four
+	// listeners corrupted its buffer and panicked with "index out of range
+	// [-1]" as soon as debug logging was enabled. Each call builds its own.
 	job.RegisterEventListeners(
 		gocron.AfterJobRuns(func(jobName string) {
-			l.Msgf("afterJobRuns: %s_scheduler", jobName)
+			ctx.Logger.Debug().Msgf("afterJobRuns: %s_scheduler", jobName)
 		}),
 		gocron.BeforeJobRuns(func(jobName string) {
-			l.Msgf("beforeJobRuns: %s_scheduler", jobName)
+			ctx.Logger.Debug().Msgf("beforeJobRuns: %s_scheduler", jobName)
 		}),
 		gocron.WhenJobReturnsError(func(jobName string, err error) {
-			l.Msgf("whenJobReturnsError: %s_scheduler, %v", jobName, err)
+			ctx.Logger.Debug().Msgf("whenJobReturnsError: %s_scheduler, %v", jobName, err)
 		}),
 		gocron.WhenJobReturnsNoError(func(jobName string) {
-			l.Msgf("whenJobReturnsNoError: %s_scheduler", jobName)
+			ctx.Logger.Debug().Msgf("whenJobReturnsNoError: %s_scheduler", jobName)
 		}),
 	)
 
