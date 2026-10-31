@@ -1,0 +1,150 @@
+/*
+ * records.css — the Records tab.
+ *
+ * A column, not a card stack: rows are hairline-separated entries in one reading
+ * rhythm, and the detail is a sheet. The head band above the list is drawn by
+ * base.css, so this file only owns the toolbar, the entries and the sheet body.
+ */
+
+.records-toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.records-toolbar .search-input {
+  margin: 0;
+}
+
+.record-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.record-list[hidden] {
+  display: none;
+}
+
+.record-row {
+  margin: 0;
+}
+
+/* The button is the row: `.entry` supplies the rules and rhythm, this strips
+   the control chrome the browser would otherwise give a <button>. */
+.record-button {
+  width: 100%;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.record-button:active {
+  background-color: var(--accent-fill);
+}
+
+.record-button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+/* Drawn chevron: a rotated border, never a glyph from the font. */
+.record-chevron {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-top: 1.5px solid var(--muted-foreground);
+  border-right: 1.5px solid var(--muted-foreground);
+  transform: rotate(45deg);
+  opacity: 0.7;
+}
+
+.load-more {
+  width: 100%;
+  margin: 14px 0 0;
+}
+
+.load-more[hidden] {
+  display: none;
+}
+
+/* Detail sheet ----------------------------------------------------------- */
+
+.sheet-lead {
+  margin: 4px 0 14px;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.sheet-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.sheet-row {
+  display: flex;
+  gap: 14px;
+  padding: 10px 0;
+  border-top: 1px solid var(--rule);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.sheet-row:first-child {
+  border-top: none;
+  padding-top: 2px;
+}
+
+.sheet-label {
+  flex: 0 0 84px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.sheet-value {
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+}
+
+.sheet-link {
+  flex: 1 1 auto;
+  color: var(--app-accent-text);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.sheet-link:active {
+  opacity: 0.7;
+}
+
+.sheet-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.sheet-actions .btn,
+.sheet-actions .btn-ghost {
+  flex: 1 1 0;
+}
+
+/* Keep the page still while the sheet owns the interaction. */
+body.is-sheet-open {
+  overflow: hidden;
+}

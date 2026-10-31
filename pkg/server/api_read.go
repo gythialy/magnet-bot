@@ -97,11 +97,25 @@ type alarmRecordsResponse struct {
 	NextOffset *int              `json:"nextOffset"`
 }
 
+// alarmRecordItem carries the whole record, not just the row summary: the Mini
+// App renders the detail sheet from the page it already loaded, so opening a
+// record costs no extra request and never leaves the app.
 type alarmRecordItem struct {
-	BusinessID string `json:"businessId"`
-	CreditName string `json:"creditName"`
-	StartDate  string `json:"startDate"`
-	Link       string `json:"link"`
+	BusinessID       string `json:"businessId"`
+	CreditName       string `json:"creditName"`
+	CreditCode       string `json:"creditCode,omitempty"`
+	StartDate        string `json:"startDate"`
+	EndDate          string `json:"endDate,omitempty"`
+	Title            string `json:"title,omitempty"`
+	DetailReason     string `json:"detailReason,omitempty"`
+	HandleDepartment string `json:"handleDepartment,omitempty"`
+	HandleUnit       string `json:"handleUnit,omitempty"`
+	HandleResult     string `json:"handleResult,omitempty"`
+	PageURL1         string `json:"pageUrl1,omitempty"`
+	PageURL2         string `json:"pageUrl2,omitempty"`
+	NoticeID         string `json:"noticeId,omitempty"`
+	OriginNoticeID   string `json:"originNoticeId,omitempty"`
+	Link             string `json:"link"`
 }
 
 // handleStatistics serves the four counters of the /statistics report plus the
@@ -258,12 +272,26 @@ func (a *apiHandler) handleAlarmRecords(w http.ResponseWriter, r *http.Request) 
 
 	items := make([]alarmRecordItem, 0, len(rows))
 	for _, alarm := range rows {
-		items = append(items, alarmRecordItem{
-			BusinessID: alarm.BusinessID,
-			CreditName: alarm.CreditName,
-			StartDate:  formatAPITime(alarm.StartDate),
-			Link:       a.alarmLink(alarm.BusinessID),
-		})
+		item := alarmRecordItem{
+			BusinessID:       alarm.BusinessID,
+			CreditName:       alarm.CreditName,
+			CreditCode:       alarm.CreditCode,
+			StartDate:        formatAPITime(alarm.StartDate),
+			Title:            apiString(alarm.Title),
+			DetailReason:     apiString(alarm.DetailReason),
+			HandleDepartment: apiString(alarm.HandleDepartment),
+			HandleUnit:       apiString(alarm.HandleUnit),
+			HandleResult:     apiString(alarm.HandleResult),
+			PageURL1:         alarm.PageUrl1,
+			PageURL2:         apiString(alarm.PageUrl2),
+			NoticeID:         alarm.NoticeID,
+			OriginNoticeID:   apiString(alarm.OriginNoticeID),
+			Link:             a.alarmLink(alarm.BusinessID),
+		}
+		if alarm.EndDate != nil {
+			item.EndDate = formatAPITime(*alarm.EndDate)
+		}
+		items = append(items, item)
 	}
 
 	WriteJSON(w, http.StatusOK, alarmRecordsResponse{
@@ -352,6 +380,15 @@ func nextOffset(offset, returned int, total int64) *int {
 // formatAPITime renders one instant in the wire format the client parses. UTC
 // is used so the same row produces the same string on a server whose local
 // zone changes; the instant itself is preserved.
+// apiString flattens the nullable columns of a record into the JSON shape the
+// client renders: omitted when absent, never the string "null".
+func apiString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
 func formatAPITime(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
