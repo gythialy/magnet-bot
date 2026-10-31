@@ -26,10 +26,10 @@
   min-width: 0;
   /* 40px is the touch-target floor used across the Mini App. */
   min-height: 40px;
-  padding: 8px 12px;
-  background-color: var(--tg-secondary-bg);
-  border: 1px solid var(--app-border);
-  border-radius: 10px;
+  padding: 9px 12px;
+  background-color: var(--background);
+  border: 1px solid var(--input);
+  border-radius: var(--app-radius);
   color: var(--tg-text);
   font-size: 15px;
   -webkit-appearance: none;
@@ -37,12 +37,12 @@
 }
 
 .kw-toolbar .search-input::placeholder {
-  color: var(--tg-hint);
+  color: var(--muted-foreground);
 }
 
 .kw-toolbar .search-input:focus {
   /* Inset outline reads as a border on iOS and still satisfies focus visibility. */
-  outline: 2px solid var(--tg-button);
+  outline: 2px solid var(--ring);
   outline-offset: -1px;
 }
 
@@ -69,8 +69,8 @@
   align-items: center;
   gap: 10px;
   min-height: 56px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--app-border);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--rule);
 }
 
 .kw-row:last-child {
@@ -78,7 +78,7 @@
 }
 
 .kw-id {
-  color: var(--tg-hint);
+  color: var(--muted-foreground);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
@@ -99,7 +99,7 @@
 }
 
 .kw-count {
-  color: var(--tg-hint);
+  color: var(--muted-foreground);
   font-size: 12px;
 }
 
@@ -124,7 +124,7 @@
 .modal-title {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   line-height: 1.4;
   overflow-wrap: anywhere;
@@ -134,65 +134,11 @@
   flex: 0 0 auto;
   min-width: 40px;
   padding: 8px 10px;
-  border-radius: 10px;
+  border-radius: var(--app-radius);
 }
 
 .kw-dialog .modal-close:active {
-  background-color: var(--tg-secondary-bg);
-}
-
-.dialog-body {
-  margin-top: 12px;
-}
-
-.dialog-textarea,
-.dialog-input {
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 40px;
-  padding: 10px 12px;
-  background-color: var(--tg-secondary-bg);
-  border: 1px solid var(--app-border);
-  border-radius: 10px;
-  color: var(--tg-text);
-  font: inherit;
-  font-size: 15px;
-  -webkit-appearance: none;
-  appearance: none;
-}
-
-.dialog-textarea {
-  min-height: 92px;
-  resize: vertical;
-}
-
-.dialog-textarea::placeholder,
-.dialog-input::placeholder {
-  color: var(--tg-hint);
-}
-
-.dialog-message {
-  font-size: 14px;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-
-.dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.dialog-actions .btn,
-.dialog-actions .btn-ghost {
-  flex: 1 1 0;
-}
-
-/* Destructive confirmation: the only red button in the Mini App. */
-.dialog-actions .btn.is-danger {
-  background-color: var(--app-danger);
-  color: #ffffff;
+  background-color: var(--accent-fill);
 }
 
 /* Focus ------------------------------------------------------------------ */
@@ -204,31 +150,8 @@
 .dialog-textarea:focus-visible,
 .dialog-actions .btn:focus-visible,
 .dialog-actions .btn-ghost:focus-visible {
-  outline: 2px solid var(--tg-button);
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
-}
-
-/* Shared bits (mirrored in alarms.css) ----------------------------------- */
-
-.icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: 10px;
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-
-.icon-btn:disabled {
-  opacity: 0.45;
-  cursor: default;
 }
 
 .error-actions {

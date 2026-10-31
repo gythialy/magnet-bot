@@ -72,6 +72,18 @@ func (r *InfoProcessor) Process() {
 }
 
 func (r *InfoProcessor) Get(userId int64) {
+	// /retry is administrator-triggered, but the target account still has to be
+	// allowed: re-pushing to a revoked user would bypass the same gate the
+	// scheduled sweep applies and would hand notices to someone who may no
+	// longer use the bot. Check before crawling and before touching the pool,
+	// so a rejected request costs one cache lookup and nothing else.
+	if backgroundAccessEnforced() && !dal.User.IsAllowed(userId) {
+		r.ctx.Logger.Debug().
+			Int64("chatId", userId).
+			Msg("skip forced push for user without access")
+		return
+	}
+
 	results := r.crawler.Projects()
 	if len(results) == 0 {
 		return
@@ -88,13 +100,65 @@ func (r *InfoProcessor) Release() {
 	r.pool.Release()
 }
 
+// backgroundAccessEnforced reports whether this database carries the
+// access-control schema, i.e. whether a denied IsAllowed decision is an
+// authoritative "no" rather than "the access tables do not exist".
+//
+// Databases created before #412 (and narrow fixtures that migrate only the
+// tables they exercise) have no users/settings tables. There was no access
+// control to honour in that state, so background work keeps its historical
+// behaviour — everyone is served — exactly like access mode "off". Production
+// migrations create the schema before the bot starts, so this fallback cannot
+// weaken a real deployment.
+//
+// A missing mode row is not an error (GetSetting reports ok=false), so only a
+// driver-level "table does not exist" error selects the fallback. Any other
+// read failure keeps enforcement on: a transient database problem must not
+// silently open the bot.
+func backgroundAccessEnforced() bool {
+	_, _, err := dal.GetSetting(model.SettingAccessMode)
+	if err == nil {
+		return true
+	}
+	return !isMissingTable(err)
+}
+
+// isMissingTable recognises the driver errors that mean the table has never
+// been migrated. The match is deliberately narrow: treating any read failure as
+// "no schema" would turn a database outage into an open gate.
+func isMissingTable(err error) bool {
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "no such table") ||
+		strings.Contains(message, "doesn't exist")
+}
+
 func (r *InfoProcessor) config() map[int64]ProcessData {
 	ids := dal.Keyword.Ids()
 	m := make(map[int64]ProcessData, len(ids))
+	enforced := backgroundAccessEnforced()
+	skipped := 0
 	for _, id := range ids {
-		if _, ok := m[id]; !ok {
-			m[id] = r.get(id)
+		if _, ok := m[id]; ok {
+			continue
 		}
+		// Keywords survive a revoke, so the scheduled sweep must re-check
+		// access here instead of trusting the rows. This is the single entry
+		// point for unattended pushes: filtering before r.get means a blocked
+		// account costs one cached lookup rather than a keyword expansion.
+		if enforced && !dal.User.IsAllowed(id) {
+			skipped++
+			continue
+		}
+		m[id] = r.get(id)
+	}
+
+	// One summary line per run keeps a large deployment observable without
+	// logging every filtered user on every cycle.
+	if skipped > 0 {
+		r.ctx.Logger.Debug().
+			Int("skipped", skipped).
+			Int("users", len(ids)).
+			Msg("skipped users without access")
 	}
 
 	return m

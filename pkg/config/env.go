@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log/slog"
 	"net/url"
 	"os"
 	"strconv"
@@ -10,20 +11,83 @@ import (
 	"github.com/rs/zerolog"
 )
 
-const defaultScheduleInterval = 1
+const (
+	defaultScheduleInterval = 1
 
-// ManagerId returns the Telegram user ID allowed to run admin commands, or 0
-// when MANAGER_ID is unset or is not a valid int64.
+	// allowedUserIDsEnv is the seed list of regular users. The constant package
+	// carries only the variables that older releases already knew about; keeping
+	// this one local keeps the existing constant API untouched.
+	allowedUserIDsEnv = "ALLOWED_USER_IDS"
+)
+
+// ManagerId returns the first Telegram user ID allowed to run admin commands, or
+// 0 when MANAGER_ID is unset or carries no valid id.
+//
+// MANAGER_ID may now list several comma-separated administrators; the legacy
+// call sites expect a single id, so this returns the first one. For the historic
+// single-value form the result is exactly what it always was. New code should use
+// ManagerIds and authorise against the whole list.
 func ManagerId() int64 {
-	id := os.Getenv(constant.ManagerId)
-	if id == "" {
+	ids := ManagerIds()
+	if len(ids) == 0 {
 		return 0
 	}
-	i, err := strconv.ParseInt(id, 10, 64)
-	if err != nil {
-		return 0
+	return ids[0]
+}
+
+// ManagerIds returns every administrator in the comma-separated MANAGER_ID
+// variable, in declaration order and without duplicates.
+//
+// Parsing is forgiving on purpose: MANAGER_ID is edited by an operator in a
+// compose file, so a stray space or a typo must not take the whole bot down.
+// Empty entries are skipped, and an unparsable or non-positive id is ignored with
+// a warning naming the variable (never the whole value). An unset or entirely
+// invalid variable yields an empty slice.
+func ManagerIds() []int64 {
+	return parseUserIDs(os.Getenv(constant.ManagerId), constant.ManagerId)
+}
+
+// AllowedUserIDs returns the comma-separated ALLOWED_USER_IDS seed list of
+// regular users, in declaration order and without duplicates.
+//
+// It is the same parser as MANAGER_ID: empty entries are skipped and invalid ids
+// are ignored with a warning. An unset variable yields an empty slice.
+func AllowedUserIDs() []int64 {
+	return parseUserIDs(os.Getenv(allowedUserIDsEnv), allowedUserIDsEnv)
+}
+
+// parseUserIDs splits a comma-separated id list. source is the environment
+// variable name, used only for the warning so an operator knows which setting to
+// fix.
+func parseUserIDs(raw, source string) []int64 {
+	if strings.TrimSpace(raw) == "" {
+		return nil
 	}
-	return i
+
+	parts := strings.Split(raw, ",")
+	ids := make([]int64, 0, len(parts))
+	seen := make(map[int64]struct{}, len(parts))
+
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(part, 10, 64)
+		// Telegram ids are positive; a zero or negative value cannot identify an
+		// account, so it is treated as a typo rather than silently stored.
+		if err != nil || id <= 0 {
+			slog.Warn("ignoring invalid user id in environment", "variable", source, "value", part)
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+
+	return ids
 }
 
 // LogLevel returns LOG_LEVEL, falling back to debug for unset or invalid values.

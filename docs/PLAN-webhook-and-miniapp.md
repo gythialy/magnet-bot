@@ -1,7 +1,8 @@
 # magnet-bot 功能规划：公网 Webhook + Mini App + 转换入口
 
-> 状态：P1 实施中（`feat/p1-webhook`）——HTTP server、配置校验、`/healthz` 已合入，
-> webhook 接入与部署文档随本阶段完成；P2–P4（Mini App）未开始
+> 状态：P1–P4 已完成（统一 HTTP server + webhook、Mini App 读写与转换入口、命令退役）；
+> P5 后端已完成（`users`/`settings` 表、三处准入、管理 API），`/settings` 命令与 Settings 页
+> 在 `feat/p5-access-control` 上实施中
 > 日期：2026-10-30
 > 基线：`main` @ `2a205a4`
 
@@ -131,7 +132,20 @@ Gotenberg 回调不走公网：仍是 `{WEBHOOK_SERVER_URL}:{WEBHOOK_SERVER_PORT
 
 - `+ Add alarm keyword`（批量添加）
 - 告警关键词行：`#id`、关键词、创建日期、`✏️` / `🗑`
-- 下方「Alarm records」区块：名称、日期、`↗`（取代 `/search_alarm_records`）
+
+#### Records
+
+- 只读告警记录列表：信用主体、`业务编号 · 开始日期`
+- 搜索（信用主体模糊匹配）+ `Load more` 游标分页
+- 点整行 → 应用内详情弹层：公告标题、信用代码、起止时间、处罚部门/单位、具体情形、处罚结果、公告链接
+- 弹层底部 `Open in chat` 用 `openTelegramLink` 回到对话（不再跳浏览器）
+- 取代 `/search_alarm_records` 与 `/alarm <id>`
+
+#### Settings（管理员）
+
+- 顶部 segmented 切换两个 pane：
+  - **People**：准入模式开关、人员 CRUD、最近被拒
+  - **About**：版本/构建时间、webhook 状态、计数
 
 **页面语言**：英文（与 bot 一致）；关键词内容原样展示。
 **主题**：使用 Telegram `themeParams`，监听 `themeChanged`；非 Telegram 环境打开时提示从 bot 进入。
@@ -170,8 +184,8 @@ Gotenberg 回调不走公网：仍是 `{WEBHOOK_SERVER_URL}:{WEBHOOK_SERVER_PORT
 | `/add_alarm_keywords` | 同上 | 保留 |
 | `/list_today` | 同上 | 保留 |
 | `/search_history_title` | 同上 | 保留 |
-| `/search_alarm_records` | 同上（进 App 的 Alarms） | 保留 |
-| `/alarm <id>` | 保留 | 保留 |
+| `/search_alarm_records` | 同上（进 App 的 Records） | 保留 |
+| `/alarm <id>` | 提示 + 打开 App 按钮（详情在 App 内展开） | 保留 |
 | `/convertpdf`、`/convertimg` | 提示 + 打开 App 按钮 | 保留 |
 | `/me`、`/start`、`/retry`、`/clean` | 保留 | 保留 |
 
@@ -348,6 +362,108 @@ Cloudflare 注意：
 1. `PUBLIC_BASE_URL` 的实际域名（文档中先用 `bot.example.com` 占位）
 2. 转换限流阈值（建议 5 次/分钟/用户）
 3. App 是否需要「批量删除」与「新增关键词时按告警/项目区分」的快捷入口（可后续迭代）
+
+---
+
+## 13. 访问控制与管理员设置台
+
+### 13.1 数据模型
+
+`users`（主键即 Telegram id，不做软删——删掉一行必须立刻停止匹配）
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `user_id` | INTEGER PK | Telegram 用户 ID |
+| `remark` | TEXT | 管理员备注，不参与鉴权 |
+| `role` | INTEGER | `0` 普通用户 / `1` 管理员（线上 JSON 用 `"user"` / `"admin"`） |
+| `enabled` | BOOL | `restricted` 模式下的开关；停用保留角色与备注 |
+| `from_env` | BOOL | 由 `MANAGER_ID` / `ALLOWED_USER_IDS` 同步的行，只允许改备注 |
+| `created_at` / `updated_at` | DATETIME | 管理编辑时间；`last_seen` 不写 `updated_at` |
+| `last_seen` | DATETIME NULL | 最近活动，最多每分钟一次 |
+
+`settings`（键值表，新增设置不需要迁移）
+
+| 列 | 说明 |
+|---|---|
+| `key` | 主键，目前只有 `access_mode` |
+| `value` | `off` / `restricted` |
+| `updated_at` | 最近修改时间 |
+
+引导（`dal.EnsureBootstrap`，启动时、开始服务前）：先把环境变量同步进 `users`，再决定模式——
+`settings.access_mode` 已有非空值就沿用（重启不覆盖页面上的选择），否则「有管理员 → 走
+`restricted`」「没有 → `off` + WARN」。授权缓存 30s TTL，所有写操作立即 `Invalidate`。
+
+### 13.2 准入三执行点
+
+| 执行点 | 实现 | 行为 |
+|---|---|---|
+| bot 更新 | `accessMiddleware`（`bot.WithMiddlewares`，包住默认 handler） | 只服务私聊；未授权消息 10 分钟最多提示一次，回调立即 `AnswerCallbackQuery`；群/频道更新直接丢弃 |
+| Mini App `/api/*` | `requireAllowed`（套在 `NewInitDataMiddleware` 之后、整个 mux 外面） | 403 `forbidden`；`/api/admin/*` 再叠 `requireAdmin` → 403 `forbidden_admin` |
+| 后台推送 / 补发 | `InfoProcessor.config` / `Get`、`AttachmentRetrier` | 跳过未授权账号；关键词、待补发附件保留，复权后下一轮续发 |
+
+判定的唯一入口是 `dal.User.IsAllowed` / `IsAdmin`；`IsAdmin` 与访问模式无关（`off` 不等于人人
+管理员）。数据层失败方向收口：设置读失败按 `restricted`、未知模式值只放行管理员。
+
+### 13.3 API
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/me` | 身份与当前模式：`userId`、`role`、`accessMode`、`remark` |
+| GET | `/api/admin/users?q=&offset=&limit=` | 名单；`q` 匹配备注模糊或 user id 精确；默认 20、上限 50 |
+| POST | `/api/admin/users` | 批量添加/更新 `{"userIds":"10001,10002","role":"user","remark":""}`；单批上限 50，无法解析的条目走 `ignored` |
+| PATCH | `/api/admin/users/{id}` | `{"remark":?,"role":?,"enabled":?}`（指针字段，缺省=不改） |
+| DELETE | `/api/admin/users/{id}` | 撤销访问，204 |
+| GET / PATCH | `/api/admin/settings` | 读/写 `{"accessMode":"off"}` 或 `{"accessMode":"restricted"}` |
+| GET | `/api/admin/status` | 版本、计数（users/admins/keywords/histories/alarms）、webhook 状态、最近被拒（内存，最多 50 条） |
+
+写操作与关键词/告警词共用 **30 次/分钟/用户** 的滑动窗口预算（429 `too_many_requests`）。
+护栏拒绝统一 409 `{"error":{"code":"guard","message":"..."}}`。
+
+### 13.4 与 MANAGER_ID 的合并
+
+- 管理员**只**由 `users` 表决定；`MANAGER_ID` 是启动时的种子，解析为逗号分隔列表
+  （`config.ManagerIDs`，新增），旧单值 `MANAGER_ID=10001` 语义不变；`config.ManagerId`
+  作为兼容访问器保留第一个值，旧调用点无需改动。
+- **没有** `ADMIN_USER_IDS`。`ALLOWED_USER_IDS` 是可选的白名单种子，只在启动时同步。
+- 页面授予的管理员与环境变量同步的管理员在鉴权上完全等价，区别只是 `from_env=1` 的行不能
+  在页面改角色/状态或删除（下次启动会被环境变量改回去），只能改备注。
+- 防锁死：环境变量列表删掉某人时，若他是最后一个启用中的管理员则保留角色并 WARN；页面侧
+  另有「不能动自己」「不能删/停用/降级最后一个管理员」两条护栏。
+
+### 13.5 Settings 页结构
+
+四张卡片 + 页签可见性：
+
+- **Access control**：当前模式（`off` / `restricted`）切换 + 人数概览
+- **People**：搜索框、分页列表（id / 备注 / 角色 / 启用 / `from_env` / 最近活跃）、行内改备注、
+  切角色、启用停用、删除；批量添加（粘贴逗号分隔 id，最多 50，可选角色与备注，结果分
+  added / updated / ignored）
+- **Status**：版本、各表计数、webhook 状态（只读）
+- **Recent denied**：最近被拒账号（内存最多 50 条，重启清空），可一键 Allow
+- 入口：tabbar 第四页签 `Settings`（默认 `hidden`，`/api/me` 确认管理员后才显示）；
+  `/settings` 命令回复按钮直达 `{AppURL}#/settings`
+- 非管理员：命令回 `Admins only.`；手输 `#/settings` 只看到 `Admins only` 空状态，不发起
+  `/api/admin/*` 请求；被撤销的账号整页显示 `Access revoked. Ask the administrator.`
+
+### 13.6 验收矩阵
+
+| # | 状态 | bot 私聊 | Mini App | 后台推送 |
+|---|---|---|---|---|
+| 1 | 管理员（`role=1`，`enabled=1`） | 全部命令；App 启用时退役命令回「去 App」提示 + 按钮 | 全部页签 + Settings | 收 |
+| 2 | 已授权用户（`role=0`，`enabled=1`） | 未退役命令可用（`/start`、`/me`）；退役命令只回提示；`/settings` 回 `Admins only.` | Today / Keywords / Alarms / Records | 收 |
+| 3 | 撤销（行删除） | `Access denied. This bot is private. Ask the owner for access.`（10 分钟一次） | `/api/me` 403 `forbidden`，整页显示 `Access revoked. Ask the administrator.` | 跳过，数据保留 |
+| 4 | 停用（`enabled=0`） | 同撤销 | 同撤销 | 跳过，数据保留 |
+| 5 | `off` 模式 | 任何人可用 | 任何人可用（`/api/admin/*` 仍需管理员） | 按各自关键词推送 |
+
+护栏验收：
+
+| 操作 | 预期 |
+|---|---|
+| 删除 / 停用 / 降级自己 | 409 `cannot change your own access` |
+| 删除 / 停用 / 降级最后一个启用中的管理员 | 409 `cannot remove the last administrator` |
+| 改 `from_env=1` 行的角色或启用状态、删除该行 | 409 `managed by MANAGER_ID / ALLOWED_USER_IDS`（改备注放行） |
+
+运维视角的同一份内容（启动引导、回滚、排障）见 `docs/DEPLOYMENT.md` §9。
 
 ---
 

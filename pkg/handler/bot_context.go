@@ -64,6 +64,7 @@ type BotContext struct {
 	retrier    *AttachmentRetrier
 	cmdHandler *CommandsHandler
 	httpServer *server.Server
+	access     accessGuard
 }
 
 // context returns the process-wide context so background work honours
@@ -117,10 +118,22 @@ func NewBotContext() (*BotContext, error) {
 		&model.Alarm{},
 		&model.KeywordNotice{},
 		&model.PendingAttachment{},
+		&model.User{},
+		&model.Setting{},
 	); err != nil {
 		return nil, err
 	}
 	dal.SetDefault(db)
+
+	// The access tables are the first thing every update reads, so they must be
+	// migrated and seeded before the bot serves anything. A bootstrap failure
+	// is fatal on purpose: starting with a half-written authorisation table
+	// would either lock every account out or let everybody in.
+	accessMode, err := dal.EnsureBootstrap(cfg.ManagerIDs, cfg.AllowedUserIDs)
+	if err != nil {
+		return nil, fmt.Errorf("bootstrap access control: %w", err)
+	}
+	logAccessBootstrap(ctxLogger, accessMode, cfg.ManagerIDs)
 
 	// Backfill: history rows written before links were absolute carry a
 	// scheme-less URL, which would no longer match the claim key of new pushes
@@ -157,6 +170,10 @@ func NewBotContext() (*BotContext, error) {
 	botContext.cmdHandler = NewCommandsHandler(botContext)
 
 	botOptions := []bot.Option{
+		// The access middleware wraps every handler, including the default
+		// handler, so an unauthorised account is rejected before any command
+		// or fallback logic sees the update.
+		bot.WithMiddlewares(botContext.accessMiddleware),
 		bot.WithDefaultHandler((&defaultHandler{cmd: botContext.cmdHandler}).Handler),
 		bot.WithHTTPClient(time.Minute, &http.Client{Timeout: 2 * time.Minute}),
 	}
@@ -222,6 +239,11 @@ func (ctx *BotContext) initBot() error {
 	register(constant.ConvertPDF, cmdHandler.ConvertURLToPDFHandler)
 	register(constant.ConvertIMG, cmdHandler.ConvertURLToIMGHandler)
 	register(constant.Statistics, cmdHandler.StaticHandler)
+
+	// /settings is administrator-only but deliberately not retired: it must
+	// keep working in both modes, and the handler enforces the role itself. It
+	// therefore bypasses the retirement switch above and is registered directly.
+	ctx.Bot.RegisterHandler(bot.HandlerTypeMessageText, SettingsCommand, bot.MatchTypePrefix, ctx.adminSettingsHandler)
 
 	// The callback handlers stay registered regardless of the Mini App: they
 	// serve messages users already have in their chats, and a stale "stats:",
@@ -307,6 +329,10 @@ func (ctx *BotContext) Start() error {
 			// convention instead of two that can drift.
 			Conversion:  ctx,
 			AllowedHost: ctx.Config.MessageServerUrl,
+			// The admin status page reads the same in-memory denial log and the
+			// Telegram webhook state this context already owns, so no second
+			// client or copy of that state is needed.
+			Status: ctx,
 		})
 	}
 
@@ -346,19 +372,21 @@ func (ctx *BotContext) Start() error {
 		ctx.processor.Process()
 		return nil
 	})
-	l := ctx.Logger.Debug()
+	// A zerolog Event is a single-use builder: sharing one across the four
+	// listeners corrupted its buffer and panicked with "index out of range
+	// [-1]" as soon as debug logging was enabled. Each call builds its own.
 	job.RegisterEventListeners(
 		gocron.AfterJobRuns(func(jobName string) {
-			l.Msgf("afterJobRuns: %s_scheduler", jobName)
+			ctx.Logger.Debug().Msgf("afterJobRuns: %s_scheduler", jobName)
 		}),
 		gocron.BeforeJobRuns(func(jobName string) {
-			l.Msgf("beforeJobRuns: %s_scheduler", jobName)
+			ctx.Logger.Debug().Msgf("beforeJobRuns: %s_scheduler", jobName)
 		}),
 		gocron.WhenJobReturnsError(func(jobName string, err error) {
-			l.Msgf("whenJobReturnsError: %s_scheduler, %v", jobName, err)
+			ctx.Logger.Debug().Msgf("whenJobReturnsError: %s_scheduler, %v", jobName, err)
 		}),
 		gocron.WhenJobReturnsNoError(func(jobName string) {
-			l.Msgf("whenJobReturnsNoError: %s_scheduler", jobName)
+			ctx.Logger.Debug().Msgf("whenJobReturnsNoError: %s_scheduler", jobName)
 		}),
 	)
 

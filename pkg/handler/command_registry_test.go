@@ -39,9 +39,10 @@ func TestHelpTextHidesRetiredCommands(t *testing.T) {
 	}
 	// The commands that stay in the chat are still documented, including the
 	// argument placeholder that tells the user how to call them.
+	// /alarm <id> is retired too: the Mini App renders the record detail, so the
+	// help text must not send users back to the command.
 	for _, want := range []string{
 		constant.Me,
-		constant.Alarm + " <id>",
 		constant.Retry,
 		constant.Clean,
 		"(admin only)",
@@ -91,9 +92,65 @@ func TestTelegramCommandsHidesRetiredCommands(t *testing.T) {
 			t.Errorf("command menu still advertises retired command %s", command)
 		}
 	}
-	for _, command := range []string{constant.Me, constant.Alarm, constant.Retry, constant.Clean} {
+	for _, command := range []string{constant.Me, constant.Retry, constant.Clean} {
 		if !seen[command] {
 			t.Errorf("command menu is missing retained command %s", command)
 		}
+	}
+}
+
+// TestSettingsCommandIsAdvertisedInBothModes guards #417: /settings is not
+// retired (it is the chat entry point to the access screen), so the command menu
+// and the help text advertise it in both modes, marked administrator-only.
+func TestSettingsCommandIsAdvertisedInBothModes(t *testing.T) {
+	if _, retired := retiredPrompt(SettingsCommand); retired {
+		t.Fatalf("%s must not be part of the retired command set", SettingsCommand)
+	}
+
+	specFound := false
+	for _, spec := range commandSpecs {
+		if spec.Command != SettingsCommand {
+			continue
+		}
+		specFound = true
+		if spec.Description != "Open admin settings" {
+			t.Errorf("spec description = %q, want %q", spec.Description, "Open admin settings")
+		}
+		if !spec.AdminOnly {
+			t.Error("the /settings spec must be administrator-only")
+		}
+	}
+	if !specFound {
+		t.Fatalf("%s is missing from commandSpecs", SettingsCommand)
+	}
+
+	tests := []struct {
+		name       string
+		appEnabled bool
+	}{
+		{name: "app disabled", appEnabled: false},
+		{name: "app enabled", appEnabled: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			commandFound := false
+			for _, cmd := range TelegramCommands(tt.appEnabled) {
+				if cmd.Command != SettingsCommand {
+					continue
+				}
+				commandFound = true
+				if cmd.Description != "Open admin settings (admin only)" {
+					t.Errorf("command description = %q, want the admin marker", cmd.Description)
+				}
+			}
+			if !commandFound {
+				t.Errorf("TelegramCommands(%t) does not contain %s", tt.appEnabled, SettingsCommand)
+			}
+
+			help := HelpText(tt.appEnabled)
+			if want := SettingsCommand + " - Open admin settings (admin only)"; !strings.Contains(help, want) {
+				t.Errorf("HelpText(%t) is missing %q:\n%s", tt.appEnabled, want, help)
+			}
+		})
 	}
 }

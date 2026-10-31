@@ -18,7 +18,9 @@ func NewManagerHandler(ctx *BotContext) *ManagerHandler {
 
 func (h *ManagerHandler) Retry(ctx context.Context, b *bot.Bot, update *models.Update) {
 	userId := update.Message.Chat.ID
-	if userId != h.ctx.Config.ManagerId {
+	// Admin rights come from the access-control tables, not from the legacy
+	// single MANAGER_ID setting, so a promoted account works without a restart.
+	if !h.ctx.IsAdmin(userId) {
 		return
 	}
 
@@ -48,7 +50,7 @@ func (h *ManagerHandler) Retry(ctx context.Context, b *bot.Bot, update *models.U
 
 func (h *ManagerHandler) Clean(ctx context.Context, b *bot.Bot, update *models.Update) {
 	id := update.Message.Chat.ID
-	if id != h.ctx.Config.ManagerId {
+	if !h.ctx.IsAdmin(id) {
 		return
 	}
 

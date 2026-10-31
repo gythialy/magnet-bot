@@ -1,20 +1,13 @@
 /*
  * alarms.js — the Alarms view (read + write).
  *
- * Two independent blocks share one section:
- *   1. "Alarm keywords" — the user's alarm keywords, id/name/created on, plus
- *      the batch-add / rename / delete flows in a reusable dialog.
- *   2. "Alarm records"  — paged alert history with a debounced server-side
- *      search and a deep link back into the bot for each row.
+ * Owns the user's alarm keywords: id, name, created on, plus the batch-add /
+ * rename / delete flows in a reusable dialog. Alarm records used to share this
+ * section; they are a browsing surface with their own paging and detail sheet
+ * and now live in js/records.js under the Records tab.
  *
- * Each block keeps its own loading/empty/error state so a slow or failing
- * records request never blanks the keyword list above it. Records page with the
- * API's nextOffset cursor; "Load more" disappears once the cursor is null.
- *
- * Write rules mirror the Keywords page, with two additions: a successful write
- * invalidates "alarms" and "today" (the statistics bar counts alarm keywords),
- * and it reloads the records block in place so the page never shows a stale
- * history next to freshly edited keywords.
+ * A successful write invalidates "alarms" and "today" (the statistics bar
+ * counts alarm keywords).
  */
 (function (global) {
   "use strict";
@@ -28,13 +21,6 @@
 
   var VIEW = "alarms";
   var SECTION_ID = "view-alarms";
-  var RECORD_PAGE_SIZE = 20;
-  var RECORD_SEARCH_DEBOUNCE_MS = 300;
-  // Only Telegram deep links are opened from a record row. Anything else (a
-  // compromised API, a future field with a different meaning) is dropped
-  // instead of being handed to openLink.
-  var TELEGRAM_LINK_PREFIX = "https://t.me/";
-
   var ADD_HINT = "Comma-separated, e.g. 服务器, 防火墙";
   var DELETE_TEXT =
     "The alarm keyword is removed. Alarm records already delivered stay in your history.";
@@ -43,17 +29,9 @@
   var els = null;
 
   var keywords = { items: [], status: "idle", loaded: false };
-  var records = {
-    items: [],
-    q: "",
-    nextOffset: null,
-    status: "idle",
-    loaded: false,
-    // Monotonic request token: a slower response from a superseded search must
-    // not overwrite the newer result.
-    seq: 0,
-  };
-
+  // The list is small and already loaded, so the search filters it in place and
+  // never issues a request — the same contract as the Keywords page.
+  var query = "";
   var dialog = {
     el: null,
     title: null,
@@ -72,30 +50,21 @@
 
   var TEMPLATE =
     '<section class="alarms-block" data-block="alarm-keywords">' +
-    '<div class="block-head">' +
-    '<h2 class="block-title">Alarm keywords</h2>' +
-    '<button type="button" class="btn block-add" data-role="add-alarm">+ Add alarm keyword</button>' +
+    '<div class="alarms-toolbar">' +
+    '<input class="search-input" type="search" data-role="search" ' +
+    'placeholder="Search alarm keywords" aria-label="Search alarm keywords" autocomplete="off" />' +
+    '<button type="button" class="btn alarms-add" data-role="add-alarm">+ Add</button>' +
     "</div>" +
     '<div class="skeleton" data-slot="loading">Loading\u2026</div>' +
     '<div class="error" data-slot="error" role="alert" hidden></div>' +
     '<div class="empty" data-slot="empty" hidden></div>' +
     '<ul class="alarm-kw-list" data-slot="list" hidden></ul>' +
     "</section>" +
-    '<section class="alarms-block" data-block="alarm-records">' +
-    '<div class="block-head"><h2 class="block-title">Alarm records</h2></div>' +
-    '<input class="search-input" type="search" data-role="record-search" placeholder="Search alarm records" ' +
-    'aria-label="Search alarm records" autocomplete="off" />' +
-    '<div class="skeleton" data-slot="loading">Loading\u2026</div>' +
-    '<div class="error" data-slot="error" role="alert" hidden></div>' +
-    '<div class="empty" data-slot="empty" hidden></div>' +
-    '<ul class="record-list" data-slot="list" hidden></ul>' +
-    '<button type="button" class="btn-ghost load-more" data-role="load-more" hidden>Load more</button>' +
-    "</section>" +
-    '<div class="modal-backdrop alarms-dialog" data-role="dialog" hidden>' +
+    '<div class="modal-backdrop" data-role="dialog" hidden>' +
     '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="alarms-dialog-title">' +
     '<div class="modal-head">' +
     '<h2 class="modal-title" id="alarms-dialog-title" data-slot="dialog-title"></h2>' +
-    '<button class="modal-close" type="button" data-role="dialog-close" aria-label="Close dialog">\u2715</button>' +
+    '<button class="modal-close" type="button" data-role="dialog-close" aria-label="Close dialog">' + core.icon("close") + '</button>' +
     "</div>" +
     '<div class="dialog-body" data-slot="dialog-body"></div>' +
     '<div class="dialog-actions">' +
@@ -140,14 +109,6 @@
     return parsed.getFullYear() + "-" + pad2(parsed.getMonth() + 1) + "-" + pad2(parsed.getDate());
   }
 
-  function safeTelegramLink(value) {
-    var raw = value == null ? "" : String(value).trim();
-    if (raw.indexOf(TELEGRAM_LINK_PREFIX) !== 0) {
-      return "";
-    }
-    return raw;
-  }
-
   function normalizeKeywords(payload) {
     var raw = payload && Array.isArray(payload.items) ? payload.items : [];
     var result = [];
@@ -167,29 +128,15 @@
     return result;
   }
 
-  function normalizeRecords(payload) {
-    var raw = payload && Array.isArray(payload.items) ? payload.items : [];
-    var result = [];
-
-    for (var i = 0; i < raw.length; i++) {
-      var item = raw[i];
-      if (!item || typeof item !== "object") {
-        continue;
-      }
-      result.push({
-        businessId: typeof item.businessId === "string" ? item.businessId : "",
-        creditName: typeof item.creditName === "string" ? item.creditName : "",
-        startDate: item.startDate,
-        link: safeTelegramLink(item.link),
-      });
+  function filteredKeywords() {
+    var needle = query.trim().toLowerCase();
+    if (!needle) {
+      return keywords.items;
     }
 
-    return result;
-  }
-
-  function nextOffsetOf(payload) {
-    var value = payload && payload.nextOffset;
-    return typeof value === "number" && isFinite(value) && value >= 0 ? value : null;
+    return keywords.items.filter(function (item) {
+      return item.keyword.toLowerCase().indexOf(needle) !== -1;
+    });
   }
 
   function findKeyword(id) {
@@ -205,6 +152,7 @@
   /* Rendering ------------------------------------------------------------ */
 
   function iconButton(action, id, label, glyph) {
+    // glyph is the icon name in the shared family, never a character.
     return (
       '<button type="button" class="icon-btn" data-action="' +
       action +
@@ -215,7 +163,7 @@
       '" aria-label="' +
       core.escapeHTML(label) +
       '">' +
-      glyph +
+      core.icon(glyph) +
       "</button>"
     );
   }
@@ -237,51 +185,9 @@
       esc(formatDate(item.createdAt)) +
       "</span>" +
       '<span class="alarm-kw-actions">' +
-      iconButton("rename", item.id, "Rename alarm keyword", "\u270f\ufe0f") +
-      iconButton("delete", item.id, "Delete alarm keyword", "\ud83d\uddd1") +
+      iconButton("rename", item.id, "Rename alarm keyword", "edit") +
+      iconButton("delete", item.id, "Delete alarm keyword", "trash") +
       "</span>" +
-      "</li>"
-    );
-  }
-
-  function recordLinkButton(link) {
-    var label = "Open alarm record in Telegram";
-
-    if (!link) {
-      return (
-        '<button type="button" class="icon-btn" disabled title="No link available" ' +
-        'aria-label="' +
-        core.escapeHTML(label) +
-        '">\u2197</button>'
-      );
-    }
-
-    return (
-      '<button type="button" class="icon-btn" data-link="' +
-      core.escapeHTML(link) +
-      '" title="Open in Telegram" aria-label="' +
-      core.escapeHTML(label) +
-      '">\u2197</button>'
-    );
-  }
-
-  function recordRow(item) {
-    var esc = core.escapeHTML;
-    var name = item.creditName || "Unknown";
-
-    return (
-      '<li class="record-row">' +
-      '<span class="record-text">' +
-      '<span class="record-name" title="' +
-      esc(item.creditName) +
-      '">' +
-      esc(name) +
-      "</span>" +
-      '<span class="record-date">' +
-      esc(formatDate(item.startDate)) +
-      "</span>" +
-      "</span>" +
-      recordLinkButton(item.link) +
       "</li>"
     );
   }
@@ -309,8 +215,9 @@
 
   function renderKeywordBlock() {
     var state = keywords;
-    var showList = state.status === "ready" && state.items.length > 0;
-    var showEmpty = state.status === "ready" && state.items.length === 0;
+    var visible = filteredKeywords();
+    var showList = state.status === "ready" && visible.length > 0;
+    var showEmpty = state.status === "ready" && visible.length === 0;
 
     els.kwLoading.hidden = state.status !== "loading";
     els.kwError.hidden = state.status !== "error";
@@ -325,47 +232,16 @@
 
     if (showEmpty) {
       els.kwEmpty.textContent =
-        "No alarm keywords yet. Add alarm keywords from the bot or with + Add alarm keyword.";
+        state.items.length === 0
+          ? "No alarm keywords yet. Add alarm keywords from the bot or with + Add."
+          : 'No alarm keywords match "' + query.trim() + '".';
     }
 
     if (showList) {
-      els.kwList.innerHTML = state.items.map(alarmKeywordRow).join("");
+      els.kwList.innerHTML = visible.map(alarmKeywordRow).join("");
     } else {
       // Clear stale rows when the list is hidden; the empty state replaces them.
       els.kwList.innerHTML = "";
-    }
-  }
-
-  function renderRecordBlock() {
-    var state = records;
-    var showSkeleton = state.status === "loading" && state.items.length === 0;
-    var showEmpty = state.status === "ready" && state.items.length === 0;
-
-    els.recLoading.hidden = !showSkeleton;
-    els.recError.hidden = state.status !== "error";
-    els.recEmpty.hidden = !showEmpty;
-    els.recList.hidden = state.items.length === 0;
-
-    // Keep the cursor button in place while a page is in flight (disabled) so
-    // the list height does not jump; hide it only when the cursor is exhausted.
-    var hasCursor = state.nextOffset !== null;
-    els.loadMore.hidden = !hasCursor || state.items.length === 0;
-    els.loadMore.disabled = state.status === "loading" || state.status === "error";
-
-    if (state.status === "error") {
-      renderRetry(els.recError, "Could not load alarm records.", retryRecords);
-    }
-
-    if (showEmpty) {
-      els.recEmpty.textContent = state.q
-        ? 'No alarm records match "' + state.q + '".'
-        : "No alarm records yet.";
-    }
-
-    if (state.items.length > 0) {
-      els.recList.innerHTML = state.items.map(recordRow).join("");
-    } else {
-      els.recList.innerHTML = "";
     }
   }
 
@@ -488,12 +364,12 @@
     core.state.invalidate("today");
   }
 
-  // Every successful write reloads the records block: its rows come from the
-  // same account, and the page must not show a history that predates the edit
-  // the user just confirmed.
+  // The Records tab reads the same account, so a keyword edit also marks it
+  // stale; it reloads the next time it is opened instead of keeping a history
+  // that predates the change.
   function refreshAfterWrite() {
     invalidateWrites();
-    loadRecords(true);
+    core.state.invalidate("records");
   }
 
   function handleWriteError(err) {
@@ -507,7 +383,6 @@
       closeDialog();
       core.toast("That alarm keyword no longer exists", "error");
       loadKeywords();
-      loadRecords(true);
       return;
     }
 
@@ -648,56 +523,12 @@
       });
   }
 
-  function retryRecords() {
-    loadRecords(records.items.length === 0);
-  }
-
-  function loadRecords(reset) {
-    var state = records;
-
-    if (!reset && state.nextOffset === null) {
-      return Promise.resolve();
-    }
-
-    var offset = reset ? 0 : state.nextOffset;
-    var seq = ++state.seq;
-
-    if (reset) {
-      state.items = [];
-      state.nextOffset = null;
-    }
-
-    state.status = "loading";
-    renderRecordBlock();
-
-    return Promise.resolve()
-      .then(function () {
-        return api().alarmRecords({ q: state.q, offset: offset, limit: RECORD_PAGE_SIZE });
-      })
-      .then(function (payload) {
-        // A newer search already replaced this request; its response wins.
-        if (seq !== state.seq) {
-          return;
-        }
-
-        var page = normalizeRecords(payload);
-        state.items = reset ? page : state.items.concat(page);
-        state.nextOffset = nextOffsetOf(payload);
-        state.loaded = true;
-        state.status = "ready";
-        renderRecordBlock();
-      })
-      .catch(function () {
-        if (seq !== state.seq) {
-          return;
-        }
-
-        state.status = "error";
-        renderRecordBlock();
-      });
-  }
-
   /* Events --------------------------------------------------------------- */
+
+  function onSearchInput() {
+    query = els.search.value;
+    renderKeywordBlock();
+  }
 
   function onKeywordListClick(event) {
     var target = event.target;
@@ -720,20 +551,6 @@
     }
   }
 
-  function onRecordClick(event) {
-    var target = event.target;
-    var button =
-      target && typeof target.closest === "function" ? target.closest("button[data-link]") : null;
-    if (!button) {
-      return;
-    }
-
-    var link = button.getAttribute("data-link");
-    if (link) {
-      core.openLink(link);
-    }
-  }
-
   /* View ---------------------------------------------------------------- */
 
   function slot(root, name) {
@@ -744,7 +561,6 @@
     section.innerHTML = TEMPLATE;
 
     var keywordBlock = section.querySelector('[data-block="alarm-keywords"]');
-    var recordBlock = section.querySelector('[data-block="alarm-records"]');
 
     dialog.el = section.querySelector('[data-role="dialog"]');
     dialog.title = section.querySelector('[data-slot="dialog-title"]');
@@ -758,32 +574,13 @@
       kwError: slot(keywordBlock, "error"),
       kwEmpty: slot(keywordBlock, "empty"),
       kwList: slot(keywordBlock, "list"),
-      recLoading: slot(recordBlock, "loading"),
-      recError: slot(recordBlock, "error"),
-      recEmpty: slot(recordBlock, "empty"),
-      recList: slot(recordBlock, "list"),
+      search: section.querySelector('[data-role="search"]'),
       addAlarm: section.querySelector('[data-role="add-alarm"]'),
-      search: section.querySelector('[data-role="record-search"]'),
-      loadMore: section.querySelector('[data-role="load-more"]'),
     };
   }
 
   function bind() {
-    // Debounced so typing does not issue one request per keystroke; the trailing
-    // call reads the final value, so intermediate keystrokes are simply skipped.
-    var runSearch = core.debounce(function () {
-      records.q = els.search.value.trim();
-      loadRecords(true);
-    }, RECORD_SEARCH_DEBOUNCE_MS);
-
-    els.search.addEventListener("input", runSearch);
-    els.recList.addEventListener("click", onRecordClick);
-    els.loadMore.addEventListener("click", function () {
-      if (records.status === "ready") {
-        loadRecords(false);
-      }
-    });
-
+    els.search.addEventListener("input", onSearchInput);
     els.addAlarm.addEventListener("click", openAddDialog);
     els.kwList.addEventListener("click", onKeywordListClick);
 
@@ -811,14 +608,10 @@
       bind();
     }
 
-    // The two blocks load independently: a failure in one must not block the
-    // other, and each owns its skeleton. A write invalidates the view, which is
-    // what makes the next visit reload instead of showing the edited list.
+    // A write invalidates the view, which is what makes the next visit reload
+    // instead of showing the edited list.
     if (!keywords.loaded || core.state.isStale(VIEW)) {
       loadKeywords();
-    }
-    if (!records.loaded || core.state.isStale(VIEW)) {
-      return loadRecords(true);
     }
   }
 

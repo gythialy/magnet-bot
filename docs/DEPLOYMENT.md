@@ -16,7 +16,7 @@ Gotenberg 把公告转成 PDF / PNG。
 | --- | --- | --- |
 | magnet-bot | 抓取、匹配、推送、Telegram 命令处理、转换请求发起与回执 | ✅ |
 | Gotenberg 8 | 把公告 URL 渲染成 PDF / 截图 PNG | 仅转换功能需要 |
-| `bot.db`（SQLite） | 关键词、推送历史、告警记录 | 启动时自动创建 |
+| `bot.db`（SQLite） | 关键词、推送历史、告警记录、访问名单（`users`）与运行设置（`settings`） | 启动时自动创建 |
 
 数据流：
 
@@ -42,8 +42,9 @@ Gotenberg 把公告转成 PDF / PNG。
 | --- | --- | --- | --- |
 | `TELEGRAM_BOT_TOKEN` | ✅ | - | @BotFather 给的 token |
 | `SERVER_URL` | ✅ | - | 公告站点根地址，如 `https://example.com`。只取 host，程序自己拼 `https://` |
-| `TELEGRAM_BOT_NAME` | - | - | bot 用户名，用于生成 `/alarm` 分享链接 |
-| `MANAGER_ID` | - | `0` | 允许执行 `/retry`、`/clean` 的 Telegram 用户 ID |
+| `TELEGRAM_BOT_NAME` | - | - | bot 用户名，用于生成告警记录深链 |
+| `MANAGER_ID` | - | - | 管理员，逗号分隔的 Telegram 用户 ID（如 `10001,10002`）。可执行 `/retry`、`/clean`、`/settings` 并管理访问；启动时同步进 `users` 表，见 §9 |
+| `ALLOWED_USER_IDS` | - | - | 逗号分隔的普通用户初始白名单，**仅启动时同步**进 `users` 表，用于首次铺人；后续增删走 Settings 页，见 §9 |
 | `SCHEDULE_INTERVAL` | - | `1` | 抓取间隔（小时）；填 0、负数或非数字都按 1 处理 |
 | `CRAWL_DAYS` | - | `1` | 每轮回溯天数；填 0、负数或非数字都按 1 处理 |
 | `CONFIG_PATH` | - | 进程工作目录 | `bot.db`、`bot.log` 所在目录；容器内用 `/etc/magnet` |
@@ -63,6 +64,8 @@ Gotenberg 把公告转成 PDF / PNG。
 > 启用公网 Webhook / Mini App 时另有 4 个变量（`PUBLIC_BASE_URL`、`TELEGRAM_WEBHOOK_SECRET`、
 > `TELEGRAM_WEBHOOK_ENABLED`、`MINI_APP_ENABLED`），且 `WEBHOOK_SERVER_PORT` 变为必填，
 > 见 §8.2。
+
+> 访问控制（谁能用 bot、管理员名单怎么配、Settings 页怎么用、锁死了怎么救）见 **§9**。
 
 ---
 
@@ -212,6 +215,9 @@ journalctl -u magnet-bot -f
 5. 发 `/add_keywords 测试关键词` 能收到成功回复；
 6. 转换功能：发 `/convertpdf <公告URL>`，应收到 PDF；失败时日志里会有
    `URLToPDF`/`WebhookHandler` 相关错误。
+7. 访问模式已定：日志里有 `access control is restricted`（已配置管理员）或
+   `access control is off: no administrator configured`（空库、无管理员）。上线前请在
+   Settings 页确认模式与名单，见 §9。
 
 ---
 
@@ -463,11 +469,200 @@ docker compose logs -f magnet-bot | grep -iE "webhook|polling"
 
 ---
 
-## 9. 数据、日志与备份
+## 9. 访问控制
+
+默认人人可用。配置好管理员后，可以把 bot 变成私有实例，并在 Mini App 的 **Settings**
+页签里维护名单与访问模式。状态存在 `bot.db` 里，不依赖环境变量重启。
+
+### 9.1 访问模式与存储
+
+| 值 | 谁能用 | 何时使用 |
+| --- | --- | --- |
+| `off` | 任何 Telegram 账号 | 公开机器人；**空库的默认值** |
+| `restricted` | 仅 `users` 表里 `enabled=1` 的账号 | 私有部署，推荐 |
+
+`restricted` 下管理员没有特殊例外：`MANAGER_ID` 在启动时会被写成启用中的管理员行，所以照常可用。
+
+启动引导（`dal.EnsureBootstrap`）：
+
+1. 先把 `MANAGER_ID` / `ALLOWED_USER_IDS` 同步进 `users`（幂等，每次启动都跑）；
+2. 再决定模式：`settings.access_mode` **已存在且非空** → 直接沿用（管理员在页面上切过的值，
+   重启不会被覆盖）；否则「库里已有管理员 → `restricted`」「一个都没有 → `off`」，后者会打印
+   WARN `access control is off: no administrator configured`。
+
+生效时间：通过页面或 API 修改**立即生效**（写操作会清授权缓存）；**直接改 SQLite 最多 30 秒**
+（授权缓存 TTL）。失败方向一律收口：读设置出错按 `restricted` 处理，未知模式值只放行管理员。
+
+两张表（都在 `bot.db`，随它一起备份）：
+
+| 表 | 关键列 |
+| --- | --- |
+| `users` | `user_id`（主键，Telegram id）、`remark`、`role`（`0` 普通 / `1` 管理员）、`enabled`、`from_env`、`created_at`、`updated_at`、`last_seen` |
+| `settings` | `key`（主键）、`value`、`updated_at`；目前只有 `access_mode` 一行 |
+
+---
+
+### 9.2 环境变量与合并规则
+
+| 变量 | 必需 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `MANAGER_ID` | - | - | 逗号分隔的管理员 ID：`10001` 与旧版一致，`10001,10002` 即两个管理员 |
+| `ALLOWED_USER_IDS` | - | - | 逗号分隔的普通用户初始白名单，**只在启动时同步**，用于首次铺人 |
+
+解析规则：按 `,` 切分、去空格、去重；非数字或 ≤ 0 的条目被忽略并打印
+`ignoring invalid user id in environment`（带变量名），其余条目照常生效。
+
+合并进 `users` 的行为（`SyncFromEnv`）：
+
+- 管理员 → `role=admin` 且 `enabled=1`；普通白名单 → `role=user` 且 `enabled=1`，
+  **不会**把已是管理员的账号降级；
+- 由环境变量写入的行带 `from_env=1`；
+- 从列表里删掉某人再重启：该行 `from_env` 置 0；若它还是管理员，**只有存在其他启用中的
+  管理员时**才降级，否则保留角色并打印 WARN（防止手滑锁死）；
+- `from_env=1` 的行在页面/接口里**只能改备注**：改角色、改启用状态、删除都会返回 409 ——
+  下次启动环境变量会把它们改回去。要收回这类账号：先从环境变量里删掉并重启，`from_env`
+  清掉后再在页面上操作。
+
+> 环境变量只是启动时的种子，不是实时名单。日常增删人员请用 Settings 页；只有首次铺人或
+> 需要重建授权时才动环境变量。
+
+---
+
+### 9.3 三处准入
+
+| 入口 | 实现 | 未授权时的表现 |
+| --- | --- | --- |
+| Telegram 更新 | 全局中间件 `accessMiddleware`（包住所有 handler，含默认 handler） | 私聊消息回 `Access denied. This bot is private. Ask the owner for access.`，同一账号 10 分钟最多一次；按钮回调答复 `Access denied. This bot is private.` |
+| Mini App `/api/*` | `requireAllowed`（在 initData 鉴权之后） | HTTP 403 `{"error":{"code":"forbidden"}}` |
+| 后台推送 / 附件补发 | `InfoProcessor`（定时抓取与 `/retry`）、`AttachmentRetrier` | 静默跳过该账号，不报错 |
+
+细节：
+
+- 只服务**私聊**：群组、频道里的更新直接丢弃且不回复，这是设计而非故障；
+- 被拒尝试在内存里保留最近 50 条（id、用户名、时间，不含消息正文），供 Settings 页的
+  「最近被拒」展示，重启即清空；
+- 后台推送与附件补发是**跳过不是删除**：关键词、待补发附件原样保留，账号重新授权后下一轮
+  自动续发；
+- 已授权账号的 `last_seen` 最多每分钟写一次，用于页面上的活跃度显示。
+
+---
+
+### 9.4 Settings 页（管理员）
+
+Mini App 的第四个页签是 **Settings**。聊天里的入口是 `/settings`：
+
+| 场景 | 回复 |
+| --- | --- |
+| 管理员 + Mini App 可用 | `Manage people and access in the Mini App.` + 「📱 Open settings」按钮，直接打开 `#/settings` |
+| 管理员 + `MINI_APP_ENABLED=false` | `Mini App is disabled. Manage access with MANAGER_ID / ALLOWED_USER_IDS.` |
+| 非管理员 | `Admins only.` |
+
+页面上四张卡片：
+
+- **Access control**：当前模式（`off` / `restricted`）开关 + 人数概览；
+- **People**：名单列表（id、备注、角色、启用状态、来源、最近活跃）；搜索（备注模糊匹配，
+  或输入完整 user id 精确匹配）、分页（默认 20，最多 50）、改备注、提升/降级管理员、
+  启用/停用、删除，以及批量添加（粘贴逗号分隔的 id，一次最多 50 个，可同时指定角色与备注；
+  解析失败的条目单独列出，不会整批失败）；
+- **Status**：版本、各表计数（用户/管理员/关键词/历史/告警）、webhook 状态；
+- **Recent denied**：最近被拒的账号（内存中最多 50 条，重启清空），可一键 **Allow**。
+
+页签默认隐藏，`/api/me` 确认管理员身份后才出现；普通用户即使手输 `#/settings` 也只会看到
+`Admins only` 的空状态，不会发出任何 `/api/admin/*` 请求。
+
+**删除只撤销访问**：`users` 行没了，但该账号的 `keywords`、`histories`、`alarms`、
+`pending_attachments` 全部保留，重新加回即恢复原数据。
+
+---
+
+### 9.5 管理接口
+
+所有接口都要 `X-Telegram-Init-Data`，调用者必须被授权；`/api/admin/*` 还要求是**启用中的
+管理员**。
+
+| 方法 | 路径 | 作用 |
+| --- | --- | --- |
+| GET | `/api/me` | 当前身份：`userId`、`role`、`accessMode`、`remark` |
+| GET | `/api/admin/users?q=&offset=&limit=` | 名单（搜索 + 分页） |
+| POST | `/api/admin/users` | 批量添加/更新：`{"userIds":"10001,10002","role":"user","remark":""}` |
+| PATCH | `/api/admin/users/{id}` | `{"remark":...,"role":"user"}` 或 `"role":"admin"`、`"enabled":true` |
+| DELETE | `/api/admin/users/{id}` | 撤销访问，返回 204 |
+| GET | `/api/admin/settings` | 读 `access_mode` |
+| PATCH | `/api/admin/settings` | `{"accessMode":"off"}` 或 `{"accessMode":"restricted"}` |
+| GET | `/api/admin/status` | 版本、计数、webhook 状态、最近被拒账号 |
+
+错误约定：
+
+- 未被授权：403 `forbidden`；已授权但不是管理员：403 `forbidden_admin`；
+- 写操作共享 **30 次/分钟/用户** 的预算（与关键词、告警词写入同一额度），超出返回 429
+  `too_many_requests`；
+- 护栏拒绝返回 409 `{"error":{"code":"guard","message":"..."}}`。
+
+---
+
+### 9.6 三条护栏（防锁死）
+
+| 护栏 | 触发场景 | 返回 |
+| --- | --- | --- |
+| 不能动自己 | 删除、停用或降级**自己** | `cannot change your own access` |
+| 至少留一个管理员 | 删除、停用或降级**最后一个启用中的管理员** | `cannot remove the last administrator` |
+| 环境行只读 | 改 `from_env=1` 行的角色/启用状态，或删除它 | `managed by MANAGER_ID / ALLOWED_USER_IDS`（改备注不受限） |
+
+只拦「减少权限」的操作：提升他人、重新启用、改备注都直接通过。护栏在 DAL
+（`dal.User.Update` / `Delete`）里实现，API 与将来的任何调用方都绕不过去。
+
+---
+
+### 9.7 自检与验收
+
+1. 在 bot 里发 `/me` 拿到自己的 user id，填进 `MANAGER_ID`（或让现有管理员在 Settings 页添加）；
+2. 重启后日志出现 `access control is restricted`，管理员发 `/settings` 能收到「Open settings」按钮；
+3. 用未授权账号私聊 bot：收到一次 `Access denied...`，10 分钟内重复发不会重复提示；
+4. 该账号打开 Mini App：`/api/me` 返回 403 `forbidden`，整页显示
+   `Access revoked. Ask the administrator.`；
+5. 停用某账号后：bot 与 App 在下一次请求即拒绝，其关键词/历史仍留在计数里；
+6. 把模式切到 `off`：陌生人立刻恢复正常使用；
+7. 依次尝试「删自己」「删最后一个管理员」「删环境行」：都应得到 409，操作不生效。
+
+---
+
+### 9.8 回滚与排障
+
+恢复开放模式，任选其一：
+
+```bash
+# 方式 A：Settings 页把访问模式切到 off（推荐，立即生效）
+
+# 方式 B：直接改库。容器是 distroless 没有 shell，在宿主机上对挂载目录执行
+sqlite3 data/bot.db "UPDATE settings SET value='off' WHERE key='access_mode';"
+# 直接改库不会清授权缓存，最多 30 秒后生效
+```
+
+> 清空 `MANAGER_ID` 再重启**不会**把 bot 变成公开：启动引导只在 `settings.access_mode`
+> 为空时才写默认值，已有的 `restricted` 会被保留；它只会让对应行失去 `from_env` 标记。
+> 要真正开放，必须按上面的方式改模式。
+
+关闭 Mini App（`MINI_APP_ENABLED=false`）时没有 Settings 页，也只能用方式 B。
+
+| 现象 | 原因 | 处理 |
+| --- | --- | --- |
+| 私聊 bot 只回 `Access denied...` | 账号不在启用名单（`restricted`） | Settings 页添加并启用，确认 `enabled=true` |
+| App 提示 `Access revoked. Ask the administrator.`，接口 403 `forbidden` | 同上，被 `/api/*` 准入拦下 | 同上 |
+| 管理员发 `/settings` 收到 `Admins only.` | 该账号不是**启用中的管理员** | 检查 `users` 里 `role=1` 且 `enabled=1` |
+| 409 `cannot change your own access` | 操作对象是自己 | 换另一个管理员操作 |
+| 409 `cannot remove the last administrator` | 只剩一个启用中的管理员 | 先把另一个账号设为管理员 |
+| 409 `managed by MANAGER_ID / ALLOWED_USER_IDS` | 该行由环境变量同步 | 改环境变量后重启，或操作非环境行 |
+| 群里 @bot 没反应 | 只服务私聊 | 设计如此，改用私聊 |
+| 页面改了但 30 秒内没生效 | 直接改库不会清缓存 | 等一个缓存周期，或用页面/API 修改 |
+| 日志 `access control is off: no administrator configured` | 空库且没配 `MANAGER_ID` | 配管理员（会转 `restricted`），或明确保持公开 |
+
+---
+
+## 10. 数据、日志与备份
 
 | 文件 | 说明 |
 | --- | --- |
-| `bot.db` | SQLite，含 `keywords`、`histories`、`alarms` 三张表；启动时自动建表/迁移 |
+| `bot.db` | SQLite，含 `keywords`、`histories`、`alarms`、`pending_attachments`、`users`、`settings` 等表；启动时自动建表/迁移 |
 | `bot.log` | zerolog 滚动日志：单文件 10MB，保留 10 个备份、7 天 |
 
 备份（停机或在线均可，SQLite 单文件复制建议先 `sqlite3 bot.db '.backup ...'`）：
@@ -480,7 +675,7 @@ sqlite3 data/bot.db ".backup 'backup-$(date +%F).db'"
 
 ---
 
-## 10. 升级与回滚
+## 11. 升级与回滚
 
 ```bash
 # 升级（镜像方式）
@@ -496,7 +691,7 @@ docker run ... ghcr.io/gythialy/magnet-bot:<上一个版本>
 
 ---
 
-## 11. 常见问题
+## 12. 常见问题
 
 **Q：`/convertpdf` 一直收不到文件**
 
@@ -542,6 +737,14 @@ docker run ... ghcr.io/gythialy/magnet-bot:<上一个版本>
 - 公网配置错误也在这里退出：`PUBLIC_BASE_URL` 不是 https，或启用了 webhook 却缺
   `TELEGRAM_WEBHOOK_SECRET` / `WEBHOOK_SERVER_PORT=0`（校验规则见 §8.2）。
 
+**Q：用户说「bot 不理我」或收到 `Access denied`**
+
+- `restricted` 模式下只有 `users` 表里启用中的账号可用：去 Settings 页添加或启用（见 §9.4）；
+- 管理员发 `/settings` 却收到 `Admins only.`：该账号不是**启用中的管理员**（`role=1` 且
+  `enabled=1`）；
+- 群组里 @bot 不会有任何反应，bot 只服务私聊；
+- 管理员账号也进不去、页面打不开：按 §9.8 用 `sqlite3` 把 `access_mode` 切回 `off`。
+
 **Q：健康检查端点是什么**
 
 `GET /healthz` 始终注册，返回 `200` 与纯文本 `ok`（无鉴权），可以直接用作 HTTP
@@ -550,7 +753,7 @@ healthcheck；`/healthz` 上的非 GET 返回 405。未启用的能力（例如 
 
 ---
 
-## 12. 运维命令
+## 13. 运维命令
 
 | 命令 | 说明 |
 | --- | --- |
@@ -560,14 +763,15 @@ healthcheck；`/healthz` 上的非 GET 返回 405。未启用的能力（例如 
 | `/delete_keywords <id>...` | 删除（仅限本人） |
 | `/search_history_title <关键词>` | 搜索历史推送 |
 | `/list_today` | 今日公告 |
-| `/add_alarm_keywords` / `/alarm` / `/search_alarm_records` | 告警关键词与记录 |
+| `/add_alarm_keywords` / `/alarm` / `/search_alarm_records` | 告警关键词与记录（Records 页签 + 应用内详情） |
 | `/convertpdf <URL>` / `/convertimg <URL>` | 转 PDF / 截图（需 Gotenberg） |
 | `/statistics` | 运行统计 |
-| `/retry` / `/clean` | 管理员（`MANAGER_ID`）重推失败记录 / 清理 |
+| `/settings` | 管理员：打开 Mini App 的 Settings 页，管理名单与访问模式（见 §9.4） |
+| `/retry` / `/clean` | 管理员（`MANAGER_ID` 或 Settings 页授予的管理员）重推失败记录 / 清理 |
 
 ---
 
-## 13. 从源码构建镜像
+## 14. 从源码构建镜像
 
 ```bash
 docker build -t magnet-bot:local .

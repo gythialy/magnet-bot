@@ -41,8 +41,22 @@ func (c *PDFServiceConfig) WebhookURL() string {
 }
 
 type ServiceConfig struct {
-	PDF              *PDFServiceConfig
-	ManagerId        int64
+	PDF *PDFServiceConfig
+
+	// ManagerId is the legacy single-administrator view. It carries the first
+	// entry of ManagerIDs so existing call sites keep working while the access
+	// control layer migrates to the full list. It is 0 when no administrator is
+	// configured.
+	ManagerId int64
+
+	// ManagerIDs lists every administrator from MANAGER_ID. The access-control
+	// bootstrap seeds these accounts as administrators.
+	ManagerIDs []int64
+
+	// AllowedUserIDs is the optional ALLOWED_USER_IDS seed list of regular
+	// users. It is only used when the access-control tables are first populated.
+	AllowedUserIDs []int64
+
 	MessageServerUrl string
 	BaseDir          string
 	LogLevel         zerolog.Level
@@ -59,9 +73,17 @@ type ServiceConfig struct {
 
 func NewServiceConfig() *ServiceConfig {
 	pdf := &PDFServiceConfig{}
+	managers := ManagerIds()
+	managerID := int64(0)
+	if len(managers) > 0 {
+		managerID = managers[0]
+	}
+
 	return &ServiceConfig{
 		PDF:                    pdf.Init(),
-		ManagerId:              ManagerId(),
+		ManagerId:              managerID,
+		ManagerIDs:             managers,
+		AllowedUserIDs:         AllowedUserIDs(),
 		MessageServerUrl:       MessageServerUrl(),
 		BaseDir:                BaseDir(),
 		LogLevel:               LogLevel(),

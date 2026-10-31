@@ -154,3 +154,15 @@ Temporary Items
 *.log
 
 # End of https://www.toptal.com/developers/gitignore/api/go,jetbrains+all,macos
+
+### Local environment and design-tool state ###
+# Local runtime configuration; never committed (tokens, ids, hostnames live here).
+.env
+.env.*
+!.env.example
+
+# Impeccable's local roll state and scratch (design tokens themselves are tracked).
+.impeccable/questions/
+.impeccable/build/
+.impeccable/mocks/
+.impeccable/review/

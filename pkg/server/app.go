@@ -30,7 +30,10 @@ const (
 	// assetCacheControl instead: a short public window, after which their ETag
 	// brings a conditional revalidation rather than a full redownload.
 	indexCacheControl = "no-cache"
-	assetCacheControl = "public, max-age=300"
+	// Assets revalidate on every load (ETag/Last-Modified): the bundle ships
+	// inside the binary, so a redeploy must be visible on the next open instead
+	// of leaving a client on a cached copy for minutes.
+	assetCacheControl = "no-cache"
 	// etagHexBytes is how much of the SHA-256 digest is exposed. 128 bits leaves
 	// no realistic collision room for cache validation while keeping the header
 	// short.

@@ -6,10 +6,12 @@
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#ffffff" />
     <title>magnet</title>
-    <link rel="stylesheet" href="css/base.css" />
-    <link rel="stylesheet" href="css/today.css" />
-    <link rel="stylesheet" href="css/keywords.css" />
-    <link rel="stylesheet" href="css/alarms.css" />
+    <link rel="stylesheet" href="css/base.css?v=2" />
+    <link rel="stylesheet" href="css/today.css?v=2" />
+    <link rel="stylesheet" href="css/keywords.css?v=2" />
+    <link rel="stylesheet" href="css/alarms.css?v=2" />
+    <link rel="stylesheet" href="css/records.css?v=2" />
+    <link rel="stylesheet" href="css/settings.css?v=2" />
   </head>
   <body>
     <!-- Shown only when Telegram did not inject initData. It replaces the whole
@@ -22,11 +24,6 @@
     </div>
 
     <div id="app-shell">
-      <header id="app-header">
-        <h1 id="app-title">Today</h1>
-        <p id="app-subtitle" class="app-subtitle"></p>
-      </header>
-
       <main id="view">
         <section id="view-today" class="view" data-view="today">
           <div class="skeleton" data-slot="loading">Loading…</div>
@@ -45,21 +42,43 @@
           <div class="empty" data-slot="empty" hidden>No alarm keywords yet.</div>
           <div class="error" data-slot="error" hidden></div>
         </section>
+
+        <section id="view-records" class="view" data-view="records" hidden>
+          <div class="skeleton" data-slot="loading">Loading…</div>
+          <div class="empty" data-slot="empty" hidden>No alarm records yet.</div>
+          <div class="error" data-slot="error" hidden></div>
+        </section>
+
+        <!-- Admin-only. The nav entry stays hidden until js/settings.js has
+             confirmed the caller's role, so a normal account never sees it. -->
+        <section id="view-settings" class="view" data-view="settings" hidden>
+          <div class="skeleton" data-slot="loading">Loading…</div>
+          <div class="empty" data-slot="empty" hidden>Admins only</div>
+          <div class="error" data-slot="error" hidden></div>
+        </section>
       </main>
 
       <nav id="tabbar" aria-label="Sections">
         <a class="tab is-active" href="#/today" data-route="#/today">Today</a>
         <a class="tab" href="#/keywords" data-route="#/keywords">Keywords</a>
         <a class="tab" href="#/alarms" data-route="#/alarms">Alarms</a>
+        <a class="tab" href="#/records" data-route="#/records">Records</a>
+        <a class="tab" href="#/settings" data-route="#/settings" hidden>Settings</a>
       </nav>
     </div>
 
     <div id="toasts" role="status" aria-live="polite"></div>
 
-    <script src="js/core.js"></script>
-    <script src="js/api.js"></script>
-    <script src="js/today.js"></script>
-    <script src="js/keywords.js"></script>
-    <script src="js/alarms.js"></script>
+    <!-- Vendored Telegram WebApp SDK: the client provides the native bridge but no
+         window.Telegram object, so the page has to load the SDK itself. Served from
+         the same origin, which keeps the Mini App free of external CDNs. -->
+    <script src="js/telegram-web-app.js?v=2"></script>
+    <script src="js/core.js?v=2"></script>
+    <script src="js/api.js?v=2"></script>
+    <script src="js/today.js?v=2"></script>
+    <script src="js/keywords.js?v=2"></script>
+    <script src="js/alarms.js?v=2"></script>
+    <script src="js/records.js?v=2"></script>
+    <script src="js/settings.js?v=2"></script>
   </body>
 </html>

@@ -1,0 +1,327 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-31T06:34:34Z",
+  "title": "Design System: magnet Mini App",
+  "extensions": {
+    "colorMeta": {
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#09090b",
+        "tonalRamp": [
+          "#f2f2f3",
+          "#dedee3",
+          "#c2c2cb",
+          "#a0a0b1",
+          "#787891",
+          "#5c5c70",
+          "#41414d",
+          "#25252c"
+        ],
+        "purpose": "Lead lines, body copy, active tab."
+      },
+      "ink-muted": {
+        "role": "neutral",
+        "displayName": "Muted Ink",
+        "canonical": "#71717a",
+        "tonalRamp": [
+          "#f2f2f2",
+          "#dfdfe1",
+          "#c5c5c9",
+          "#a5a5ac",
+          "#808089",
+          "#62626a",
+          "#45454a",
+          "#27272a"
+        ],
+        "purpose": "Meta lines, labels, inactive tabs."
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Rule",
+        "canonical": "#2c2c2e",
+        "tonalRamp": [
+          "#f2f2f2",
+          "#e0e0e1",
+          "#c6c6c8",
+          "#a6a6aa",
+          "#828287",
+          "#646468",
+          "#464649",
+          "#28282a"
+        ],
+        "purpose": "The single separator weight; rgba(9,9,11,.14) on light, rgba(250,250,250,.2) on dark."
+      },
+      "accent-mark": {
+        "role": "primary",
+        "displayName": "Accent Mark",
+        "canonical": "#1668a8",
+        "tonalRamp": [
+          "#eff3f6",
+          "#cee3f3",
+          "#a4cbe9",
+          "#66b1eb",
+          "#2790e3",
+          "#1870b4",
+          "#194d76",
+          "#0e2c43"
+        ],
+        "purpose": "New-record mark and active filter underline; derived from the client link colour until it clears 4.5:1."
+      },
+      "primary": {
+        "role": "primary",
+        "displayName": "Client Action Ink",
+        "canonical": "#18181b",
+        "tonalRamp": [
+          "#f2f2f3",
+          "#dfdfe2",
+          "#c4c4ca",
+          "#a3a3ad",
+          "#7d7d8c",
+          "#60606c",
+          "#44444b",
+          "#27272b"
+        ],
+        "purpose": "Filled buttons and selected chips; replaced at runtime by themeParams.button_color."
+      },
+      "destructive": {
+        "role": "neutral",
+        "displayName": "Destructive Red",
+        "canonical": "#dc2626",
+        "tonalRamp": [
+          "#f5efef",
+          "#f2cfcf",
+          "#e7a6a6",
+          "#e76a6a",
+          "#dd2c2c",
+          "#b01c1c",
+          "#731c1c",
+          "#421010"
+        ],
+        "purpose": "Error text and failed state."
+      },
+      "success": {
+        "role": "neutral",
+        "displayName": "Success Green",
+        "canonical": "#16a34a",
+        "tonalRamp": [
+          "#eff6f1",
+          "#cef3dc",
+          "#a5e9be",
+          "#66ea97",
+          "#27e26c",
+          "#18b452",
+          "#19763b",
+          "#0e4322"
+        ],
+        "purpose": "Success toasts only."
+      }
+    },
+    "typographyMeta": {
+      "label": {
+        "displayName": "Label",
+        "purpose": "Column heads, section labels, sheet keys: 11px, caps, 0.14em."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Stat labels and badges: 12px, 0.1em."
+      },
+      "meta": {
+        "displayName": "Meta",
+        "purpose": "Dates, identifiers, supporting lines."
+      },
+      "control": {
+        "displayName": "Control",
+        "purpose": "Buttons, inputs, chips, tabs."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Message text and record details."
+      },
+      "lead": {
+        "displayName": "Lead",
+        "purpose": "Entry lead lines and card titles."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Sheet titles and stat values."
+      },
+      "data": {
+        "displayName": "Data",
+        "purpose": "Identifiers and endpoint URLs: monospace."
+      }
+    },
+    "shadows": [
+      {
+        "name": "overlay-lift",
+        "value": "0 10px 38px rgba(9, 9, 11, 0.18)",
+        "purpose": "Sheets, dialogs and toasts; the only shadow in the system."
+      },
+      {
+        "name": "overlay-lift-dark",
+        "value": "0 10px 38px rgba(0, 0, 0, 0.5)",
+        "purpose": "Same role on a dark client theme."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-column",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Sheet entry and head count transitions."
+      },
+      {
+        "name": "sheet-in",
+        "value": "260ms ease-column",
+        "purpose": "Sheet rises from the bottom edge."
+      },
+      {
+        "name": "head-count-fade",
+        "value": "160ms ease",
+        "purpose": "The single count in the column head fades while a filter loads."
+      },
+      {
+        "name": "skeleton-sweep",
+        "value": "1.1s ease-column infinite",
+        "purpose": "The one authored loading motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone",
+        "value": "<= 420px",
+        "purpose": "Default: four packed stat cells, fixed tab bar."
+      },
+      {
+        "name": "large-phone",
+        "value": "421px - 640px",
+        "purpose": "Sheets cap at 520px, rules stay edge to edge."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Column Head",
+      "kind": "custom",
+      "refersTo": "column-head",
+      "description": "States what the list is, how many, and how fresh it is. Only the count changes on a filter switch.",
+      "html": "<div class=\"ds-head\"><span class=\"ds-head-label\">Today</span><span class=\"ds-head-count\">24 of 512 notices</span><span class=\"ds-head-time\">updated 14:32</span></div>",
+      "css": ".ds-head { display:flex; align-items:baseline; gap:10px; padding:2px 0 10px; border-bottom:1px solid var(--rule); } .ds-head-label { color:var(--muted-foreground); font:600 11px/1.2 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; letter-spacing:0.14em; text-transform:uppercase; } .ds-head-count { flex:1 1 auto; color:var(--foreground); font:600 13px/1.2 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-variant-numeric:tabular-nums; } .ds-head-time { color:var(--muted-foreground); font:400 11px/1.2 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-variant-numeric:tabular-nums; }"
+    },
+    {
+      "name": "Stat Strip",
+      "kind": "card",
+      "refersTo": "stat-strip",
+      "description": "Four counters packed edge to edge and divided by rules; replaces metric cards.",
+      "html": "<div class=\"ds-strip\"><div class=\"ds-cell\"><span class=\"ds-value\">19,755</span><span class=\"ds-label\">History</span></div><div class=\"ds-cell\"><span class=\"ds-value\">39</span><span class=\"ds-label\">Keywords</span></div><div class=\"ds-cell\"><span class=\"ds-value\">464,739</span><span class=\"ds-label\">Related</span></div><div class=\"ds-cell\"><span class=\"ds-value\">11</span><span class=\"ds-label\">Alarms</span></div></div>",
+      "css": ".ds-strip { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); border-bottom:1px solid var(--rule); } .ds-cell { display:flex; min-height:62px; flex-direction:column; align-items:flex-start; justify-content:center; gap:2px; padding:10px 8px; border-left:1px solid var(--rule); } .ds-cell:first-child { border-left:none; padding-left:0; } .ds-value { color:var(--foreground); font:650 17px/1.2 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-variant-numeric:tabular-nums; } .ds-label { color:var(--muted-foreground); font:500 11px/1.2 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; letter-spacing:0.1em; text-transform:uppercase; }"
+    },
+    {
+      "name": "Entry Row",
+      "kind": "custom",
+      "refersTo": "entry",
+      "description": "One printed entry: lead line, meta line, actions at the right edge, square corners.",
+      "html": "<a class=\"ds-entry\" href=\"#\"><span class=\"ds-entry-main\"><span class=\"ds-entry-lead\">Equipment procurement notice for laboratory analysers</span><span class=\"ds-entry-meta\">2026-JWSDBC-W4007 · 2026-10-30</span></span><span class=\"ds-entry-chevron\"></span></a>",
+      "css": ".ds-entry { display:flex; align-items:flex-start; gap:12px; padding:12px 0; border-bottom:1px solid var(--rule); text-decoration:none; color:var(--foreground); } .ds-entry-main { display:flex; min-width:0; flex:1 1 auto; flex-direction:column; gap:3px; } .ds-entry-lead { font:600 15px/1.35 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; } .ds-entry-meta { color:var(--muted-foreground); font:400 13px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-variant-numeric:tabular-nums; } .ds-entry-chevron { width:8px; height:8px; margin-top:5px; border-top:1.5px solid var(--muted-foreground); border-right:1.5px solid var(--muted-foreground); transform:rotate(45deg); opacity:0.7; }"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The filled action in a region.",
+      "html": "<button class=\"ds-btn\">Add alarm keyword</button>",
+      "css": ".ds-btn { display:inline-flex; align-items:center; justify-content:center; min-height:40px; padding:9px 16px; border:1px solid transparent; border-radius:var(--radius-md); background-color:var(--primary); color:var(--primary-foreground); font:500 14px/1.2 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; cursor:pointer; } .ds-btn:hover { opacity:0.9; } .ds-btn:focus-visible { outline:2px solid var(--ring); outline-offset:2px; }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Secondary action: close, cancel, load more.",
+      "html": "<button class=\"ds-btn-outline\">Load more</button>",
+      "css": ".ds-btn-outline { display:inline-flex; align-items:center; justify-content:center; min-height:40px; padding:9px 16px; border:1px solid var(--input); border-radius:var(--radius-md); background:transparent; color:var(--foreground); font:500 14px/1.2 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; cursor:pointer; } .ds-btn-outline:hover { background-color:var(--accent-fill); } .ds-btn-outline:focus-visible { outline:2px solid var(--ring); outline-offset:2px; }"
+    },
+    {
+      "name": "Range Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Date range selector; the selected chip inverts.",
+      "html": "<div class=\"ds-chips\"><button class=\"ds-chip is-active\">Today</button><button class=\"ds-chip\">7 days</button><button class=\"ds-chip\">All</button></div>",
+      "css": ".ds-chips { display:flex; gap:8px; } .ds-chip { min-height:34px; padding:5px 14px; border:1px solid var(--input); border-radius:999px; background:transparent; color:var(--foreground); font:500 13px/1 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; cursor:pointer; } .ds-chip.is-active { background-color:var(--primary); border-color:var(--primary); color:var(--primary-foreground); }"
+    },
+    {
+      "name": "Search Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Debounced server-side search.",
+      "html": "<input class=\"ds-input\" type=\"search\" placeholder=\"Search title or project code\" />",
+      "css": ".ds-input { box-sizing:border-box; width:100%; min-height:40px; padding:9px 12px; background-color:var(--background); color:var(--foreground); border:1px solid var(--input); border-radius:var(--radius-md); font:400 14px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-appearance:none; appearance:none; } .ds-input::placeholder { color:var(--muted-foreground); } .ds-input:focus { outline:none; border-color:var(--ring); box-shadow:0 0 0 3px rgba(22,104,168,0.16); }"
+    },
+    {
+      "name": "Tab Bar",
+      "kind": "nav",
+      "refersTo": "column-head",
+      "description": "Fixed bottom navigation; tracked caps labels with a 2px accent mark on the active tab.",
+      "html": "<nav class=\"ds-tabs\"><a class=\"ds-tab is-active\" href=\"#\">Today</a><a class=\"ds-tab\" href=\"#\">Keywords</a><a class=\"ds-tab\" href=\"#\">Alarms</a><a class=\"ds-tab\" href=\"#\">Records</a></nav>",
+      "css": ".ds-tabs { display:flex; gap:2px; padding:0 8px; background:var(--background); border-top:1px solid var(--rule); } .ds-tab { position:relative; flex:1 1 0; display:flex; align-items:center; justify-content:center; min-height:58px; color:var(--muted-foreground); font:600 11px/1 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; letter-spacing:0.12em; text-transform:uppercase; text-decoration:none; } .ds-tab.is-active { color:var(--foreground); } .ds-tab.is-active::before { content:''; position:absolute; top:0; left:50%; width:20px; height:2px; background:var(--accent-mark); transform:translateX(-50%); }"
+    },
+    {
+      "name": "Bottom Sheet",
+      "kind": "custom",
+      "refersTo": "sheet",
+      "description": "Detail surface; the only lifted element besides toasts.",
+      "html": "<div class=\"ds-sheet\"><div class=\"ds-grab\"></div><h2 class=\"ds-sheet-title\">Alarm record</h2><div class=\"ds-row\"><span class=\"ds-key\">Starts</span><span class=\"ds-val\">2026-10-22</span></div><div class=\"ds-row\"><span class=\"ds-key\">Department</span><span class=\"ds-val\">Procurement office</span></div></div>",
+      "css": ".ds-sheet { max-width:520px; padding:18px; padding-top:10px; background:var(--popover); color:var(--popover-foreground); border-radius:var(--radius-xl); box-shadow:0 10px 38px rgba(9,9,11,0.18); } .ds-grab { width:36px; height:4px; margin:0 auto 10px; border-radius:999px; background:var(--input); } .ds-sheet-title { margin:0 0 12px; font:650 17px/1.3 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; } .ds-row { display:flex; gap:14px; padding:10px 0; border-top:1px solid var(--rule); font:400 14px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; } .ds-row:first-of-type { border-top:none; } .ds-key { flex:0 0 84px; color:var(--muted-foreground); font:600 11px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; letter-spacing:0.1em; text-transform:uppercase; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Printed Column",
+    "overview": "The Mini App is read, not operated like a control panel. Its reading surface behaves like a printed column: a head line that says what you are looking at and how fresh it is, a packed strip of counters divided by rules, then entries separated by hairlines. No cards, no tiles, no shadows. The operator opens it between meetings, glances down one vertical rhythm, and closes it.",
+    "keyCharacteristics": [
+      "Hairline rules as the only separator; no borders wrapped around content, no cards.",
+      "One accent, used for new records and the active filter.",
+      "Six type steps with tracked caps labels.",
+      "Numbers are tabular; the column head is the only thing that animates on a range switch.",
+      "Controls keep a 6px radius; sheets get 14px; entries get none."
+    ],
+    "rules": [
+      {
+        "name": "The One Accent Rule",
+        "body": "The accent marks the new and the selected. Any other use is decoration and gets removed.",
+        "section": "colors"
+      },
+      {
+        "name": "The Client Ground Rule",
+        "body": "Background, ink and primary come from themeParams; a hardcoded brand surface is a bug, not a preference.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Rule",
+        "body": "Every number that lines up in a column uses tabular figures.",
+        "section": "typography"
+      },
+      {
+        "name": "The Caps Label Rule",
+        "body": "A label is 11px, 600, uppercase, 0.14em. If it needs to be bigger to be read, it is a heading, not a label.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flow Is Flat Rule",
+        "body": "If it scrolls with the page it is flat: rule, background, or nothing. Shadows are for surfaces that cover other content.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do separate with a single 1px rule; a second weight or a double border is undefined.",
+      "Do keep the reading column edge-to-edge and square.",
+      "Do put the count and the timestamp in the column head, not in the entries.",
+      "Do use tabular figures and nowrap for counters so a value change cannot reflow.",
+      "Do state a mode twice when it matters: the access switch is drawn and the mode is written beside it."
+    ],
+    "donts": [
+      "Don't put cards in a reading flow, or wrap a list in a card that wraps another.",
+      "Don't give an in-flow surface a shadow, a gradient, or a coloured left border.",
+      "Don't introduce a second accent; the mark is the only colour that does a job.",
+      "Don't use emoji or font glyphs as icons.",
+      "Don't ship the dashboard vocabulary: hero metrics, coloured stat tiles, sparklines."
+    ]
+  }
+}
