@@ -100,3 +100,206 @@ func TestKeywordEditByIdRejectsMalformedEntry(t *testing.T) {
 		}
 	}
 }
+
+// TestKeywordInsertManyReportsAddedAndSkipped pins the batch contract the API
+// exposes: trimmed input, dropped blanks, batch-internal duplicates reported as
+// skipped, and type/user separation.
+func TestKeywordInsertManyReportsAddedAndSkipped(t *testing.T) {
+	setupKeywordTestDB(t)
+	const (
+		owner = int64(1)
+		other = int64(2)
+	)
+
+	added, skipped, err := Keyword.InsertMany(owner, model.PROJECT, []string{" alpha ", "beta", "alpha", "   "})
+	if err != nil {
+		t.Fatalf("InsertMany() error: %v", err)
+	}
+	assertKeywordSlice(t, "added", added, []string{"alpha", "beta"})
+	assertKeywordSlice(t, "skipped", skipped, []string{"alpha"})
+
+	added, skipped, err = Keyword.InsertMany(owner, model.PROJECT, []string{"alpha", " gamma "})
+	if err != nil {
+		t.Fatalf("InsertMany() error: %v", err)
+	}
+	assertKeywordSlice(t, "added", added, []string{"gamma"})
+	assertKeywordSlice(t, "skipped", skipped, []string{"alpha"})
+
+	// An input that normalises to nothing must return empty, non-nil slices: the
+	// API encodes them as [] and the client iterates them unconditionally.
+	added, skipped, err = Keyword.InsertMany(owner, model.PROJECT, []string{"", "  "})
+	if err != nil {
+		t.Fatalf("InsertMany() error: %v", err)
+	}
+	if added == nil || skipped == nil {
+		t.Fatalf("InsertMany() returned nil slices (%v, %v), want empty", added, skipped)
+	}
+	if len(added) != 0 || len(skipped) != 0 {
+		t.Fatalf("InsertMany() = (%v, %v), want empty slices", added, skipped)
+	}
+
+	// The same text is a different keyword for the alarm list and for another
+	// account.
+	added, skipped, err = Keyword.InsertMany(owner, model.ALARM, []string{"alpha"})
+	if err != nil {
+		t.Fatalf("InsertMany(ALARM) error: %v", err)
+	}
+	assertKeywordSlice(t, "alarm added", added, []string{"alpha"})
+	assertKeywordSlice(t, "alarm skipped", skipped, []string{})
+
+	added, _, err = Keyword.InsertMany(other, model.PROJECT, []string{"alpha"})
+	if err != nil {
+		t.Fatalf("InsertMany(other) error: %v", err)
+	}
+	assertKeywordSlice(t, "other added", added, []string{"alpha"})
+
+	if got := len(Keyword.GetByUserIdAndType(owner, model.PROJECT)); got != 3 {
+		t.Fatalf("owner project keywords = %d, want 3", got)
+	}
+	if got := len(Keyword.GetByUserIdAndType(owner, model.ALARM)); got != 1 {
+		t.Fatalf("owner alarm keywords = %d, want 1", got)
+	}
+	if got := len(Keyword.GetByUserIdAndType(other, model.PROJECT)); got != 1 {
+		t.Fatalf("other project keywords = %d, want 1", got)
+	}
+}
+
+// TestKeywordWritesReportErrors: InsertMany must surface a real storage failure
+// (the API answers 500), while the legacy Insert keeps swallowing it into "".
+func TestKeywordWritesReportErrors(t *testing.T) {
+	setupKeywordTestDB(t)
+
+	sqlDB, err := Keyword.UnderlyingDB().DB()
+	if err != nil {
+		t.Fatalf("access underlying database: %v", err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatalf("close test database: %v", err)
+	}
+
+	if got := Keyword.Insert([]string{"alpha"}, 1, model.PROJECT); got != "" {
+		t.Fatalf("Insert() = %q after a storage failure, want the legacy empty result", got)
+	}
+
+	added, skipped, err := Keyword.InsertMany(1, model.PROJECT, []string{"alpha"})
+	if err == nil {
+		t.Fatalf("InsertMany() error = nil, want the storage failure (added=%v skipped=%v)", added, skipped)
+	}
+}
+
+// TestKeywordDeleteOwnedIsUserScoped proves the ownership predicate is part of
+// the DELETE and that the boolean distinguishes "removed" from "nothing there".
+func TestKeywordDeleteOwnedIsUserScoped(t *testing.T) {
+	setupKeywordTestDB(t)
+	const (
+		owner = int64(1)
+		other = int64(2)
+	)
+
+	if _, _, err := Keyword.InsertMany(owner, model.PROJECT, []string{"keep"}); err != nil {
+		t.Fatalf("seed keyword: %v", err)
+	}
+	id := *Keyword.GetByUserIdAndType(owner, model.PROJECT)[0].ID
+
+	deleted, err := Keyword.DeleteOwned(other, id)
+	if err != nil {
+		t.Fatalf("DeleteOwned(other) error: %v", err)
+	}
+	if deleted {
+		t.Fatal("DeleteOwned(other) = true, want false")
+	}
+	if got := len(Keyword.GetByUserIdAndType(owner, model.PROJECT)); got != 1 {
+		t.Fatal("another user's keyword was deleted")
+	}
+
+	deleted, err = Keyword.DeleteOwned(owner, id)
+	if err != nil {
+		t.Fatalf("DeleteOwned(owner) error: %v", err)
+	}
+	if !deleted {
+		t.Fatal("DeleteOwned(owner) = false, want true")
+	}
+	if got := len(Keyword.GetByUserIdAndType(owner, model.PROJECT)); got != 0 {
+		t.Fatalf("keywords after delete = %d, want 0", got)
+	}
+
+	// A second delete removes nothing and must report that, so the API can
+	// answer 404 instead of a misleading 204.
+	deleted, err = Keyword.DeleteOwned(owner, id)
+	if err != nil {
+		t.Fatalf("second DeleteOwned(owner) error: %v", err)
+	}
+	if deleted {
+		t.Fatal("second DeleteOwned(owner) = true, want false")
+	}
+}
+
+// TestKeywordUpdateOwnedIsUserScoped proves the ownership predicate is part of
+// the UPDATE and that a same-value rename still counts as a match (the API must
+// not turn a no-op into a 404).
+func TestKeywordUpdateOwnedIsUserScoped(t *testing.T) {
+	setupKeywordTestDB(t)
+	const (
+		owner = int64(1)
+		other = int64(2)
+	)
+
+	if _, _, err := Keyword.InsertMany(owner, model.PROJECT, []string{"original"}); err != nil {
+		t.Fatalf("seed keyword: %v", err)
+	}
+	id := *Keyword.GetByUserIdAndType(owner, model.PROJECT)[0].ID
+
+	updated, err := Keyword.UpdateOwned(other, id, "stolen")
+	if err != nil {
+		t.Fatalf("UpdateOwned(other) error: %v", err)
+	}
+	if updated {
+		t.Fatal("UpdateOwned(other) = true, want false")
+	}
+	if got := Keyword.GetByUserIdAndType(owner, model.PROJECT)[0].Keyword; got != "original" {
+		t.Fatalf("keyword = %q, want the other user's attempt to have changed nothing", got)
+	}
+
+	updated, err = Keyword.UpdateOwned(owner, id, "renamed")
+	if err != nil {
+		t.Fatalf("UpdateOwned(owner) error: %v", err)
+	}
+	if !updated {
+		t.Fatal("UpdateOwned(owner) = false, want true")
+	}
+	if got := Keyword.GetByUserIdAndType(owner, model.PROJECT)[0].Keyword; got != "renamed" {
+		t.Fatalf("keyword = %q, want renamed", got)
+	}
+
+	// Renaming to the value it already has is still a hit.
+	updated, err = Keyword.UpdateOwned(owner, id, "renamed")
+	if err != nil {
+		t.Fatalf("same-value UpdateOwned(owner) error: %v", err)
+	}
+	if !updated {
+		t.Fatal("same-value UpdateOwned(owner) = false, want true")
+	}
+
+	updated, err = Keyword.UpdateOwned(owner, 999999, "x")
+	if err != nil {
+		t.Fatalf("UpdateOwned(missing) error: %v", err)
+	}
+	if updated {
+		t.Fatal("UpdateOwned(missing) = true, want false")
+	}
+}
+
+// assertKeywordSlice compares string slices and reports the values on a
+// mismatch; both empty and populated expectations are covered.
+func assertKeywordSlice(t *testing.T, name string, got, want []string) {
+	t.Helper()
+
+	if len(got) != len(want) {
+		t.Fatalf("%s = %v, want %v", name, got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("%s = %v, want %v", name, got, want)
+		}
+	}
+}

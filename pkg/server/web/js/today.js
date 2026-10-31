@@ -57,6 +57,20 @@
     all: "No notices yet.",
   };
 
+  // Conversion formats the bot understands, with the glyph and label each
+  // button shows. The server validates the format again, so this table is only
+  // the client-side contract.
+  var CONVERT_FORMATS = {
+    pdf: { label: "PDF", glyph: "\ud83d\udcc4" },
+    png: { label: "PNG", glyph: "\ud83d\uddbc" },
+  };
+
+  // core.toast removes itself after 3s. The conversion flow needs a 2s
+  // "in progress" prompt and a 3.5s acknowledgement, so those two toasts are
+  // built locally with the same markup instead of fighting the shell timer.
+  var CONVERT_PENDING_TOAST_MS = 2000;
+  var CONVERT_DONE_TOAST_MS = 3500;
+
   // Nodes, queried or created once. null until ensureDOM() succeeds.
   var refs = null;
   // The document-level Esc listener is installed once, not once per mount.
@@ -80,6 +94,11 @@
   // Bumped per request so a slow response for an old query can never overwrite
   // the list for the query the user is actually looking at.
   var requestSeq = 0;
+
+  // Conversions currently submitted, keyed by "format\0url". A notice can have
+  // one PDF and one PNG in flight at the same time; a second tap on the same
+  // pair is ignored until the first answers.
+  var converting = Object.create(null);
 
   var stats = {
     history: null,
@@ -283,6 +302,10 @@
       '<button class="btn today-modal-open" type="button" data-action="open-notice">' +
       "Open notice page</button>" +
       "</div>" +
+      '<div class="today-modal-actions today-modal-convert" data-slot="detail-convert">' +
+      detailConvertButton("pdf") +
+      detailConvertButton("png") +
+      "</div>" +
       "</div>"
     );
   }
@@ -347,6 +370,7 @@
       detailMeta: detail.querySelector('[data-slot="detail-meta"]'),
       detailOpen: detail.querySelector("[data-action='open-notice']"),
       detailClose: detail.querySelector("[data-action='close-detail']"),
+      detailConvert: detail.querySelector('[data-slot="detail-convert"]'),
     };
 
     refs.search.addEventListener("input", app.debounce(applySearch, SEARCH_DEBOUNCE_MS));
@@ -372,17 +396,22 @@
       ? '<span class="today-flame" role="img" aria-label="Has tender code"' +
         ' title="Has tender code">🔥</span>'
       : "";
-    // The action is only offered when there is somewhere to go; the card body
-    // still opens the detail sheet either way.
-    var open = item.url
-      ? '<button class="today-open" type="button" data-action="open-link"' +
-        ' data-index="' + index + '" aria-label="Open notice page">↗ Open</button>'
+    // Conversion and opening need a notice URL. The server re-checks ownership
+    // and the host allow-list, so a card without an https URL simply offers no
+    // action instead of a button that can only fail.
+    var actions = item.url
+      ? '<div class="today-card-actions">' +
+        cardConvertButton(index, "pdf") +
+        cardConvertButton(index, "png") +
+        '<button class="today-open" type="button" data-action="open-link"' +
+        ' data-index="' + index + '" aria-label="Open notice page">↗ Open</button>' +
+        "</div>"
       : "";
 
     // The article carries the detail action as well so a tap on the card's own
     // padding still opens the sheet; the inner button is what supplies the
-    // keyboard/AT entry point, and "Open" sits closer to the tap than either of
-    // them, so launching a link never opens the sheet by accident.
+    // keyboard/AT entry point, and the footer actions sit outside it, so a
+    // convert or open tap never opens the sheet by accident.
     return (
       '<article class="card today-card" data-action="detail" data-index="' + index + '">' +
       '<div class="today-card-row">' +
@@ -394,8 +423,8 @@
       "</span>" +
       (meta ? '<span class="card-meta today-card-meta">' + meta + "</span>" : "") +
       "</button>" +
-      (open ? '<div class="today-card-side">' + open + "</div>" : "") +
       "</div>" +
+      actions +
       "</article>"
     );
   }
@@ -410,6 +439,9 @@
       html += cardHTML(state.items[i], i);
     }
     refs.list.innerHTML = html;
+    // A re-render (new page, new search) drops the disabled attribute, so the
+    // in-flight conversions have to be re-applied to the fresh buttons.
+    syncConvertButtons();
   }
 
   function renderStates() {
@@ -698,7 +730,11 @@
     refs.detailMeta.innerHTML = meta;
     refs.detailMeta.hidden = !meta;
     refs.detailOpen.disabled = !item.url;
+    if (refs.detailConvert) {
+      refs.detailConvert.hidden = !item.url;
+    }
     refs.detail.hidden = false;
+    syncConvertButtons();
 
     if (typeof refs.detailClose.focus === "function") {
       refs.detailClose.focus();
@@ -727,6 +763,155 @@
       return -1;
     }
     return index;
+  }
+
+  /* Conversion ----------------------------------------------------------- */
+
+  function conversionKey(url, format) {
+    return format + "\u0000" + url;
+  }
+
+  function isConverting(url, format) {
+    return Boolean(url) && Boolean(converting[conversionKey(url, format)]);
+  }
+
+  function cardConvertButton(index, format) {
+    var meta = CONVERT_FORMATS[format];
+    return (
+      '<button class="today-convert" type="button" data-action="convert"' +
+      ' data-format="' + format + '" data-index="' + index + '"' +
+      ' aria-label="Send this notice as ' + meta.label + '">' +
+      meta.glyph + " " + meta.label + "</button>"
+    );
+  }
+
+  function detailConvertButton(format) {
+    var meta = CONVERT_FORMATS[format];
+    return (
+      '<button class="btn-ghost" type="button" data-action="convert"' +
+      ' data-format="' + format + '" data-scope="detail"' +
+      ' aria-label="Send this notice as ' + meta.label + '">' +
+      meta.glyph + " " + meta.label + "</button>"
+    );
+  }
+
+  /*
+   * Applies the in-flight set to every rendered convert button. Both the list
+   * and the sheet are covered: a card may be re-rendered by pagination or a
+   * search while its conversion is still running, and the sheet converts the
+   * notice it is showing.
+   */
+  function syncConvertButtons() {
+    if (!refs) {
+      return;
+    }
+
+    var buttons = refs.view.querySelectorAll('button[data-action="convert"]');
+    for (var i = 0; i < buttons.length; i++) {
+      var button = buttons[i];
+      var format = button.getAttribute("data-format");
+      var item;
+      if (button.getAttribute("data-scope") === "detail") {
+        item = state.items[state.detailIndex];
+      } else {
+        item = state.items[parseInt(button.getAttribute("data-index"), 10)];
+      }
+
+      button.disabled = !item || !item.url || isConverting(item.url, format);
+    }
+  }
+
+  // Same markup as app.toast, but with the lifetime the conversion flow asks
+  // for. Returns the node so the pending prompt can be retired early.
+  function timedToast(message, kind, ttl) {
+    var container = document.getElementById("toasts") || document.body;
+    var el = document.createElement("div");
+    el.className = "toast is-" + kind;
+    el.setAttribute("role", "status");
+    el.textContent = message;
+    container.appendChild(el);
+
+    window.setTimeout(function () {
+      if (el.parentNode) {
+        el.parentNode.removeChild(el);
+      }
+    }, ttl);
+
+    return el;
+  }
+
+  function retireToast(el) {
+    if (el && el.parentNode) {
+      el.parentNode.removeChild(el);
+    }
+  }
+
+  function conversionErrorText(err) {
+    var status = err && err.status;
+    if (status === 429) {
+      return "Too many requests, try again in a minute";
+    }
+    if (status === 403) {
+      return "This notice is not available for conversion";
+    }
+    if (status === 502) {
+      return "Conversion failed, try again later";
+    }
+    if (!status) {
+      // fetch rejected before any HTTP status existed.
+      return "Network error, try again";
+    }
+    return "Conversion failed, try again later";
+  }
+
+  /*
+   * Submits one conversion. The bot sends the file to the chat, so there is
+   * nothing to poll: the app acknowledges the submission and then forgets it.
+   * The button is disabled for the whole flight, and the pair (notice, format)
+   * is de-duplicated so a double tap cannot submit twice.
+   */
+  function startConversion(index, format) {
+    var item = state.items[index];
+    if (!item || !item.url || !CONVERT_FORMATS[format] || !window.MagnetAPI) {
+      return;
+    }
+
+    var key = conversionKey(item.url, format);
+    if (converting[key]) {
+      return;
+    }
+
+    var meta = CONVERT_FORMATS[format];
+    converting[key] = true;
+    syncConvertButtons();
+
+    var pending = timedToast("Converting " + meta.label + "\u2026", "info", CONVERT_PENDING_TOAST_MS);
+
+    var request;
+    try {
+      request = window.MagnetAPI.convert(item.url, format);
+    } catch (err) {
+      finishConversion(key, pending);
+      app.toast(conversionErrorText(err), "error");
+      return;
+    }
+
+    request.then(
+      function () {
+        finishConversion(key, pending);
+        timedToast(meta.label + " sent to chat \u2713", "success", CONVERT_DONE_TOAST_MS);
+      },
+      function (err) {
+        finishConversion(key, pending);
+        app.toast(conversionErrorText(err), "error");
+      }
+    );
+  }
+
+  function finishConversion(key, pendingToast) {
+    delete converting[key];
+    syncConvertButtons();
+    retireToast(pendingToast);
   }
 
   /* Events --------------------------------------------------------------- */
@@ -784,6 +969,14 @@
     }
     if (name === "open-notice") {
       openItemLink(state.detailIndex);
+      return;
+    }
+    if (name === "convert") {
+      // The sheet has no per-card index: it always converts the notice it is
+      // showing.
+      var noticeIndex =
+        action.getAttribute("data-scope") === "detail" ? state.detailIndex : indexFrom(action);
+      startConversion(noticeIndex, action.getAttribute("data-format"));
       return;
     }
     if (name === "close-detail") {

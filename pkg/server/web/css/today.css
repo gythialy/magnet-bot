@@ -155,12 +155,6 @@
   padding: 0 2px;
 }
 
-.today-card-side {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: flex-start;
-}
-
 .today-open {
   display: inline-flex;
   align-items: center;
@@ -177,6 +171,47 @@
   white-space: nowrap;
   cursor: pointer;
   touch-action: manipulation;
+}
+
+/* Card actions: PDF / PNG / Open ---------------------------------------- */
+
+/*
+ * One right-aligned footer row instead of a side column: three 40px actions do
+ * not fit beside a two-line title on a 320px screen, and stacking them in the
+ * narrow column made every card taller than the title it describes.
+ */
+.today-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.today-convert {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 40px;
+  padding: 6px 12px;
+  background-color: transparent;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  color: var(--tg-text);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* A conversion in flight disables only that notice's button for that format. */
+.today-convert:disabled,
+.today-open:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* Load more ------------------------------------------------------------- */
@@ -264,18 +299,36 @@
   width: 100%;
 }
 
+.today-modal-convert {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* An author display value would otherwise beat the UA [hidden] rule; the sheet
+   hides the convert row for notices that cannot be converted. */
+.today-modal-convert[hidden] {
+  display: none;
+}
+
+.today-modal-convert .btn-ghost {
+  flex: 1 1 0;
+}
+
 /* Focus ----------------------------------------------------------------- */
 
 /* Keyboard users need to see where they are; Telegram's shell draws no ring of
    its own on the reset buttons above. */
 .today-card-body:focus-visible,
 .today-open:focus-visible,
+.today-convert:focus-visible,
 .today-more:focus-visible,
 .today-retry:focus-visible,
 .today-ranges .chip:focus-visible,
 .today-search-input:focus-visible,
 .today-modal .modal-close:focus-visible,
-.today-modal-actions .btn:focus-visible {
+.today-modal-actions .btn:focus-visible,
+.today-modal-actions .btn-ghost:focus-visible {
   outline: 2px solid var(--tg-button);
   outline-offset: 2px;
 }

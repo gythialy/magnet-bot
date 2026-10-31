@@ -19,12 +19,20 @@ const (
 	apiKeywordsPath     = "/api/keywords"
 	apiAlarmsPath       = "/api/alarms"
 	apiAlarmRecordsPath = "/api/alarm-records"
+	apiConvertPath      = "/api/convert"
 
 	// apiMountPrefix catches every other /api/* request. Without it an unknown
 	// endpoint falls through to net/http's plain-text 404, which the Mini App
 	// cannot parse into its typed request error (js/core.js expects the JSON
 	// envelope on every non-2xx response).
 	apiMountPrefix = "/api/"
+
+	// convertRateLimit and convertRateWindow bound how many conversions one
+	// user may start per minute. Each request renders a whole page in a shared
+	// Gotenberg sidecar, so the budget protects that sidecar rather than this
+	// process.
+	convertRateLimit  = 5
+	convertRateWindow = time.Minute
 )
 
 // APIConfig configures the read-only Mini App API.
@@ -42,6 +50,16 @@ type APIConfig struct {
 	// InitDataTTL bounds how old initData may be. A non-positive value means
 	// one hour, matching NewInitDataMiddleware.
 	InitDataTTL time.Duration
+
+	// Conversion starts a PDF/PNG conversion for the authenticated user. It is
+	// optional: a deployment without Gotenberg leaves /api/convert unregistered,
+	// so the client gets the same JSON 404 as for any other absent endpoint.
+	Conversion ConversionStarter
+
+	// AllowedHost is the only notice host the conversion endpoint accepts. It
+	// comes from SERVER_URL, so a crafted request cannot turn the bot into a
+	// screenshot service for arbitrary pages.
+	AllowedHost string
 }
 
 // apiHandler holds the per-deployment constants shared by every endpoint.
@@ -90,6 +108,21 @@ func newAPI(cfg APIConfig, now func() time.Time) http.Handler {
 	// pattern matches the path, and an unrestricted catch-all would turn that
 	// into a bare 404.
 	mux.HandleFunc("GET "+apiMountPrefix, handleAPINotFound)
+
+	// Write (CRUD) routes and their per-user rate limiter live in api_write.go;
+	// this call keeps the read table above focused on GETs.
+	newWriteAPI().register(mux)
+
+	// Conversion is registered only when a starter is configured. Gotenberg is
+	// an optional sidecar, and a route that answers 502 for every request would
+	// be worse than a plain 404 the client can interpret as "not available".
+	if cfg.Conversion != nil {
+		mux.Handle("POST "+apiConvertPath, NewConvertHandler(ConvertConfig{
+			Starter:     cfg.Conversion,
+			AllowedHost: cfg.AllowedHost,
+			Limiter:     NewLimiter(convertRateLimit, convertRateWindow),
+		}))
+	}
 
 	// Authentication wraps the whole subtree, including the not-found handler:
 	// an unauthenticated caller must not be able to probe which endpoints exist.
