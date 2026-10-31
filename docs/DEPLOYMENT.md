@@ -324,6 +324,12 @@ bot.example.com {
 - 证书：公网侧由 Cloudflare 边缘提供，Caddy 与 cloudflared 之间用内部证书即可，所以 8.4 里
   要 `noTLSVerify: true`。若坚持让 Caddy 自己申请 Let's Encrypt 证书，必须保证 ACME 校验能
   到达 Caddy（HTTP-01 要在隧道里额外暴露 80 端口，或用 DNS-01），否则签发会一直失败。
+- **不要给 `/app/*`、`/api/*`、`/pdf/*` 加任何缓存**：静态资源已经带
+  `Cache-Control: no-cache` + `ETag`（每次回源校验，未变则 304），在 Caddy 或 Cloudflare
+  再叠一层 `max-age` 只会让升级后客户端停在旧包上。
+- `/app/*` 要允许普通浏览器 UA 通过：Cloudflare 的 Managed Challenge / Bot Fight Mode 会把
+  Telegram WebView 当成机器人挑战掉，表现为 Mini App 一直转圈。除了 8.7 的 webhook 例外，
+  再给 `/app/*` 加一条 Skip 规则比较稳。
 
 Compose 片段（只列公网入口相关的服务，其余沿用 §4）：
 
@@ -466,6 +472,36 @@ docker compose logs -f magnet-bot | grep -iE "webhook|polling"
 | `502` / `521` / `522` | Cloudflare 到源站不通 | cloudflared 是否在线、Caddy 是否在跑、`service:` 是否指向正确的容器与协议 |
 | `409` 或 `terminated by other getUpdates request` | 同一 token 有两个消费者 | 只保留一个 bot 实例；确认旧容器已停、没有残留 webhook 同时推送 |
 | `url` 为空、`pending_update_count` 一直是 0 | `SetWebhook` 一直失败 | 看 bot 日志里的重试记录；多为公网不可达（先按 8.6 自检）或 token 错误 |
+
+---
+
+### 8.10 Mini App 上线前置
+
+Web 入口通了不等于 Mini App 能用。三件事缺一不可：
+
+1. **BotFather 绑定域名**：`/mybots` → 选 bot → **Bot Settings → Configure Mini App**
+   （部分版本叫 **Domain**），填 `PUBLIC_BASE_URL` 的 host，例如 `bot.example.com`。
+   没绑定时 Telegram 会把这个 URL 当**普通网页**在客户端内置浏览器里打开，不注入
+   `initData`，页面只能显示 “Open this app from the bot.”。
+2. **菜单按钮**：bot 启动时用 `SetChatMenuButton` 自动把聊天菜单指向 `{PUBLIC_BASE_URL}/app/`，
+   不需要手工设置；换域名后重启 bot 即可刷新。
+3. **同源资源**：Telegram WebApp SDK 已随二进制内置（`/app/js/telegram-web-app.js`），
+   页面不请求 telegram.org，所以 Caddy / Cloudflare 不需要为外部域名放行任何东西。
+
+自检（在宿主机上跑，不依赖 Telegram）：
+
+```bash
+BASE=https://bot.example.com
+
+curl -s -o /dev/null -w 'app %{http_code}\n'   "$BASE/app/"                        # 期望 200
+curl -s "$BASE/app/" | grep -c 'js/telegram-web-app.js'                            # 期望 1
+curl -s -o /dev/null -w 'sdk %{http_code}\n'   "$BASE/app/js/telegram-web-app.js"  # 期望 200
+curl -s -o /dev/null -w 'api %{http_code}\n'   "$BASE/api/statistics"             # 期望 401
+curl -s "$BASE/healthz"                                                            # 期望 ok
+```
+
+> 返回的是 Cloudflare 的挑战页、登录页或 HTML 报错，而不是 `<title>magnet</title>`，
+> 说明请求没到 bot：先查 8.7 的 Bot Fight Mode / WAF 规则，再查 Caddy 的 `reverse_proxy`。
 
 ---
 
@@ -688,6 +724,9 @@ docker run ... ghcr.io/gythialy/magnet-bot:<上一个版本>
 
 - 数据库结构变更由 `AutoMigrate` 在启动时完成，向后兼容；升级前建议先备份 `bot.db`。
 - 升级不会重复推送：`histories` 的 URL 在启动时会被规范化为绝对地址（幂等）。
+- 本版本起静态资源改为 `no-cache` + `ETag` 并在引用上带版本号，升级后**首次打开**就会拉到
+  新包；如果客户端仍显示旧界面（例如旧的排版、图标位置没变），把 Mini App 窗口**完全关掉
+  再打开**一次即可，不需要重启 bot。
 
 ---
 
@@ -745,6 +784,35 @@ docker run ... ghcr.io/gythialy/magnet-bot:<上一个版本>
 - 群组里 @bot 不会有任何反应，bot 只服务私聊；
 - 管理员账号也进不去、页面打不开：按 §9.8 用 `sqlite3` 把 `access_mode` 切回 `off`。
 
+**Q：Mini App 显示 "Open this app from the bot."**
+
+页面加载成功但拿不到 `initData`，`js/core.js` 因此停在 gate 上。按顺序查：
+
+1. BotFather 里是否给这个 bot 绑定了 `PUBLIC_BASE_URL` 的域名（见 8.10）——最常见原因；
+2. 是否从**旧消息里的按钮**打开的：那条按钮指向旧域名，用聊天菜单的 “Open app” 重开；
+3. 用 `curl` 看 `/app/` 是否真的返回本项目的 HTML；返回挑战页说明请求没到 bot。
+
+**Q：Mini App 一直转圈，页面不出来**
+
+- 客户端会一直显示加载遮罩直到页面调用 `Telegram.WebApp.ready()`；本项目在 `core.js` 里
+  第一件事就是调用它，所以转圈通常意味着 `js/core.js` 没加载成功或 JS 报错（用桌面浏览器
+  打开同一 URL 看控制台最快）；
+- 也可能是 Cloudflare 挑战了 WebView 的请求（见 8.7 / 8.3），或 `/app/` 被 CDN 缓存成旧包。
+
+**Q：升级后 Mini App 还是旧样式（或图标错位）**
+
+客户端缓存了上一次的静态资源。本版本已把资源改成 `no-cache` + `ETag` 并给引用加了版本号，
+**完全关闭 Mini App 窗口再打开**即可；如果还不行，确认 Caddy / Cloudflare 上没有给 `/app/*`
+加缓存规则。
+
+**Q：转换按钮点不动 / 文件没回到聊天**
+
+- 先确认 `PDF_SERVER_URL` 可达、`GET /health` 正常；
+- 回调链路：Gotenberg → `WEBHOOK_SERVER_URL:WEBHOOK_SERVER_PORT` → `/pdf/{id}?token=...`。
+  容器内的 `host.docker.internal` 只在 Docker Desktop / OrbStack 有意义；Linux 上要么把 bot
+  和 Gotenberg 放进同一个 compose 网络用服务名，要么加 `extra_hosts: host-gateway`；
+- `WEBHOOK_TOKEN` 改了要同时重启两个服务，否则回调 403（bot 日志里没有对应记录就是被 403 挡掉了）。
+
 **Q：健康检查端点是什么**
 
 `GET /healthz` 始终注册，返回 `200` 与纯文本 `ok`（无鉴权），可以直接用作 HTTP
@@ -763,7 +831,7 @@ healthcheck；`/healthz` 上的非 GET 返回 405。未启用的能力（例如 
 | `/delete_keywords <id>...` | 删除（仅限本人） |
 | `/search_history_title <关键词>` | 搜索历史推送 |
 | `/list_today` | 今日公告 |
-| `/add_alarm_keywords` / `/alarm` / `/search_alarm_records` | 告警关键词与记录（Records 页签 + 应用内详情） |
+| `/add_alarm_keywords` | 告警关键词（`/alarm`、`/search_alarm_records` 已退役，记录在 Mini App 的 Records 页签） |
 | `/convertpdf <URL>` / `/convertimg <URL>` | 转 PDF / 截图（需 Gotenberg） |
 | `/statistics` | 运行统计 |
 | `/settings` | 管理员：打开 Mini App 的 Settings 页，管理名单与访问模式（见 §9.4） |
@@ -780,3 +848,86 @@ docker build -t magnet-bot:local .
 - 构建阶段用 `golang:1.27`，运行阶段是 `distroless/static-debian12:nonroot`（无 shell，
   排障请用日志或 `docker cp` 取 `bot.log`）；
 - 镜像声明了 `VOLUME /etc/magnet`，所以 `CONFIG_PATH` 建议就用它。
+
+---
+
+## 15. 上线检查清单（Ubuntu + Caddy）
+
+改动 Caddy / cloudflared / 环境变量之前，按这张表逐项核对，避免"改完才发现少一项"。
+
+### 15.1 环境变量
+
+| 变量 | 值 | 备注 |
+| --- | --- | --- |
+| `PUBLIC_BASE_URL` | `https://bot.example.com` | 必须是 https、且端口只能是 443/80/88/8443 |
+| `TELEGRAM_WEBHOOK_ENABLED` | `true` | 关闭即回落轮询 |
+| `TELEGRAM_WEBHOOK_SECRET` | `^[A-Za-z0-9_-]{1,256}$` | 改这个值后要重启，让 `SetWebhook` 带上新值 |
+| `MINI_APP_ENABLED` | `true` | 关闭后 `/app/`、`/api/` 不注册（404） |
+| `WEBHOOK_SERVER_PORT` | 例如 `8080` | **必填**；Caddy 转发目标、Gotenberg 回调都用它 |
+| `WEBHOOK_SERVER_URL` | 例如 `http://magnet-bot` | Gotenberg 视角下能解析到的 bot 地址 |
+| `PDF_SERVER_URL` | 例如 `http://gotenberg:3000` | Gotenberg 地址 |
+| `MANAGER_ID` | 你的 Telegram 用户 ID | 首个管理员，同时开启动 `restricted` 模式 |
+
+### 15.2 网络与端口
+
+- bot 容器**不需要**映射宿主端口：Caddy 与 bot 在同一 compose 网络里直连 `magnet-bot:8080`。
+- Linux 上 Gotenberg 回调不要写 `host.docker.internal`（那是 Docker Desktop 的别名）：
+
+```yaml
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # 只有必须回连宿主机时才需要
+    shm_size: 1gb
+    command: ["--api-timeout=120s"]
+```
+
+  更推荐把 `WEBHOOK_SERVER_URL` 写成 bot 的**服务名**（`http://magnet-bot`），两者同网络即可。
+
+### 15.3 Caddyfile
+
+```caddy
+bot.example.com {
+    encode zstd gzip
+    reverse_proxy magnet-bot:8080 {
+        # 上传/回调整体很小，默认超时足够；放大只是为了让慢转换不占满连接
+        transport http {
+            read_timeout 5m
+        }
+    }
+}
+```
+
+- 不需要按路径拆分：`/telegram/webhook`、`/healthz`、`/app/`、`/api/`、`/pdf/` 都由 bot 的 mux
+  注册，Caddy 只做 TLS 与转发。
+- 同域还要跑别的服务时，用 `handle /api/* { ... }` 之类把子路径分出去，其余仍回落到 bot。
+
+### 15.4 上线后验证（复制即用）
+
+```bash
+BASE=https://bot.example.com
+TOKEN=...            # 与 WEBHOOK_SERVER_PORT 无关，用 bot token
+
+# 1) 进程与入口
+curl -s "$BASE/healthz"                                   # ok
+curl -s -o /dev/null -w '%{http_code}\n' "$BASE/app/"     # 200
+curl -s "$BASE/app/" | grep -o 'js/telegram-web-app.js'    # 有输出
+
+# 2) Telegram 侧注册状态
+curl -s "https://api.telegram.org/bot$TOKEN/getWebhookInfo" \
+  | jq '{url, pending_update_count, last_error_message, allowed_updates}'
+# url 应为 https://bot.example.com/telegram/webhook，last_error_message 为 null
+
+# 3) 访问控制是否生效
+curl -s -o /dev/null -w '%{http_code}\n' "$BASE/api/statistics"   # 401
+
+# 4) BotFather 域名是否绑定（最终以真实客户端为准）
+#    在 Telegram 里点菜单 "Open app"：应直接进 Today，而不是 "Open this app from the bot."
+```
+
+### 15.5 回滚顺序
+
+1. 停 cloudflared 或在 Cloudflare 关闭该 hostname 的路由 → 公网入口消失，bot 自身不受影响；
+2. 需要回到轮询：清空 `PUBLIC_BASE_URL` 后重启 bot（启动时会 `DeleteWebhook`）；
+3. 只回滚前端：`docker compose up -d` 用上一版镜像即可，`bot.db` 不需要动。
+
