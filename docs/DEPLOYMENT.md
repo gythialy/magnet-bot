@@ -41,7 +41,7 @@ Gotenberg 把公告转成 PDF / PNG。
 | 变量 | 必需 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `TELEGRAM_BOT_TOKEN` | ✅ | - | @BotFather 给的 token |
-| `SERVER_URL` | ✅ | - | 公告站点根地址，如 `https://example.com`。只取 host，程序自己拼 `https://` |
+| `SERVER_URL` | ✅ | - | 公告站点根地址，如 `https://example.com`。只取 host，程序自己拼 `https://`。**启动不校验**：留空不会报错，但抓取与推送里的链接会拼不出来 |
 | `TELEGRAM_BOT_NAME` | - | - | bot 用户名，用于生成告警记录深链 |
 | `MANAGER_ID` | - | - | 管理员，逗号分隔的 Telegram 用户 ID（如 `10001,10002`）。可执行 `/retry`、`/clean`、`/settings` 并管理访问；启动时同步进 `users` 表，见 §9 |
 | `ALLOWED_USER_IDS` | - | - | 逗号分隔的普通用户初始白名单，**仅启动时同步**进 `users` 表，用于首次铺人；后续增删走 Settings 页，见 §9 |
@@ -49,21 +49,26 @@ Gotenberg 把公告转成 PDF / PNG。
 | `CRAWL_DAYS` | - | `1` | 每轮回溯天数；填 0、负数或非数字都按 1 处理 |
 | `CONFIG_PATH` | - | 进程工作目录 | `bot.db`、`bot.log` 所在目录；容器内用 `/etc/magnet` |
 | `LOG_LEVEL` | - | `debug` | `trace`/`debug`/`info`/`warn`/`error`；设为 `trace` 会同时开启抓取 HTTP 调试日志（很吵） |
-| `PDF_SERVER_URL` | 转换功能 | - | Gotenberg 地址，如 `http://gotenberg:3000` |
-| `WEBHOOK_SERVER_URL` | 转换功能 | - | Gotenberg 回调 bot 用的地址，**不带端口、不带结尾斜杠**，如 `http://magnet-bot` |
-| `WEBHOOK_SERVER_PORT` | 转换功能 | `0` | bot webhook 监听端口，**必须显式设置**（不设等于随机端口，回调必失败） |
+| `PDF_SERVER_URL` | ✅ | - | Gotenberg 地址，如 `http://gotenberg:3000`。**留空会启动失败**：`create gotenberg client: empty hostname` |
+| `WEBHOOK_SERVER_URL` | ✅ | - | Gotenberg 回调 bot 用的地址，**不带端口、不带结尾斜杠**，如 `http://magnet-bot`。留空会拼出 `:8080/pdf/...` 这种非法回调地址，转换全部失败 |
+| `WEBHOOK_SERVER_PORT` | ✅（公网/转换） | `0` | bot HTTP 监听端口，**必须显式设置**：不设等于 0 等于随机端口，Gotenberg 回调必失败；启用 webhook 时 `Validate()` 会直接拒绝 0 |
 | `WEBHOOK_TOKEN` | - | - | 设置后回调必须带 `?token=...`，建议生产开启 |
 
 > 组合规则：回调地址 = `WEBHOOK_SERVER_URL` + `:` + `WEBHOOK_SERVER_PORT` + `/pdf/{id}`。
 > 例：`http://magnet-bot` + `8080` → `http://magnet-bot:8080/pdf/xxx`。
 
-> **只有 `TELEGRAM_BOT_TOKEN` 和 `SERVER_URL` 是必填的**，其余不配就走默认值：
-> 不配 `SCHEDULE_INTERVAL` 即每小时抓一次，不配 `CRAWL_DAYS` 即每轮回溯 1 天，
-> 不配 `CONFIG_PATH` 即用进程工作目录。
+> **启动时强制校验的只有 `TELEGRAM_BOT_TOKEN` 和 `PDF_SERVER_URL`**（后者为空会让
+> `NewBotContext` 直接 fatal）。`SERVER_URL` 与 `WEBHOOK_SERVER_URL` 属于"不填也能起来、
+> 但功能是坏的"：前者拼不出抓取链接，后者拼不出合法回调地址。
+> 其余变量不配就走默认值：不配 `SCHEDULE_INTERVAL` 即每小时抓一次，不配 `CRAWL_DAYS`
+> 即每轮回溯 1 天，不配 `CONFIG_PATH` 即用进程工作目录。
 
 > 启用公网 Webhook / Mini App 时另有 4 个变量（`PUBLIC_BASE_URL`、`TELEGRAM_WEBHOOK_SECRET`、
 > `TELEGRAM_WEBHOOK_ENABLED`、`MINI_APP_ENABLED`），且 `WEBHOOK_SERVER_PORT` 变为必填，
 > 见 §8.2。
+
+> `TELEGRAM_WEBHOOK_ENABLED`、`MINI_APP_ENABLED` 是布尔开关：`1/true/on` 为真，
+> `0/false/off` 为假，**无法识别的值回退到默认值 `true`**（拼错不会静默关掉功能）。
 
 > 访问控制（谁能用 bot、管理员名单怎么配、Settings 页怎么用、锁死了怎么救）见 **§9**。
 
@@ -274,7 +279,7 @@ bot 内的路由与来源：
 | `PUBLIC_BASE_URL` | 启用公网时 ✅ | - | 对外入口，**必须 https 且自带 scheme**，如 `https://bot.example.com`；结尾 `/` 会被自动去掉。**留空 = 保持轮询模式**：不注册 webhook、没有公网入口，本地仍监听 `WEBHOOK_SERVER_PORT` 供 Gotenberg 回调与 `/healthz` 使用 |
 | `TELEGRAM_WEBHOOK_SECRET` | 启用公网时 ✅ | - | 1–256 个 `[A-Za-z0-9_-]` 字符；Telegram 每次推送带 `X-Telegram-Bot-Api-Secret-Token`，不匹配直接 403 |
 | `TELEGRAM_WEBHOOK_ENABLED` | - | `true` | 设为 `false` 时，即使配了 `PUBLIC_BASE_URL` 也继续用 `getUpdates` 轮询 |
-| `MINI_APP_ENABLED` | - | `true` | 控制是否注册 `/app/`、`/api/`；设为 `false` 时旧文本命令保持可用（App 页面 P2 起提供） |
+| `MINI_APP_ENABLED` | - | `true` | 控制是否注册 `/app/`、`/api/`；设为 `false` 时这两个前缀返回 404，旧文本命令保持可用 |
 | `WEBHOOK_SERVER_PORT` | 启用公网时 ✅ | `0` | bot HTTP 监听端口（如 `8080`），**公网模式下必须非 0**；它同时是 Gotenberg 回调端口，不要再开第二个 |
 
 派生路径（固定，不需要在反代里逐个配置）：
