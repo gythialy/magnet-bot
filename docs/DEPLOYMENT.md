@@ -329,9 +329,10 @@ bot.example.com {
 - 证书：公网侧由 Cloudflare 边缘提供，Caddy 与 cloudflared 之间用内部证书即可，所以 8.4 里
   要 `noTLSVerify: true`。若坚持让 Caddy 自己申请 Let's Encrypt 证书，必须保证 ACME 校验能
   到达 Caddy（HTTP-01 要在隧道里额外暴露 80 端口，或用 DNS-01），否则签发会一直失败。
-- **不要给 `/app/*`、`/api/*`、`/pdf/*` 加任何缓存**：静态资源已经带
-  `Cache-Control: no-cache` + `ETag`（每次回源校验，未变则 304），在 Caddy 或 Cloudflare
-  再叠一层 `max-age` 只会让升级后客户端停在旧包上。
+- **不要在 Caddy / Cloudflare 给 `/app/`、`/api/*`、`/pdf/*` 叠缓存规则**：`/app/` 文档仍是
+  `Cache-Control: no-cache` + `ETag`（每次回源校验，未变则 304）；它引用的 css/js URL 带内容
+  哈希（`?v=<hash>`），这些资源用 `public, max-age=31536000, immutable` 缓存一年——文件内容
+  一变哈希就变、URL 就变。在边缘再用规则覆盖文档的 `no-cache` 只会让升级后客户端停在旧包上。
 - `/app/*` 要允许普通浏览器 UA 通过：Cloudflare 的 Managed Challenge / Bot Fight Mode 会把
   Telegram WebView 当成机器人挑战掉，表现为 Mini App 一直转圈。除了 8.7 的 webhook 例外，
   再给 `/app/*` 加一条 Skip 规则比较稳。
@@ -729,9 +730,9 @@ docker run ... ghcr.io/gythialy/magnet-bot:<上一个版本>
 
 - 数据库结构变更由 `AutoMigrate` 在启动时完成，向后兼容；升级前建议先备份 `bot.db`。
 - 升级不会重复推送：`histories` 的 URL 在启动时会被规范化为绝对地址（幂等）。
-- 本版本起静态资源改为 `no-cache` + `ETag` 并在引用上带版本号，升级后**首次打开**就会拉到
-  新包；如果客户端仍显示旧界面（例如旧的排版、图标位置没变），把 Mini App 窗口**完全关掉
-  再打开**一次即可，不需要重启 bot。
+- `/app/` 文档仍是 `no-cache` + `ETag`，它引用的 css/js URL 带内容哈希（`?v=<hash>`）并缓存
+  一年，升级后**首次打开**就会拉到新包；如果客户端仍显示旧界面（例如旧的排版、图标位置没变），
+  把 Mini App 窗口**完全关掉再打开**一次即可，不需要重启 bot。
 
 ---
 
@@ -806,9 +807,9 @@ docker run ... ghcr.io/gythialy/magnet-bot:<上一个版本>
 
 **Q：升级后 Mini App 还是旧样式（或图标错位）**
 
-客户端缓存了上一次的静态资源。本版本已把资源改成 `no-cache` + `ETag` 并给引用加了版本号，
-**完全关闭 Mini App 窗口再打开**即可；如果还不行，确认 Caddy / Cloudflare 上没有给 `/app/*`
-加缓存规则。
+`/app/` 文档本身不缓存（`no-cache` + `ETag`），它引用的 css/js 用带内容哈希的 URL 缓存一年，
+所以正常升级后**首次打开**就会拿到新包。仍显示旧样式时先**完全关闭 Mini App 窗口再打开**；
+如果还不行，确认 Caddy / Cloudflare 上没把 `/app/` 文档本身缓存住（文档被缓存才会卡在旧 URL）。
 
 **Q：转换按钮点不动 / 文件没回到聊天**
 

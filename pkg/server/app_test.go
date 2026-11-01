@@ -183,6 +183,87 @@ func TestNewStaticHandlerServesAssetWithETag(t *testing.T) {
 	}
 }
 
+// Everything the index advertises must use one and the same content-derived
+// version, and every advertised URL must resolve: the immutable Cache-Control
+// on those responses is only safe while a version bump is what changes the URL.
+func TestNewStaticHandlerVersionsAssetURLs(t *testing.T) {
+	handler := newStaticTestHandler(t)
+	rec := serveStatic(t, handler, http.MethodGet, appPrefix)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	matches := versionedAssetURLPattern.FindAllStringSubmatch(rec.Body.String(), -1)
+	if len(matches) == 0 {
+		t.Fatal("index advertises no versioned asset URLs")
+	}
+
+	want := matches[0][2]
+	for _, match := range matches {
+		path, version := match[1], match[2]
+		if version != want {
+			t.Fatalf("%s is pinned to ?v=%s, want ?v=%s", path, version, want)
+		}
+
+		asset := serveStatic(t, handler, http.MethodGet, appPrefix+path+"?v="+version)
+		if asset.Code != http.StatusOK {
+			t.Fatalf("GET %s?v=%s status = %d, want %d", path, version, asset.Code, http.StatusOK)
+		}
+		if got, wantCache := asset.Header().Get("Cache-Control"), assetCacheControl; got != wantCache {
+			t.Fatalf("%s Cache-Control = %q, want %q", path, got, wantCache)
+		}
+	}
+}
+
+var versionedAssetURLPattern = regexp.MustCompile(`(?:src|href)="([^"?]+\.[a-z]+)\?v=([0-9a-zA-Z]+)"`)
+
+// The document must keep revalidating even though the assets it points at are
+// immutable; otherwise a redeploy could leave a client on the old URLs forever.
+func TestNewStaticHandlerRevalidatesIndex(t *testing.T) {
+	handler := newStaticTestHandler(t)
+	first := serveStatic(t, handler, http.MethodGet, appPrefix)
+
+	etag := first.Header().Get("ETag")
+	if etag == "" {
+		t.Fatal("index ETag is empty")
+	}
+
+	req := httptest.NewRequest(http.MethodGet, appPrefix, nil)
+	req.Header.Set("If-None-Match", etag)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotModified {
+		t.Fatalf("conditional status = %d, want %d", rec.Code, http.StatusNotModified)
+	}
+}
+
+// A rebuild has to change the token, and the index itself must not feed it: the
+// rewritten document depends on the version, so including it would be circular.
+func TestBundleVersionTracksAssetContent(t *testing.T) {
+	assets := map[string]staticAsset{
+		appIndexName: {content: []byte("<html></html>")},
+		"js/core.js": {content: []byte("one")},
+	}
+
+	first := bundleVersion(assets)
+	if first == "" {
+		t.Fatal("bundleVersion is empty")
+	}
+
+	assets["js/core.js"] = staticAsset{content: []byte("two")}
+	second := bundleVersion(assets)
+	if second == first {
+		t.Fatalf("bundleVersion did not change with js/core.js: %q", first)
+	}
+
+	assets[appIndexName] = staticAsset{content: []byte("<html>rewritten</html>")}
+	if third := bundleVersion(assets); third != second {
+		t.Fatalf("bundleVersion changed with index.html: %q != %q", third, second)
+	}
+}
+
 func TestNewStaticHandlerSupportsHEAD(t *testing.T) {
 	rec := serveStatic(t, newStaticTestHandler(t), http.MethodHead, appPrefix+"css/base.css")
 
