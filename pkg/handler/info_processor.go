@@ -640,7 +640,8 @@ func truncateCaption(title string) string {
 // primary key (user_id, credit_code) acts as a distributed lock: only the
 // invocation that actually inserts the row may send, so concurrent runs —
 // even multiple bot instances sharing the same DB — can never push the same
-// alarm twice. A failed send rolls the claim back so the next run retries.
+// alarm twice. claimAlarm also keeps re-crawls of an already pushed punishment
+// idempotent. A failed send rolls the claim back so the next run retries.
 func (r *InfoProcessor) processAlarms(pd ProcessData) {
 	userId := pd.UserId
 	processedAlarms := make(map[string]struct{}, len(pd.Alarms))
@@ -673,21 +674,39 @@ func (r *InfoProcessor) processAlarms(pd ProcessData) {
 	r.pushPipeline.Run(handles)
 }
 
-// claimAlarm claims an alarm via the (user_id, credit_code) unique constraint:
-// fast-path IsExist, then InsertIfAbsent. A conflict with no active record
-// means a stale (expired, not yet cleaned) row — remove it and claim once
-// more. Returns whether this call actually claimed the alarm.
+// claimAlarm decides whether this run may push the alarm. The (user_id,
+// credit_code) row is the claim, and the decision is taken on the punishment's
+// identity instead of on its end date alone:
+//
+//   - same business id: this punishment was already pushed, skip. Re-crawling a
+//     notice must never send it again, not even after its end date passes (the
+//     expired row stays in the table until /clean, and the crawler may still
+//     offer the notice around the boundary).
+//   - a different punishment that is still in force: keep the existing claim.
+//   - a different punishment whose predecessor expired: replace the row and
+//     push the new one once.
+//
+// Returns whether this call actually claimed the alarm.
 func (r *InfoProcessor) claimAlarm(alarm *model.Alarm) (bool, error) {
 	logger := r.ctx.Logger
 	userId := alarm.UserID
 
-	isExist, err := dal.Alarm.IsExist(userId, alarm.CreditCode)
+	existing, err := dal.Alarm.GetByUserAndCode(userId, alarm.CreditCode)
 	if err != nil {
-		logger.Error().Err(err).Msg("failed to check alarm existence")
+		logger.Error().Stack().Err(err).Msg("load alarm claim")
 		return false, err
 	}
-	if isExist {
-		return false, nil
+	if existing != nil {
+		if existing.BusinessID == alarm.BusinessID {
+			return false, nil
+		}
+		if dal.AlarmInForce(existing, time.Now()) {
+			return false, nil
+		}
+		if rErr := dal.Alarm.Remove(userId, alarm.CreditCode); rErr != nil {
+			logger.Error().Stack().Err(rErr).Msg("remove stale alarm")
+			return false, rErr
+		}
 	}
 
 	inserted, err := dal.Alarm.InsertIfAbsent(alarm)
@@ -695,25 +714,7 @@ func (r *InfoProcessor) claimAlarm(alarm *model.Alarm) (bool, error) {
 		logger.Error().Stack().Err(err).Msg("claim alarm")
 		return false, err
 	}
-	if inserted {
-		return true, nil
-	}
-
-	// A row exists but IsExist() reported it inactive — a stale record whose
-	// end date has passed but has not been cleaned up yet. Remove and retry.
-	stillExist, e := dal.Alarm.IsExist(userId, alarm.CreditCode)
-	if e != nil {
-		logger.Error().Stack().Err(e).Msg("recheck alarm existence")
-		return false, e
-	}
-	if stillExist {
-		return false, nil // claimed by a concurrent invocation in between
-	}
-	if rErr := dal.Alarm.Remove(userId, alarm.CreditCode); rErr != nil {
-		logger.Error().Stack().Err(rErr).Msg("remove stale alarm")
-		return false, rErr
-	}
-	return dal.Alarm.InsertIfAbsent(alarm)
+	return inserted, nil
 }
 
 // sendAlarm renders and sends a single alarm message.
