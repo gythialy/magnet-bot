@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -26,19 +28,25 @@ const (
 	// that must exist in the embedded tree.
 	appIndexName = "index.html"
 	// indexCacheControl keeps the document revalidating, so a redeploy is
-	// picked up as soon as a client reopens the Mini App. The other assets get
-	// assetCacheControl instead: a short public window, after which their ETag
-	// brings a conditional revalidation rather than a full redownload.
+	// picked up as soon as a client reopens the Mini App.
 	indexCacheControl = "no-cache"
-	// Assets revalidate on every load (ETag/Last-Modified): the bundle ships
-	// inside the binary, so a redeploy must be visible on the next open instead
-	// of leaving a client on a cached copy for minutes.
-	assetCacheControl = "no-cache"
+	// Asset URLs carry a content-derived ?v= token (see bundleVersion), so the
+	// bytes behind one URL never change and a client may keep them forever.
+	// The document stays no-cache: that is what delivers the new URLs.
+	assetCacheControl = "public, max-age=31536000, immutable"
 	// etagHexBytes is how much of the SHA-256 digest is exposed. 128 bits leaves
 	// no realistic collision room for cache validation while keeping the header
 	// short.
 	etagHexBytes = 16
+	// bundleVersionHexBytes only has to change when an asset changes; it does not
+	// have to resist collision attacks, so a short token keeps the URL tidy.
+	bundleVersionHexBytes = 8
 )
+
+// indexVersionPattern matches the ?v= query on asset URLs inside the index. It
+// is rewritten at construction time, which is what makes the immutable policy
+// above safe: a content change yields a new version and therefore new URLs.
+var indexVersionPattern = regexp.MustCompile(`\?v=[0-9a-zA-Z]+`)
 
 // staticAsset is one file of the embedded bundle, hashed once at startup so a
 // request never has to read or digest it again.
@@ -64,7 +72,48 @@ func NewStaticHandler() http.Handler {
 		panic(fmt.Sprintf("server: load embedded Mini App assets: %v", err))
 	}
 
+	assets[appIndexName] = withBundleVersion(assets[appIndexName], bundleVersion(assets))
+
 	return &staticHandler{assets: assets}
+}
+
+// withBundleVersion pins every asset URL in the index to version and rehashes
+// the rewritten document, so the ETag keeps describing the bytes actually
+// served.
+func withBundleVersion(index staticAsset, version string) staticAsset {
+	content := indexVersionPattern.ReplaceAll(index.content, []byte("?v="+version))
+
+	return staticAsset{content: content, etag: etagFor(content)}
+}
+
+// bundleVersion derives one short token from every non-index asset, so editing
+// any css or js file changes the URLs the index advertises. The index itself is
+// excluded on purpose: its content depends on the version, which would be
+// circular.
+func bundleVersion(assets map[string]staticAsset) string {
+	names := make([]string, 0, len(assets))
+	for name := range assets {
+		if name != appIndexName {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+
+	sum := sha256.New()
+	for _, name := range names {
+		sum.Write([]byte(name))
+		sum.Write([]byte{0})
+		sum.Write(assets[name].content)
+		sum.Write([]byte{0})
+	}
+
+	return hex.EncodeToString(sum.Sum(nil)[:bundleVersionHexBytes])
+}
+
+func etagFor(content []byte) string {
+	sum := sha256.Sum256(content)
+
+	return `"` + hex.EncodeToString(sum[:etagHexBytes]) + `"`
 }
 
 // staticHandler serves files that were resolved and hashed during New.
@@ -163,10 +212,9 @@ func loadStaticAssets() (map[string]staticAsset, error) {
 			return err
 		}
 
-		sum := sha256.Sum256(content)
 		assets[name] = staticAsset{
 			content: content,
-			etag:    `"` + hex.EncodeToString(sum[:etagHexBytes]) + `"`,
+			etag:    etagFor(content),
 		}
 
 		return nil
