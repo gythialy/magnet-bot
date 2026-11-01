@@ -3,6 +3,7 @@ package handler
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/gythialy/magnet/pkg/config"
 	"github.com/gythialy/magnet/pkg/constant"
@@ -122,5 +123,23 @@ func TestCrawler_Fetch(t *testing.T) {
 	list, total := dal.Alarm.SearchByName(userId, "", 1, 20)
 	if total == 0 || len(list) == 0 {
 		t.Fatalf("expected stored alarms, got total=%d len=%d", total, len(list))
+	}
+}
+
+// TestCrawlerParseTimeUsesLocalDay guards the timezone fix: a date-only value
+// from the notice API is a calendar day in the bot's local zone. Parsing it as
+// UTC shifted the end date eight hours ahead, so the crawler kept offering a
+// punishment after the claim check already treated it as expired.
+func TestCrawlerParseTimeUsesLocalDay(t *testing.T) {
+	crawler := &Crawler{}
+
+	got := crawler.parseTime("2026-11-01")
+	want := time.Date(2026, 11, 1, 0, 0, 0, 0, time.Local)
+	if !got.Equal(want) || got.Location() != time.Local {
+		t.Fatalf("parseTime(%q) = %v in %v, want %v in local time", "2026-11-01", got, got.Location(), want)
+	}
+
+	if empty := crawler.parseTime(""); !empty.IsZero() {
+		t.Fatalf("parseTime(%q) = %v, want the zero time", "", empty)
 	}
 }

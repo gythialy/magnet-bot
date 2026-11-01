@@ -272,11 +272,19 @@ func (c *Crawler) format(t time.Time) string {
 		t.Hour(), t.Minute(), t.Second())
 }
 
+// parseTime parses a date-only value from the notice API into the bot's local
+// calendar day.
+//
+// Parsing in UTC shifted the value eight hours ahead of the local day it names,
+// so the crawler kept offering a punishment after the claim check already
+// treated it as expired (the duplicate-alarm incident). Both sides now use the
+// same clock: the end date is the local day's midnight, and a punishment stays
+// in force until that instant.
 func (c *Crawler) parseTime(date string) time.Time {
 	if date == "" {
 		return time.Time{}
 	}
-	t, _ := time.Parse(time.DateOnly, date)
+	t, _ := time.ParseInLocation(time.DateOnly, date, time.Local)
 	return t
 }
 
