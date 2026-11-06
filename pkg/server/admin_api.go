@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -39,6 +40,12 @@ const (
 	guardSelfTargetMessage = "cannot change your own access"
 	guardLastAdminMessage  = "cannot remove the last administrator"
 	guardEnvManagedMessage = "managed by MANAGER_ID / ALLOWED_USER_IDS"
+
+	// Guard reasons are stable machine-readable tags next to the message, so a
+	// localised client can translate the refusal instead of parsing English.
+	guardSelfReason       = "guard_self"
+	guardLastAdminReason  = "guard_last_admin"
+	guardEnvManagedReason = "guard_env_managed"
 )
 
 // AdminStatusProvider supplies the deployment facts the status screen cannot
@@ -72,24 +79,41 @@ type DeniedUser struct {
 	At       time.Time
 }
 
-// meResponse is the payload of GET /api/me.
+// meResponse is the payload of GET /api/me. Name and Username are the Telegram
+// identity persisted on the last interaction; empty on rows that predate it, in
+// which case the client falls back to the remark. Version and BuildTime are the
+// deployment facts every authenticated client may show in the About block.
 type meResponse struct {
 	UserID     int64  `json:"userId"`
 	Role       string `json:"role"`
 	AccessMode string `json:"accessMode"`
 	Remark     string `json:"remark"`
+	Name       string `json:"name"`
+	Username   string `json:"username"`
+	Version    string `json:"version"`
+	BuildTime  string `json:"buildTime"`
+}
+
+// adminKeywordCounts is the per-account active keyword count shown next to the
+// role in the member list. Archived rows are excluded.
+type adminKeywordCounts struct {
+	Project int64 `json:"project"`
+	Alarm   int64 `json:"alarm"`
 }
 
 // adminUserItem is how one account appears in the admin list and in the answer
 // of a write.
 type adminUserItem struct {
-	UserID    int64   `json:"userId"`
-	Remark    string  `json:"remark"`
-	Role      string  `json:"role"`
-	Enabled   bool    `json:"enabled"`
-	FromEnv   bool    `json:"fromEnv"`
-	CreatedAt string  `json:"createdAt"`
-	LastSeen  *string `json:"lastSeen"`
+	UserID        int64              `json:"userId"`
+	Remark        string             `json:"remark"`
+	Name          string             `json:"name"`
+	Username      string             `json:"username"`
+	Role          string             `json:"role"`
+	Enabled       bool               `json:"enabled"`
+	FromEnv       bool               `json:"fromEnv"`
+	CreatedAt     string             `json:"createdAt"`
+	LastSeen      *string            `json:"lastSeen"`
+	KeywordCounts adminKeywordCounts `json:"keywordCounts"`
 }
 
 // adminUsersResponse is the payload of GET /api/admin/users.
@@ -120,6 +144,15 @@ type adminUpdateUserRequest struct {
 	Remark  *string `json:"remark"`
 	Role    *string `json:"role"`
 	Enabled *bool   `json:"enabled"`
+}
+
+// adminUserKeywordsResponse is the payload of the administrator's read-only
+// view of another account's keyword list. User is the identity block the banner
+// renders; ArchivedCount is supplied even when includeArchived is off.
+type adminUserKeywordsResponse struct {
+	User          adminUserItem `json:"user"`
+	Items         []keywordItem `json:"items"`
+	ArchivedCount int           `json:"archivedCount"`
 }
 
 // adminSettingsResponse is the payload of GET and PATCH /api/admin/settings.
@@ -172,6 +205,7 @@ type adminStatusResponse struct {
 type guardErrorDetail struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	Reason  string `json:"reason"`
 }
 
 type guardErrorResponse struct {
@@ -205,6 +239,9 @@ func (a *adminAPI) register(mux *http.ServeMux) {
 	mux.Handle("POST "+adminUsersPath, requireAdmin(http.HandlerFunc(a.handleAddUsers)))
 	mux.Handle("PATCH "+adminUsersPath+"/{id}", requireAdmin(http.HandlerFunc(a.handleUpdateUser)))
 	mux.Handle("DELETE "+adminUsersPath+"/{id}", requireAdmin(http.HandlerFunc(a.handleDeleteUser)))
+	// Read-only view of another account's keyword list. It shares no write
+	// handler, so there is no path from this route to a mutation.
+	mux.Handle("GET "+adminUsersPath+"/{id}/keywords", requireAdmin(http.HandlerFunc(a.handleListUserKeywords)))
 	mux.Handle("GET "+adminSettingsPath, requireAdmin(http.HandlerFunc(a.handleGetSettings)))
 	mux.Handle("PATCH "+adminSettingsPath, requireAdmin(http.HandlerFunc(a.handleUpdateSettings)))
 	mux.Handle("GET "+adminStatusPath, requireAdmin(http.HandlerFunc(a.handleStatus)))
@@ -251,22 +288,39 @@ func (a *adminAPI) handleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	remark := ""
-	if row, found := dal.User.Get(user.ID); found {
-		remark = row.Remark
-	}
-
-	role := userRoleName
-	if dal.User.IsAdmin(user.ID) {
-		role = adminRoleName
-	}
-
-	WriteJSON(w, http.StatusOK, meResponse{
+	identity := meResponse{
 		UserID:     user.ID,
-		Role:       role,
 		AccessMode: mode,
-		Remark:     remark,
-	})
+		// Deployment facts belong to every authenticated client, not only the
+		// administrator status screen.
+		Version:   constant.Version,
+		BuildTime: constant.BuildTime,
+	}
+	if row, found := dal.User.Get(user.ID); found {
+		identity.Remark = row.Remark
+		identity.Name = row.Name
+		identity.Username = row.Username
+
+		// Opening the Mini App is an interaction opportunity too: a user may
+		// never send the bot an update, so persist the signed identity here.
+		// Best-effort by design: a failed write must not fail /api/me.
+		name := strings.TrimSpace(user.FirstName + " " + user.LastName)
+		if row.Name != name || row.Username != user.Username {
+			if err := dal.User.Touch(user.ID, time.Now(), name, user.Username); err == nil {
+				identity.Name = name
+				identity.Username = user.Username
+			} else {
+				slog.Debug("mini app identity touch failed", "endpoint", "me", "error", err)
+			}
+		}
+	}
+
+	identity.Role = userRoleName
+	if dal.User.IsAdmin(user.ID) {
+		identity.Role = adminRoleName
+	}
+
+	WriteJSON(w, http.StatusOK, identity)
 }
 
 // handleListUsers serves GET /api/admin/users.
@@ -279,11 +333,22 @@ func (a *adminAPI) handleListUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, total := dal.User.List(strings.TrimSpace(query.Get("q")), offset, limit)
+	enabled, ok := parseEnabledFilter(query.Get("enabled"))
+	if !ok {
+		WriteError(w, http.StatusBadRequest, "bad_request")
+		return
+	}
+	recent := query.Get("sort") == "recent"
 
+	rows, total := dal.User.ListFiltered(dal.UserFilter{
+		Query:   strings.TrimSpace(query.Get("q")),
+		Enabled: enabled,
+	}, offset, limit, recent)
+
+	counts := keywordCountsOf(rows)
 	items := make([]adminUserItem, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, adminUserItemOf(row))
+		items = append(items, adminUserItemOf(row, counts[row.UserID]))
 	}
 
 	WriteJSON(w, http.StatusOK, adminUsersResponse{
@@ -413,7 +478,7 @@ func (a *adminAPI) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	WriteJSON(w, http.StatusOK, adminUserItemOf(row))
+	WriteJSON(w, http.StatusOK, adminUserItemOf(row, keywordCountsOf([]*model.User{row})[row.UserID]))
 }
 
 // handleDeleteUser serves DELETE /api/admin/users/{id}.
@@ -434,6 +499,63 @@ func (a *adminAPI) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleListUserKeywords serves GET /api/admin/users/{id}/keywords: the
+// administrator-only read-only view of another account's project or alarm
+// words. It never accepts a write verb and never takes a mutation path.
+func (a *adminAPI) handleListUserKeywords(w http.ResponseWriter, r *http.Request) {
+	userID, ok := adminUserIDFromPath(w, r)
+	if !ok {
+		return
+	}
+
+	kind, ok := parseKeywordType(r.URL.Query().Get("type"))
+	if !ok {
+		WriteError(w, http.StatusBadRequest, "bad_request")
+		return
+	}
+
+	row, found := dal.User.Get(userID)
+	if !found {
+		WriteError(w, http.StatusNotFound, "not_found")
+		return
+	}
+
+	includeArchived := parseIncludeArchived(r.URL.Query())
+	// Load archived rows too: the response reports their count even when the
+	// caller asked to hide them.
+	rows := slices.Clone(dal.Keyword.GetByUserIdAndTypeIncludingArchived(userID, kind, true))
+	// Same ordering as the owner-facing list so the read-only screen mirrors it.
+	if kind == model.PROJECT {
+		slices.SortStableFunc(rows, compareKeywordsByCounter)
+	} else {
+		slices.SortStableFunc(rows, compareKeywordsByID)
+	}
+
+	items := make([]keywordItem, 0, len(rows))
+	archivedCount := 0
+	for _, keyword := range rows {
+		if keyword.ArchivedAt != nil {
+			archivedCount++
+			if !includeArchived {
+				continue
+			}
+		}
+		items = append(items, keywordItem{
+			ID:         keywordID(keyword),
+			Keyword:    keyword.Keyword,
+			Counter:    keyword.Counter,
+			CreatedAt:  formatAPITime(keyword.CreatedAt),
+			ArchivedAt: archivedAtString(keyword.ArchivedAt),
+		})
+	}
+
+	WriteJSON(w, http.StatusOK, adminUserKeywordsResponse{
+		User:          adminUserItemOf(row, keywordCountsOf([]*model.User{row})[row.UserID]),
+		Items:         items,
+		ArchivedCount: archivedCount,
+	})
 }
 
 // handleGetSettings serves GET /api/admin/settings.
@@ -571,14 +693,14 @@ func createAdminUser(userID int64, role int32, remark string) error {
 // guard refusals are 409 with a fixed message, a missing row is 404, and
 // anything else is a 500 that is logged without request data.
 func writeAdminUserError(w http.ResponseWriter, err error) {
-	var message string
+	var message, reason string
 	switch {
 	case errors.Is(err, dal.ErrSelfTarget):
-		message = guardSelfTargetMessage
+		message, reason = guardSelfTargetMessage, guardSelfReason
 	case errors.Is(err, dal.ErrLastAdmin):
-		message = guardLastAdminMessage
+		message, reason = guardLastAdminMessage, guardLastAdminReason
 	case errors.Is(err, dal.ErrEnvManaged):
-		message = guardEnvManagedMessage
+		message, reason = guardEnvManagedMessage, guardEnvManagedReason
 	case errors.Is(err, dal.ErrNotFound):
 		WriteError(w, http.StatusNotFound, "not_found")
 		return
@@ -589,7 +711,7 @@ func writeAdminUserError(w http.ResponseWriter, err error) {
 	}
 
 	WriteJSON(w, http.StatusConflict, guardErrorResponse{
-		Error: guardErrorDetail{Code: "guard", Message: message},
+		Error: guardErrorDetail{Code: "guard", Message: message, Reason: reason},
 	})
 }
 
@@ -627,15 +749,60 @@ func roleName(role int32) string {
 	return userRoleName
 }
 
+// keywordCountsOf renders the active keyword counts of the given rows keyed by
+// account id. The zero value is used for an account with no rows.
+func keywordCountsOf(rows []*model.User) map[int64]adminKeywordCounts {
+	ids := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.UserID)
+	}
+
+	counts := make(map[int64]adminKeywordCounts, len(rows))
+	for id, count := range dal.Keyword.CountByUserIDs(ids) {
+		counts[id] = adminKeywordCounts{Project: count.Project, Alarm: count.Alarm}
+	}
+	return counts
+}
+
+// parseEnabledFilter reads the optional enabled query parameter. An empty value
+// means "no filter"; any other value must parse as a boolean or the caller gets
+// a 400 instead of a silently unfiltered list.
+func parseEnabledFilter(raw string) (*bool, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, true
+	}
+	enabled, err := strconv.ParseBool(raw)
+	if err != nil {
+		return nil, false
+	}
+	return &enabled, true
+}
+
+// parseKeywordType maps the wire type parameter to a stored keyword type.
+func parseKeywordType(raw string) (model.KeywordType, bool) {
+	switch strings.TrimSpace(raw) {
+	case "project":
+		return model.PROJECT, true
+	case "alarm":
+		return model.ALARM, true
+	default:
+		return 0, false
+	}
+}
+
 // adminUserItemOf renders one row for the API.
-func adminUserItemOf(row *model.User) adminUserItem {
+func adminUserItemOf(row *model.User, counts adminKeywordCounts) adminUserItem {
 	item := adminUserItem{
-		UserID:    row.UserID,
-		Remark:    row.Remark,
-		Role:      roleName(row.Role),
-		Enabled:   row.Enabled,
-		FromEnv:   row.FromEnv,
-		CreatedAt: formatAPITime(row.CreatedAt),
+		UserID:        row.UserID,
+		Remark:        row.Remark,
+		Name:          row.Name,
+		Username:      row.Username,
+		Role:          roleName(row.Role),
+		Enabled:       row.Enabled,
+		FromEnv:       row.FromEnv,
+		CreatedAt:     formatAPITime(row.CreatedAt),
+		KeywordCounts: counts,
 	}
 	if row.LastSeen != nil {
 		seen := formatAPITime(*row.LastSeen)

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -92,16 +93,41 @@ func adminTestRaw(t *testing.T, now time.Time, userID int64) string {
 	return apiTestInitData(t, now, userID)
 }
 
-// assertAdminGuard asserts the 409 guard envelope with its fixed message.
-func assertAdminGuard(t *testing.T, rec *httptest.ResponseRecorder, message string) {
+// adminTestRawIdentity signs initData carrying a specific Telegram identity, so
+// /api/me can be exercised with the name/username it persists.
+func adminTestRawIdentity(t *testing.T, authenticatedAt time.Time, userID int64, first, last, username string) string {
 	t.Helper()
 
-	want := `{"error":{"code":"guard","message":"` + message + `"}}`
+	payload, err := json.Marshal(map[string]any{
+		"id":            userID,
+		"first_name":    first,
+		"last_name":     last,
+		"username":      username,
+		"language_code": "zh",
+	})
+	if err != nil {
+		t.Fatalf("encode identity user: %v", err)
+	}
+
+	fields := withField(baseFields(authenticatedAt.Unix()), "user", string(payload))
+	raw, _ := signInitData(testBotToken, fields)
+	return raw
+}
+
+// assertAdminGuard asserts the 409 guard envelope keeps its code and fixed
+// message and carries the machine-readable reason.
+func assertAdminGuard(t *testing.T, rec *httptest.ResponseRecorder, message, reason string) {
+	t.Helper()
+
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("status = %d, want %d (body %q)", rec.Code, http.StatusConflict, rec.Body.String())
 	}
-	if got := rec.Body.String(); got != want {
-		t.Fatalf("body = %q, want %q", got, want)
+	var payload guardErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode guard envelope %q: %v", rec.Body.String(), err)
+	}
+	if payload.Error.Code != "guard" || payload.Error.Message != message || payload.Error.Reason != reason {
+		t.Fatalf("guard envelope = %+v, want code=guard message=%q reason=%q", payload.Error, message, reason)
 	}
 }
 
@@ -269,6 +295,12 @@ func TestAPIMe(t *testing.T) {
 	if user.Role != userRoleName || user.Remark != "colleague" {
 		t.Errorf("user me = %+v, want user role and remark", user)
 	}
+	// Build facts are public in #429's About block: a regular account must carry
+	// the same values /api/admin/status reports.
+	if user.Version != constant.Version || user.BuildTime != constant.BuildTime {
+		t.Errorf("user build facts = (%q, %q), want (%q, %q)",
+			user.Version, user.BuildTime, constant.Version, constant.BuildTime)
+	}
 
 	// Off mode: an account with no row is served and learns it is a plain user.
 	if err := dal.SetSetting(model.SettingAccessMode, model.AccessModeOff); err != nil {
@@ -429,7 +461,7 @@ func TestAPIAdminAddUsers(t *testing.T) {
 	})
 
 	t.Run("an env-managed account cannot be demoted", func(t *testing.T) {
-		assertAdminGuard(t, post(t, `{"userIds":"10001","role":"user"}`), guardEnvManagedMessage)
+		assertAdminGuard(t, post(t, `{"userIds":"10001","role":"user"}`), guardEnvManagedMessage, guardEnvManagedReason)
 	})
 
 	for _, tc := range []struct {
@@ -521,12 +553,12 @@ func TestAPIAdminUpdateAndDeleteUser(t *testing.T) {
 		if rec := patch(t, adminUsersPath+"/10001", `{"remark":"me"}`); rec.Code != http.StatusOK {
 			t.Fatalf("self rename: status = %d, want 200 (body %q)", rec.Code, rec.Body.String())
 		}
-		assertAdminGuard(t, patch(t, adminUsersPath+"/10001", `{"enabled":false}`), guardSelfTargetMessage)
-		assertAdminGuard(t, del(t, adminUsersPath+"/10001"), guardSelfTargetMessage)
+		assertAdminGuard(t, patch(t, adminUsersPath+"/10001", `{"enabled":false}`), guardSelfTargetMessage, guardSelfReason)
+		assertAdminGuard(t, del(t, adminUsersPath+"/10001"), guardSelfTargetMessage, guardSelfReason)
 
 		// The environment owns the role/access of its rows, but not the remark.
-		assertAdminGuard(t, patch(t, adminUsersPath+"/30004", `{"role":"user"}`), guardEnvManagedMessage)
-		assertAdminGuard(t, del(t, adminUsersPath+"/30004"), guardEnvManagedMessage)
+		assertAdminGuard(t, patch(t, adminUsersPath+"/30004", `{"role":"user"}`), guardEnvManagedMessage, guardEnvManagedReason)
+		assertAdminGuard(t, del(t, adminUsersPath+"/30004"), guardEnvManagedMessage, guardEnvManagedReason)
 		if rec := patch(t, adminUsersPath+"/30004", `{"remark":"renamed env"}`); rec.Code != http.StatusOK {
 			t.Fatalf("env remark: status = %d, want 200 (body %q)", rec.Code, rec.Body.String())
 		}
@@ -551,15 +583,16 @@ func TestAdminGuardMessages(t *testing.T) {
 		name    string
 		err     error
 		message string
+		reason  string
 	}{
-		{"self target", dal.ErrSelfTarget, guardSelfTargetMessage},
-		{"last admin", dal.ErrLastAdmin, guardLastAdminMessage},
-		{"env managed", dal.ErrEnvManaged, guardEnvManagedMessage},
+		{"self target", dal.ErrSelfTarget, guardSelfTargetMessage, guardSelfReason},
+		{"last admin", dal.ErrLastAdmin, guardLastAdminMessage, guardLastAdminReason},
+		{"env managed", dal.ErrEnvManaged, guardEnvManagedMessage, guardEnvManagedReason},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
 			writeAdminUserError(rec, tc.err)
-			assertAdminGuard(t, rec, tc.message)
+			assertAdminGuard(t, rec, tc.message, tc.reason)
 		})
 	}
 
@@ -742,4 +775,306 @@ func TestAPIAdminSharesWriteBudget(t *testing.T) {
 	assertWriteEnvelope(t,
 		writeAPIRequest(t, handler, http.MethodPost, apiKeywordsPath, raw, `{"keywords":"limit-check"}`),
 		http.StatusTooManyRequests, "too_many_requests")
+}
+
+// TestAPIAdminUserKeywordsReadOnly covers the administrator's read-only view of
+// another account's keywords: the identity block, the active-only counts, the
+// archived toggle, the validation answers and the admin gate.
+func TestAPIAdminUserKeywordsReadOnly(t *testing.T) {
+	db := setupAdminAPITestDB(t)
+
+	now := time.Now().Truncate(time.Second)
+	handler := apiTestHandler(APIConfig{BotToken: testBotToken}, now)
+	seedAdminTestUser(t, db, adminTestAdminID, model.RoleAdmin, true, false, "boss")
+	seedAdminTestUser(t, db, adminTestUserID, model.RoleUser, true, false, "张工")
+	seedAdminTestUser(t, db, adminTestStranger, model.RoleUser, true, false, "stranger")
+	if err := db.Model(&model.User{}).Where("user_id = ?", adminTestUserID).
+		Updates(map[string]any{"name": "张工", "username": "zhanggong"}).Error; err != nil {
+		t.Fatalf("seed identity: %v", err)
+	}
+
+	archivedAt := now.Add(-time.Hour)
+	seedKeywords(t,
+		&model.Keyword{ID: new(int32(11)), UserID: adminTestUserID, Type: int32(model.PROJECT), Keyword: "active", Counter: 2, CreatedAt: now},
+		&model.Keyword{ID: new(int32(12)), UserID: adminTestUserID, Type: int32(model.PROJECT), Keyword: "archived", Counter: 7, CreatedAt: now, ArchivedAt: &archivedAt},
+		&model.Keyword{ID: new(int32(13)), UserID: adminTestUserID, Type: int32(model.ALARM), Keyword: "alarm-active", CreatedAt: now},
+	)
+
+	rawAdmin := adminTestRaw(t, now, adminTestAdminID)
+	rawUser := adminTestRaw(t, now, adminTestUserID)
+	path := adminUsersPath + "/" + strconv.FormatInt(adminTestUserID, 10) + "/keywords"
+
+	t.Run("active project list and identity block", func(t *testing.T) {
+		payload := decodeAPI[adminUserKeywordsResponse](t, sendAPI(t, handler, path+"?type=project", rawAdmin))
+
+		if payload.User.UserID != adminTestUserID || payload.User.Name != "张工" || payload.User.Username != "zhanggong" {
+			t.Fatalf("user block = %+v, want the persisted identity", payload.User)
+		}
+		if payload.User.KeywordCounts != (adminKeywordCounts{Project: 1, Alarm: 1}) {
+			t.Fatalf("keywordCounts = %+v, want active-only {1 1}", payload.User.KeywordCounts)
+		}
+		if payload.User.LastSeen != nil {
+			t.Fatalf("lastSeen = %v, want null for a never-seen account", *payload.User.LastSeen)
+		}
+		if len(payload.Items) != 1 || payload.Items[0].ID != 11 || payload.Items[0].ArchivedAt != nil {
+			t.Fatalf("items = %+v, want only the active project keyword", payload.Items)
+		}
+		if payload.ArchivedCount != 1 {
+			t.Fatalf("archivedCount = %d, want 1", payload.ArchivedCount)
+		}
+	})
+
+	t.Run("includeArchived adds the archived row", func(t *testing.T) {
+		payload := decodeAPI[adminUserKeywordsResponse](t, sendAPI(t, handler, path+"?type=project&includeArchived=1", rawAdmin))
+		if len(payload.Items) != 2 || payload.ArchivedCount != 1 {
+			t.Fatalf("payload = (%d items, count %d), want (2, 1)", len(payload.Items), payload.ArchivedCount)
+		}
+		if payload.Items[0].ID != 12 || payload.Items[0].ArchivedAt == nil {
+			t.Fatalf("first item = %+v, want the archived leaderboard row", payload.Items[0])
+		}
+	})
+
+	t.Run("alarm type is supported", func(t *testing.T) {
+		payload := decodeAPI[adminUserKeywordsResponse](t, sendAPI(t, handler, path+"?type=alarm", rawAdmin))
+		if len(payload.Items) != 1 || payload.Items[0].Keyword != "alarm-active" {
+			t.Fatalf("items = %+v, want the active alarm keyword", payload.Items)
+		}
+	})
+
+	t.Run("unknown or missing type is a bad request", func(t *testing.T) {
+		for _, target := range []string{path, path + "?type=weird", path + "?type="} {
+			assertWriteEnvelope(t, sendAPI(t, handler, target, rawAdmin), http.StatusBadRequest, "bad_request")
+		}
+	})
+
+	t.Run("an unknown account is not found", func(t *testing.T) {
+		assertWriteEnvelope(t, sendAPI(t, handler, adminUsersPath+"/999999/keywords?type=project", rawAdmin),
+			http.StatusNotFound, "not_found")
+	})
+
+	t.Run("a non-admin is forbidden", func(t *testing.T) {
+		assertWriteEnvelope(t, sendAPI(t, handler, path+"?type=project", rawUser),
+			http.StatusForbidden, "forbidden_admin")
+	})
+
+	t.Run("an anonymous caller is unauthorized", func(t *testing.T) {
+		assertWriteEnvelope(t, sendAPI(t, handler, path+"?type=project", ""),
+			http.StatusUnauthorized, "unauthorized")
+	})
+}
+
+// TestAPIAdminListUsersCountsAndRecentSort covers the member-picker fields: the
+// active keyword counts on every item and the optional recent ordering, while
+// the default order stays account id ascending.
+func TestAPIAdminListUsersCountsAndRecentSort(t *testing.T) {
+	db := setupAdminAPITestDB(t)
+
+	now := time.Now().Truncate(time.Second)
+	handler := apiTestHandler(APIConfig{BotToken: testBotToken}, now)
+	raw := adminTestRaw(t, now, adminTestAdminID)
+
+	seedAdminTestUser(t, db, adminTestAdminID, model.RoleAdmin, true, false, "boss")
+	seedAdminTestUser(t, db, adminTestUserID, model.RoleUser, true, false, "older")
+	seedAdminTestUser(t, db, adminTestOtherID, model.RoleUser, true, false, "newer")
+	older := now.Add(-2 * time.Hour)
+	newer := now.Add(-time.Hour)
+	if err := dal.User.SetLastSeen(adminTestUserID, older); err != nil {
+		t.Fatalf("SetLastSeen(older) error: %v", err)
+	}
+	if err := dal.User.SetLastSeen(adminTestOtherID, newer); err != nil {
+		t.Fatalf("SetLastSeen(newer) error: %v", err)
+	}
+
+	archivedAt := now.Add(-time.Hour)
+	seedKeywords(t,
+		&model.Keyword{ID: new(int32(21)), UserID: adminTestUserID, Type: int32(model.PROJECT), Keyword: "p1", CreatedAt: now},
+		&model.Keyword{ID: new(int32(22)), UserID: adminTestUserID, Type: int32(model.PROJECT), Keyword: "p2", CreatedAt: now},
+		&model.Keyword{ID: new(int32(23)), UserID: adminTestUserID, Type: int32(model.PROJECT), Keyword: "p-archived", CreatedAt: now, ArchivedAt: &archivedAt},
+		&model.Keyword{ID: new(int32(24)), UserID: adminTestUserID, Type: int32(model.ALARM), Keyword: "a1", CreatedAt: now},
+		&model.Keyword{ID: new(int32(25)), UserID: adminTestOtherID, Type: int32(model.PROJECT), Keyword: "other", CreatedAt: now},
+	)
+
+	t.Run("default order keeps keyword counts", func(t *testing.T) {
+		payload := decodeAPI[adminUsersResponse](t, sendAPI(t, handler, adminUsersPath, raw))
+		if payload.Total != 3 || len(payload.Items) != 3 {
+			t.Fatalf("payload = (%d items, %d total), want 3", len(payload.Items), payload.Total)
+		}
+		for i, want := range []int64{adminTestAdminID, adminTestUserID, adminTestOtherID} {
+			if payload.Items[i].UserID != want {
+				t.Fatalf("items[%d] = %d, want the default id order %d", i, payload.Items[i].UserID, want)
+			}
+		}
+
+		byID := make(map[int64]adminUserItem, len(payload.Items))
+		for _, item := range payload.Items {
+			byID[item.UserID] = item
+		}
+		if got := byID[adminTestUserID].KeywordCounts; got != (adminKeywordCounts{Project: 2, Alarm: 1}) {
+			t.Fatalf("colleague counts = %+v, want active-only {2 1}", got)
+		}
+		if got := byID[adminTestOtherID].KeywordCounts; got != (adminKeywordCounts{Project: 1}) {
+			t.Fatalf("other counts = %+v, want {1 0}", got)
+		}
+		if got := byID[adminTestAdminID].KeywordCounts; got != (adminKeywordCounts{}) {
+			t.Fatalf("admin counts = %+v, want zero", got)
+		}
+	})
+
+	t.Run("sort=recent orders by activity and puts never-seen last", func(t *testing.T) {
+		payload := decodeAPI[adminUsersResponse](t, sendAPI(t, handler, adminUsersPath+"?sort=recent", raw))
+		for i, want := range []int64{adminTestOtherID, adminTestUserID, adminTestAdminID} {
+			if payload.Items[i].UserID != want {
+				t.Fatalf("items[%d] = %d, want %d (recent first, null last)", i, payload.Items[i].UserID, want)
+			}
+		}
+	})
+}
+
+// TestAPIAdminMeExposesTelegramIdentity covers the identity fields of /api/me:
+// the stored name/username are returned for a known account and stay empty for
+// an account without a row.
+func TestAPIAdminMeExposesTelegramIdentity(t *testing.T) {
+	db := setupAdminAPITestDB(t)
+
+	now := time.Now().Truncate(time.Second)
+	handler := apiTestHandler(APIConfig{BotToken: testBotToken}, now)
+	seedAdminTestUser(t, db, adminTestAdminID, model.RoleAdmin, true, false, "boss")
+
+	if err := dal.User.Touch(adminTestAdminID, now, "刘工", "liugong"); err != nil {
+		t.Fatalf("Touch() error: %v", err)
+	}
+
+	raw := adminTestRawIdentity(t, now, adminTestAdminID, "刘工", "", "liugong")
+	payload := decodeAPI[meResponse](t, sendAPI(t, handler, apiMePath, raw))
+	if payload.Name != "刘工" || payload.Username != "liugong" || payload.Remark != "boss" {
+		t.Fatalf("me = %+v, want the stored identity", payload)
+	}
+
+	stranger := decodeAPI[meResponse](t, sendAPI(t, handler, apiMePath, adminTestRaw(t, now, adminTestStranger)))
+	if stranger.Name != "" || stranger.Username != "" {
+		t.Fatalf("stranger me = %+v, want empty identity fields", stranger)
+	}
+}
+
+// TestAPIAdminMePersistsInitDataIdentity covers the Mini-App-only path: a
+// signed /api/me request fills an empty identity on the caller's row and
+// refreshes last_seen without any bot update. A second request with a changed
+// name keeps both the identity and last_seen current.
+func TestAPIAdminMePersistsInitDataIdentity(t *testing.T) {
+	db := setupAdminAPITestDB(t)
+
+	now := time.Now().Truncate(time.Second)
+	handler := apiTestHandler(APIConfig{BotToken: testBotToken}, now)
+	seedAdminTestUser(t, db, adminTestAdminID, model.RoleAdmin, true, false, "")
+	oldSeen := now.Add(-2 * time.Hour)
+	if err := dal.User.SetLastSeen(adminTestAdminID, oldSeen); err != nil {
+		t.Fatalf("SetLastSeen() error: %v", err)
+	}
+
+	first := adminTestRawIdentity(t, now, adminTestAdminID, "王小明", "", "wangxm")
+	payload := decodeAPI[meResponse](t, sendAPI(t, handler, apiMePath, first))
+	if payload.Name != "王小明" || payload.Username != "wangxm" {
+		t.Fatalf("me = %+v, want the signed identity", payload)
+	}
+
+	row, ok := dal.User.Get(adminTestAdminID)
+	if !ok {
+		t.Fatal("user row disappeared")
+	}
+	if row.Name != "王小明" || row.Username != "wangxm" {
+		t.Fatalf("stored identity = (%q, %q), want the signed identity", row.Name, row.Username)
+	}
+	if row.LastSeen == nil || !row.LastSeen.After(oldSeen) {
+		t.Fatalf("last_seen = %v, want it refreshed past %v", row.LastSeen, oldSeen)
+	}
+	firstSeen := *row.LastSeen
+
+	// A changed name must be written again, and last_seen must keep moving.
+	second := adminTestRawIdentity(t, now, adminTestAdminID, "王大明", "", "wangdm")
+	payload = decodeAPI[meResponse](t, sendAPI(t, handler, apiMePath, second))
+	if payload.Name != "王大明" || payload.Username != "wangdm" {
+		t.Fatalf("me = %+v, want the changed identity", payload)
+	}
+
+	row, ok = dal.User.Get(adminTestAdminID)
+	if !ok {
+		t.Fatal("user row disappeared")
+	}
+	if row.Name != "王大明" || row.Username != "wangdm" {
+		t.Fatalf("stored identity = (%q, %q), want the changed identity", row.Name, row.Username)
+	}
+	if row.LastSeen == nil || row.LastSeen.Before(firstSeen) {
+		t.Fatalf("last_seen = %v, want it not to move backwards from %v", row.LastSeen, firstSeen)
+	}
+}
+
+// TestAPIAdminListUsersEnabledFilter covers the member-picker filter: enabled
+// applies to both the page and the total, composes with sort=recent, keeps the
+// unfiltered default, and rejects a non-boolean value.
+func TestAPIAdminListUsersEnabledFilter(t *testing.T) {
+	db := setupAdminAPITestDB(t)
+
+	now := time.Now().Truncate(time.Second)
+	handler := apiTestHandler(APIConfig{BotToken: testBotToken}, now)
+	raw := adminTestRaw(t, now, adminTestAdminID)
+
+	seedAdminTestUser(t, db, adminTestAdminID, model.RoleAdmin, true, false, "boss")
+	seedAdminTestUser(t, db, adminTestUserID, model.RoleUser, true, false, "active user")
+	seedAdminTestUser(t, db, adminTestStranger, model.RoleUser, false, false, "disabled stranger")
+	seedAdminTestUser(t, db, adminTestOtherID, model.RoleUser, false, false, "disabled other")
+
+	older := now.Add(-2 * time.Hour)
+	newer := now.Add(-time.Hour)
+	if err := dal.User.SetLastSeen(adminTestUserID, older); err != nil {
+		t.Fatalf("SetLastSeen(active) error: %v", err)
+	}
+	if err := dal.User.SetLastSeen(adminTestOtherID, newer); err != nil {
+		t.Fatalf("SetLastSeen(disabled) error: %v", err)
+	}
+
+	t.Run("disabled only", func(t *testing.T) {
+		payload := decodeAPI[adminUsersResponse](t, sendAPI(t, handler, adminUsersPath+"?enabled=false", raw))
+		if payload.Total != 2 || len(payload.Items) != 2 {
+			t.Fatalf("payload = (%d items, %d total), want the two disabled rows", len(payload.Items), payload.Total)
+		}
+		for i, want := range []int64{adminTestStranger, adminTestOtherID} {
+			if payload.Items[i].UserID != want || payload.Items[i].Enabled {
+				t.Fatalf("items[%d] = %+v, want the disabled row %d", i, payload.Items[i], want)
+			}
+		}
+	})
+
+	t.Run("enabled only", func(t *testing.T) {
+		payload := decodeAPI[adminUsersResponse](t, sendAPI(t, handler, adminUsersPath+"?enabled=true", raw))
+		if payload.Total != 2 || len(payload.Items) != 2 {
+			t.Fatalf("payload = (%d items, %d total), want the two enabled rows", len(payload.Items), payload.Total)
+		}
+		for i, want := range []int64{adminTestAdminID, adminTestUserID} {
+			if payload.Items[i].UserID != want {
+				t.Fatalf("items[%d] = %d, want %d", i, payload.Items[i].UserID, want)
+			}
+		}
+	})
+
+	t.Run("filter composes with the recent order and paging", func(t *testing.T) {
+		payload := decodeAPI[adminUsersResponse](t, sendAPI(t, handler, adminUsersPath+"?enabled=false&sort=recent&limit=1", raw))
+		if payload.Total != 2 || len(payload.Items) != 1 || payload.Items[0].UserID != adminTestOtherID {
+			t.Fatalf("payload = %+v, want the recently active disabled member and total 2", payload)
+		}
+		if payload.NextOffset == nil || *payload.NextOffset != 1 {
+			t.Fatalf("nextOffset = %v, want 1", payload.NextOffset)
+		}
+	})
+
+	t.Run("no filter keeps every account", func(t *testing.T) {
+		payload := decodeAPI[adminUsersResponse](t, sendAPI(t, handler, adminUsersPath, raw))
+		if payload.Total != 4 || len(payload.Items) != 4 {
+			t.Fatalf("payload = (%d items, %d total), want all 4", len(payload.Items), payload.Total)
+		}
+	})
+
+	t.Run("a non-boolean value is a bad request", func(t *testing.T) {
+		assertWriteEnvelope(t, sendAPI(t, handler, adminUsersPath+"?enabled=maybe", raw),
+			http.StatusBadRequest, "bad_request")
+	})
 }

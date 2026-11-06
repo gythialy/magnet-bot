@@ -158,7 +158,7 @@ func (ctx *BotContext) accessMiddleware(next bot.HandlerFunc) bot.HandlerFunc {
 		}
 
 		if dal.User.IsAllowed(actor.id) {
-			ctx.touchLastSeen(actor.id)
+			ctx.touchLastSeen(actor)
 			next(hctx, b, update)
 			return
 		}
@@ -167,16 +167,18 @@ func (ctx *BotContext) accessMiddleware(next bot.HandlerFunc) bot.HandlerFunc {
 	}
 }
 
-// touchLastSeen records activity at most once per accessLastSeenInterval.
-func (ctx *BotContext) touchLastSeen(userID int64) {
+// touchLastSeen records activity and the Telegram identity at most once per
+// accessLastSeenInterval. It reuses the actor already parsed by the middleware,
+// so persisting the name costs no extra Telegram lookup.
+func (ctx *BotContext) touchLastSeen(actor accessActor) {
 	now := time.Now()
-	if !ctx.access.allowLastSeen(userID, now) {
+	if !ctx.access.allowLastSeen(actor.id, now) {
 		return
 	}
 
 	// A missing row is normal in "off" mode, where every account is allowed
 	// without one; only a real storage failure is worth a log line.
-	if err := dal.User.SetLastSeen(userID, now); err != nil && !errors.Is(err, dal.ErrNotFound) {
+	if err := dal.User.Touch(actor.id, now, actor.name, actor.username); err != nil && !errors.Is(err, dal.ErrNotFound) {
 		ctx.Logger.Warn().Err(err).Msg("record user last seen")
 	}
 }
@@ -184,10 +186,16 @@ func (ctx *BotContext) touchLastSeen(userID int64) {
 // rejectAccess answers and records one denied update.
 func (ctx *BotContext) rejectAccess(hctx context.Context, b *bot.Bot, update *models.Update, actor accessActor) {
 	now := time.Now()
+	name := actor.name
+	if name == "" {
+		// The denial history has no id column of its own, so it keeps the old
+		// username fallback; the users row stores the Telegram name only.
+		name = actor.username
+	}
 	ctx.access.recordDenied(DeniedEntry{
 		UserID:   actor.id,
 		Username: actor.username,
-		Name:     actor.name,
+		Name:     name,
 		At:       now,
 	})
 
@@ -366,15 +374,12 @@ func actorFromUser(user *models.User) accessActor {
 	return accessActor{
 		id:       user.ID,
 		username: user.Username,
-		name:     userDisplayName(user),
+		name:     userFullName(user),
 	}
 }
 
-// userDisplayName builds the human label kept in the denial history.
-func userDisplayName(user *models.User) string {
-	name := strings.TrimSpace(user.FirstName + " " + user.LastName)
-	if name == "" {
-		return user.Username
-	}
-	return name
+// userFullName is the Telegram first+last name, or "" when the account has
+// neither. It is stored as users.name, so it never substitutes the username.
+func userFullName(user *models.User) string {
+	return strings.TrimSpace(user.FirstName + " " + user.LastName)
 }

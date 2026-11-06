@@ -1,0 +1,91 @@
+/*
+ * members.css — geometry for the member picker page only.
+ *
+ * Rows, avatars, chips and buttons come from base.css. This file only places
+ * the sticky search under the sub top bar, keeps the skeleton at the final row
+ * height, and spaces the pager and the folded disabled group.
+ */
+
+.members-search {
+  position: sticky;
+  /* Sub top bar: 10 px padding + 40 px control + 10 px padding + 1 px rule,
+     plus the client's safe-area inset that the bar also honours. */
+  top: calc(61px + env(safe-area-inset-top));
+  z-index: 15;
+  padding: 8px 16px 10px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--rule);
+}
+
+.members-search .search {
+  width: 100%;
+}
+
+/* Skeleton rows share .pick-row's box so the list does not jump on load. */
+.members-sk {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 60px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.members-sk-avatar {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--fill-strong);
+  animation: sk-pulse 1.7s ease-in-out infinite;
+}
+
+.members-sk-lines {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.members-sk-lines .sk {
+  height: 12px;
+}
+
+.members-sk-lines .sk + .sk {
+  margin-top: 6px;
+}
+
+/* The pinned row has a filled surface, so its avatar takes the page colour. */
+.pick-row.is-pinned .avatar {
+  background: var(--bg);
+}
+
+.members-disabled-toggle {
+  width: 100%;
+}
+
+.members-disabled-toggle .icon {
+  transition: transform var(--dur) var(--ease);
+}
+
+.members-disabled-toggle[aria-expanded="true"] .icon {
+  transform: rotate(90deg);
+}
+
+.members-disabled-list .pick-row:last-child {
+  border-bottom: 0;
+}
+
+.members-disabled-list .pick-hint {
+  padding-bottom: 12px;
+}
+
+@media (max-width: 340px) {
+  /* 320 px: the sort note yields before any name or count does. */
+  .members-screen .group-label .is-end {
+    display: none;
+  }
+
+  .members-screen .pick-row {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+}

@@ -303,3 +303,157 @@ func assertKeywordSlice(t *testing.T, name string, got, want []string) {
 		}
 	}
 }
+
+// TestKeywordArchiveDefaultsToActiveOnly covers the archive read paths: the
+// default list/count excludes archived rows, the IncludingArchived variant
+// returns them, and the write is ownership-scoped.
+func TestKeywordArchiveDefaultsToActiveOnly(t *testing.T) {
+	setupKeywordTestDB(t)
+	const owner = int64(7001)
+	const other = int64(7002)
+
+	if _, _, err := Keyword.InsertMany(owner, model.PROJECT, []string{"active", "archived"}); err != nil {
+		t.Fatalf("seed keywords: %v", err)
+	}
+
+	var archivedID int32
+	for _, row := range Keyword.GetByUserIdAndTypeIncludingArchived(owner, model.PROJECT, true) {
+		if row.Keyword == "archived" {
+			archivedID = *row.ID
+		}
+	}
+	if archivedID == 0 {
+		t.Fatal("archived fixture not found")
+	}
+
+	found, err := Keyword.SetArchivedOwned(owner, archivedID, true)
+	if err != nil || !found {
+		t.Fatalf("SetArchivedOwned(true) = (%v, %v), want (true, nil)", found, err)
+	}
+
+	if got := len(Keyword.GetByUserIdAndType(owner, model.PROJECT)); got != 1 {
+		t.Fatalf("default list = %d rows, want 1", got)
+	}
+	if got := Keyword.CountByUserId(owner, model.PROJECT); got != 1 {
+		t.Fatalf("default count = %d, want 1", got)
+	}
+	if got := Keyword.GetKeywords(owner, model.PROJECT); len(got) != 1 || got[0] != "active" {
+		t.Fatalf("matching keywords = %v, want [active]", got)
+	}
+
+	all := Keyword.GetByUserIdAndTypeIncludingArchived(owner, model.PROJECT, true)
+	if len(all) != 2 {
+		t.Fatalf("including archived = %d rows, want 2", len(all))
+	}
+
+	// Another account's id must not be archivable, and the row must stay put.
+	if found, err := Keyword.SetArchivedOwned(other, archivedID, false); err != nil || found {
+		t.Fatalf("foreign SetArchivedOwned = (%v, %v), want (false, nil)", found, err)
+	}
+	if row, ok := Keyword.GetOwned(owner, archivedID); !ok || row.ArchivedAt == nil {
+		t.Fatalf("foreign archive changed the row: %+v", row)
+	}
+
+	if found, err := Keyword.SetArchivedOwned(owner, archivedID, false); err != nil || !found {
+		t.Fatalf("SetArchivedOwned(false) = (%v, %v), want (true, nil)", found, err)
+	}
+	row, ok := Keyword.GetOwned(owner, archivedID)
+	if !ok || row.ArchivedAt != nil {
+		t.Fatalf("restored row = %+v, want archived_at NULL", row)
+	}
+
+	if found, err := Keyword.SetArchivedOwned(owner, 999999, true); err != nil || found {
+		t.Fatalf("missing SetArchivedOwned = (%v, %v), want (false, nil)", found, err)
+	}
+}
+
+// TestKeywordInsertManyRestoresArchived pins the product decision: re-adding a
+// word whose row is archived un-archives that row, counts it in added, and
+// creates no duplicate. Every other repeat stays idempotent.
+func TestKeywordInsertManyRestoresArchived(t *testing.T) {
+	setupKeywordTestDB(t)
+	const owner = int64(7003)
+
+	if _, _, err := Keyword.InsertMany(owner, model.PROJECT, []string{"restore-me", "keep"}); err != nil {
+		t.Fatalf("seed keywords: %v", err)
+	}
+
+	var archivedID int32
+	for _, row := range Keyword.GetByUserIdAndType(owner, model.PROJECT) {
+		if row.Keyword == "restore-me" {
+			archivedID = *row.ID
+		}
+	}
+	if archivedID == 0 {
+		t.Fatal("restore fixture not found")
+	}
+	if _, err := Keyword.SetArchivedOwned(owner, archivedID, true); err != nil {
+		t.Fatalf("archive fixture: %v", err)
+	}
+
+	added, skipped, err := Keyword.InsertMany(owner, model.PROJECT, []string{"restore-me", "keep"})
+	if err != nil {
+		t.Fatalf("InsertMany() error: %v", err)
+	}
+	if len(added) != 1 || added[0] != "restore-me" {
+		t.Fatalf("added = %v, want [restore-me]", added)
+	}
+	if len(skipped) != 1 || skipped[0] != "keep" {
+		t.Fatalf("skipped = %v, want [keep]", skipped)
+	}
+
+	rows := Keyword.GetByUserIdAndType(owner, model.PROJECT)
+	if len(rows) != 2 {
+		t.Fatalf("rows after restore = %d, want 2 (no duplicate)", len(rows))
+	}
+	for _, row := range rows {
+		if row.ArchivedAt != nil {
+			t.Fatalf("row %q is still archived", row.Keyword)
+		}
+	}
+
+	// A third call has nothing to add and stays idempotent.
+	added, skipped, err = Keyword.InsertMany(owner, model.PROJECT, []string{"restore-me", "keep"})
+	if err != nil || len(added) != 0 || len(skipped) != 2 {
+		t.Fatalf("repeat InsertMany = (%v, %v, %v), want empty added and both skipped", added, skipped, err)
+	}
+}
+
+// TestKeywordCountsPerUserExcludeArchived covers the grouped count behind the
+// admin member list.
+func TestKeywordCountsPerUserExcludeArchived(t *testing.T) {
+	setupKeywordTestDB(t)
+	const owner = int64(7004)
+	const other = int64(7005)
+
+	if _, _, err := Keyword.InsertMany(owner, model.PROJECT, []string{"a", "b"}); err != nil {
+		t.Fatalf("seed project keywords: %v", err)
+	}
+	if _, _, err := Keyword.InsertMany(owner, model.ALARM, []string{"c"}); err != nil {
+		t.Fatalf("seed alarm keywords: %v", err)
+	}
+	if _, _, err := Keyword.InsertMany(other, model.PROJECT, []string{"d"}); err != nil {
+		t.Fatalf("seed other keywords: %v", err)
+	}
+
+	var archivedID int32
+	for _, row := range Keyword.GetByUserIdAndType(owner, model.PROJECT) {
+		if row.Keyword == "b" {
+			archivedID = *row.ID
+		}
+	}
+	if _, err := Keyword.SetArchivedOwned(owner, archivedID, true); err != nil {
+		t.Fatalf("archive fixture: %v", err)
+	}
+
+	counts := Keyword.CountByUserIDs([]int64{owner, other, 999999})
+	if got := counts[owner]; got != (KeywordCounts{Project: 1, Alarm: 1}) {
+		t.Fatalf("owner counts = %+v, want {Project:1 Alarm:1}", got)
+	}
+	if got := counts[other]; got != (KeywordCounts{Project: 1}) {
+		t.Fatalf("other counts = %+v, want {Project:1}", got)
+	}
+	if got := counts[999999]; got != (KeywordCounts{}) {
+		t.Fatalf("unknown counts = %+v, want zero", got)
+	}
+}

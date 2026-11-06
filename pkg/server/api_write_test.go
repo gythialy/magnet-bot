@@ -550,3 +550,86 @@ func TestAPIWriteCrossUserIsolation(t *testing.T) {
 		t.Fatalf("second user added = %v, want [private]", created.Added)
 	}
 }
+
+// TestAPIWriteArchiveKeyword covers the archived field of PATCH: archive-only
+// bodies are accepted, the echo reports archivedAt (null while active), the
+// lists reflect the state, and ownership/validation keep their old answers.
+func TestAPIWriteArchiveKeyword(t *testing.T) {
+	setupAPITestDB(t)
+
+	now := time.Now().Truncate(time.Second)
+	handler := apiTestHandler(APIConfig{BotToken: testBotToken}, now)
+	rawOwner := apiTestInitData(t, now, testUserID)
+
+	ownerID := seedOneKeyword(t, testUserID, model.PROJECT, "archive-me")
+	foreignID := seedOneKeyword(t, writeTestOtherUserID, model.PROJECT, "foreign")
+	path := apiKeywordsPath + "/" + strconv.Itoa(int(ownerID))
+
+	t.Run("an archive-only body is accepted", func(t *testing.T) {
+		payload := decodeAPI[keywordRenameResponse](t, writeAPIRequest(t, handler, http.MethodPatch, path, rawOwner,
+			`{"archived":true}`))
+		if payload.ID != ownerID || payload.Keyword != "archive-me" {
+			t.Fatalf("payload = %+v, want the stored keyword echoed", payload)
+		}
+		if payload.ArchivedAt == nil {
+			t.Fatal("archivedAt = null, want the archive timestamp")
+		}
+		if got := parseAPITime(t, *payload.ArchivedAt); got.After(now.Add(time.Minute)) {
+			t.Fatalf("archivedAt = %v, want a recent instant", got)
+		}
+
+		active := decodeAPI[keywordsResponse](t, sendAPI(t, handler, apiKeywordsPath, rawOwner))
+		if len(active.Items) != 0 || active.ArchivedCount != 1 {
+			t.Fatalf("active list = (%d items, count %d), want (0, 1)", len(active.Items), active.ArchivedCount)
+		}
+		if got := storedKeywords(t, testUserID, model.PROJECT); len(got) != 0 {
+			t.Fatalf("storedKeywords = %v, want the archived row excluded", got)
+		}
+
+		all := decodeAPI[keywordsResponse](t, sendAPI(t, handler, apiKeywordsPath+"?includeArchived=1", rawOwner))
+		if len(all.Items) != 1 || all.Items[0].ArchivedAt == nil {
+			t.Fatalf("includeArchived list = %+v, want the archived row", all.Items)
+		}
+	})
+
+	t.Run("restoring clears archivedAt", func(t *testing.T) {
+		payload := decodeAPI[keywordRenameResponse](t, writeAPIRequest(t, handler, http.MethodPatch, path, rawOwner,
+			`{"archived":false}`))
+		if payload.ArchivedAt != nil {
+			t.Fatalf("archivedAt = %q, want null", *payload.ArchivedAt)
+		}
+		if got := storedKeywords(t, testUserID, model.PROJECT); len(got) != 1 || got[0] != "archive-me" {
+			t.Fatalf("storedKeywords = %v, want [archive-me]", got)
+		}
+	})
+
+	t.Run("a body with neither field is rejected", func(t *testing.T) {
+		for _, body := range []string{`{}`, `{"unknown":true}`} {
+			assertWriteEnvelope(t, writeAPIRequest(t, handler, http.MethodPatch, path, rawOwner, body),
+				http.StatusBadRequest, "bad_request")
+		}
+	})
+
+	t.Run("rename and archive can be combined", func(t *testing.T) {
+		payload := decodeAPI[keywordRenameResponse](t, writeAPIRequest(t, handler, http.MethodPatch, path, rawOwner,
+			`{"keyword":"renamed","archived":true}`))
+		if payload.Keyword != "renamed" || payload.ArchivedAt == nil {
+			t.Fatalf("payload = %+v, want both changes echoed", payload)
+		}
+	})
+
+	t.Run("another account's id is not found", func(t *testing.T) {
+		assertWriteEnvelope(t, writeAPIRequest(t, handler, http.MethodPatch,
+			apiKeywordsPath+"/"+strconv.Itoa(int(foreignID)), rawOwner, `{"archived":true}`),
+			http.StatusNotFound, "not_found")
+	})
+
+	t.Run("alarms share the archived field", func(t *testing.T) {
+		alarmID := seedOneKeyword(t, testUserID, model.ALARM, "alarm-archive-me")
+		payload := decodeAPI[keywordRenameResponse](t, writeAPIRequest(t, handler, http.MethodPatch,
+			apiAlarmsPath+"/"+strconv.Itoa(int(alarmID)), rawOwner, `{"archived":true}`))
+		if payload.ID != alarmID || payload.ArchivedAt == nil {
+			t.Fatalf("alarm payload = %+v, want the archived alarm", payload)
+		}
+	})
+}

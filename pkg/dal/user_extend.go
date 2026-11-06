@@ -129,7 +129,8 @@ func (u *user) loadRow(userID int64) (*model.User, error) {
 	return &row, nil
 }
 
-// List returns one page of users plus the total matching the filter.
+// List returns one page of users plus the total matching the filter, in account
+// id order. That stable order is the default of the admin list.
 //
 // q is matched against the remark with a LIKE, and when it parses as a number
 // also against the user id exactly. An exact id match (rather than a substring)
@@ -137,7 +138,38 @@ func (u *user) loadRow(userID int64) (*model.User, error) {
 // SQLite and MySQL, and an id typed into the admin search box is normally the
 // whole id from a report.
 func (u *user) List(q string, offset, limit int) ([]*model.User, int64) {
-	term := strings.TrimSpace(q)
+	return u.ListFiltered(UserFilter{Query: q}, offset, limit, false)
+}
+
+// ListRecent is List ordered by most recent activity first. Rows that never
+// interacted have a NULL last_seen and sort after every dated row; the account
+// id keeps the order stable among equal timestamps.
+func (u *user) ListRecent(q string, offset, limit int) ([]*model.User, int64) {
+	return u.ListFiltered(UserFilter{Query: q}, offset, limit, true)
+}
+
+// UserFilter is the optional predicate set of an admin list query. The zero
+// value lists every account; a nil Enabled means "both states".
+type UserFilter struct {
+	Query   string
+	Enabled *bool
+}
+
+// ListFiltered returns one page plus the total for the given filter. recent
+// selects the member-picker order (last_seen desc, never-seen last, id
+// tie-break); the default stays account id ascending.
+func (u *user) ListFiltered(f UserFilter, offset, limit int, recent bool) ([]*model.User, int64) {
+	order := "user_id ASC"
+	if recent {
+		order = "(last_seen IS NULL) ASC, last_seen DESC, user_id ASC"
+	}
+	return u.list(f, offset, limit, order)
+}
+
+// list runs one page query with the caller's ordering. The ordering text is a
+// package constant, never a request value.
+func (u *user) list(f UserFilter, offset, limit int, order string) ([]*model.User, int64) {
+	term := strings.TrimSpace(f.Query)
 	if limit <= 0 {
 		limit = defaultUserListLimit
 	}
@@ -146,6 +178,9 @@ func (u *user) List(q string, offset, limit int) ([]*model.User, int64) {
 	}
 
 	filter := func(db *gorm.DB) *gorm.DB {
+		if f.Enabled != nil {
+			db = db.Where("enabled = ?", *f.Enabled)
+		}
 		if term == "" {
 			return db
 		}
@@ -165,7 +200,7 @@ func (u *user) List(q string, offset, limit int) ([]*model.User, int64) {
 
 	var rows []*model.User
 	if err := filter(Q.db.Model(&model.User{})).
-		Order("user_id ASC").
+		Order(order).
 		Limit(limit).
 		Offset(offset).
 		Find(&rows).Error; err != nil {
@@ -514,6 +549,34 @@ func (u *user) SetLastSeen(userID int64, at time.Time) error {
 	}
 	if result.RowsAffected == 0 {
 		return ErrNotFound
+	}
+
+	u.Invalidate()
+	return nil
+}
+
+// Touch records activity and refreshes the Telegram identity from an
+// authenticated interaction. Like SetLastSeen it leaves updated_at alone: the
+// phone writes this on every throttled request, and the column tracks
+// administrative edits.
+//
+// It returns ErrNotFound when no row matched, so the caller can ignore the
+// error for a stranger. A zero RowsAffected is checked against the row's
+// existence: MySQL reports 0 for a statement that rewrites the same values.
+func (u *user) Touch(userID int64, at time.Time, name, username string) error {
+	result := Q.db.Model(&model.User{}).Where("user_id = ?", userID).UpdateColumns(map[string]any{
+		"last_seen": at,
+		"name":      name,
+		"username":  username,
+	})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		if _, ok := u.Get(userID); !ok {
+			return ErrNotFound
+		}
+		return nil
 	}
 
 	u.Invalidate()

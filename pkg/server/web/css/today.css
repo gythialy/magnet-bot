@@ -1,394 +1,90 @@
 /*
- * today.css — the Today view.
+ * today.css — the Today view on the shared base vocabulary.
  *
- * Everything here is mobile-first: one column of cards, a four-cell statistics
- * bar, and controls that stay at or above the 40px touch-target floor. Colour
- * only ever comes from the --tg-* / --app-* tokens base.css defines, so the
- * view follows the Telegram light/dark theme without a second stylesheet.
+ * base.css already owns the topbar, running head, statistics strip, controls
+ * band, entry rows, sheet and state blocks. This file only adds the three
+ * things the Today column needs on top of them: a button-shaped entry body
+ * (the lead line opens the detail sheet from the keyboard too), a meta line
+ * that wraps its parts instead of clipping them, and the action sizing.
  *
- * The JS builds the nodes this stylesheet names (see js/today.js); index.html
- * only owns the three placeholder slots.
+ * Colour comes only from the base semantic tokens; there are no literals here.
  */
 
-/* Toolbar: counters, search, range chips -------------------------------- */
-
-.today-toolbar {
-  margin-bottom: var(--app-gap);
-}
-
-.today-stats {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-/* Packed cells divided by hairline rules: the counters belong to one strip, not
-   to four tiles. The fixed height keeps the strip still while values change. */
-.today-stat {
-  display: flex;
-  min-height: 62px;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 2px;
-  padding: 10px 8px;
-  border-left: 1px solid var(--rule);
-}
-
-.today-stat:first-child {
-  border-left: none;
-  padding-left: 0;
-}
-
-.today-stat-value {
+/* The title button: reset the browser chrome so the row keeps the printed
+   entry look while staying a real focusable control. */
+.entry-body {
   display: block;
-  max-width: 100%;
-  /* Tabular figures keep the bar from shifting when a count changes, and the
-     nowrap+ellipsis pair stops a long count from wrapping into a second line. */
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 17px;
-  font-weight: 650;
-  line-height: 1.25;
-}
-
-.today-stat-label {
-  display: block;
-  max-width: 100%;
-  color: var(--muted-foreground);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.1em;
-  line-height: 1.2;
-  text-transform: uppercase;
-}
-
-.today-search {
-  margin-top: 10px;
-}
-
-.today-search-input {
-  /* box-sizing is required for a 100% input that also carries padding. */
-  box-sizing: border-box;
   width: 100%;
-  min-height: 40px;
-  padding: 9px 12px;
-  background-color: var(--background);
-  border: 1px solid var(--input);
-  border-radius: var(--app-radius);
-  color: var(--tg-text);
-  font-size: 14px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
   -webkit-appearance: none;
   appearance: none;
 }
 
-.today-search-input::placeholder {
-  color: var(--tg-hint);
-}
-
-.today-ranges {
-  margin-top: 10px;
-}
-
-/* Notice list ----------------------------------------------------------- */
-
-.today-list {
-  display: block;
-}
-
-/* One printed entry: lead line, meta line, actions on the right edge. The
-   shared .card class supplies a top rule; entries separate only downward. */
-.today-card {
-  display: block;
-  padding: 12px 0;
-  border-top: none;
-  border-bottom: 1px solid var(--rule);
-  border-radius: 0;
-  background: none;
-  cursor: pointer;
-}
-
-.today-card:last-child {
-  border-bottom: none;
-}
-
-.today-card-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-/*
- * The card body is a real button: clicking anywhere on the title/meta opens the
- * detail sheet, and keyboard/assistive users get it for free. It is reset to
- * look like text so the .card surface stays the only visible container.
- */
-.today-card-body {
-  display: block;
-  flex: 1 1 auto;
-  /* min-width:0 is what lets the two-line clamp shrink inside the flex row. */
-  min-width: 0;
-  min-height: 44px;
-  padding: 0;
-  background: none;
-  border: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-
-.today-card-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-}
-
-/* Two-line clamp on the lead line; restated here so the entry keeps its limit
-   even if the shared .card-title class changes. */
-.today-card-title {
-  display: -webkit-box;
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-
-/* The tender mark is a tag, not an emoji: a drawn glyph plus a caps label. */
-.today-tag {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 3px;
-  padding: 1px 6px 1px 4px;
-  border: 1px solid var(--input);
-  border-radius: var(--radius-sm);
-  color: var(--muted-foreground);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  line-height: 1.4;
-  text-transform: uppercase;
-}
-
-.today-tag .icon {
-  width: 12px;
-  height: 12px;
-}
-
-.today-card-meta {
-  display: block;
-  margin-top: 5px;
-  color: var(--tg-hint);
-  font-size: 12px;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-
-.today-sep {
-  padding: 0 2px;
-}
-
-.today-open {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  min-height: 40px;
-  padding: 6px 12px;
-  background-color: transparent;
-  border: 1px solid var(--border);
-  border-radius: var(--app-radius);
-  color: var(--tg-link);
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-
-/* Card actions: PDF / PNG / Open ---------------------------------------- */
-
-/*
- * One right-aligned footer row instead of a side column: three 40px actions do
- * not fit beside a two-line title on a 320px screen, and stacking them in the
- * narrow column made every card taller than the title it describes.
- */
-.today-card-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.today-convert {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 36px;
-  padding: 5px 12px;
-  background-color: transparent;
-  border: 1px solid var(--input);
-  border-radius: var(--radius-md);
-  color: var(--foreground);
-  font-size: 13px;
-  font-weight: 500;
-  white-space: nowrap;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-
-/* A conversion in flight disables only that notice's button for that format. */
-.today-convert:disabled,
-.today-open:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-/* Load more ------------------------------------------------------------- */
-
-.today-more-wrap {
-  display: flex;
-  justify-content: center;
-  margin-top: 12px;
-}
-
-/* An author display value would otherwise beat the UA [hidden] rule. */
-.today-more-wrap[hidden] {
-  display: none;
-}
-
-.today-more {
-  min-width: 160px;
-}
-
-/* Static states --------------------------------------------------------- */
-
-/* The retry action stacks under the message rather than inline with it. */
-#view-today .error {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
-}
-
-#view-today .error[hidden] {
-  display: none;
-}
-
-.today-retry {
-  border-color: rgba(220, 38, 38, 0.35);
-  color: var(--app-danger);
-}
-
-/* Detail sheet ---------------------------------------------------------- */
-
-.today-modal {
-  /* The sheet is the only scroll container on small screens. */
-  max-height: 80vh;
-}
-
-.today-modal-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.today-modal-title {
-  flex: 1 1 auto;
-  min-width: 0;
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-
-.today-modal .modal-close {
-  flex: 0 0 auto;
-  min-width: 40px;
-  padding: 8px 10px;
-  border-radius: var(--app-radius);
-}
-
-.today-modal .modal-close:active {
-  background-color: var(--accent-fill);
-}
-
-.today-modal-meta {
-  margin-top: 8px;
-  color: var(--tg-hint);
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-
-.today-modal-actions {
-  margin-top: 16px;
-}
-
-.today-modal-actions .btn {
-  width: 100%;
-}
-
-.today-modal-convert {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-/* An author display value would otherwise beat the UA [hidden] rule; the sheet
-   hides the convert row for notices that cannot be converted. */
-.today-modal-convert[hidden] {
-  display: none;
-}
-
-.today-modal-convert .btn-ghost {
-  flex: 1 1 0;
-}
-
-/* Focus ----------------------------------------------------------------- */
-
-/* Keyboard users need to see where they are; Telegram's shell draws no ring of
-   its own on the reset buttons above. */
-.today-card-body:focus-visible,
-.today-open:focus-visible,
-.today-convert:focus-visible,
-.today-more:focus-visible,
-.today-retry:focus-visible,
-.today-ranges .chip:focus-visible,
-.today-search-input:focus-visible,
-.today-modal .modal-close:focus-visible,
-.today-modal-actions .btn:focus-visible,
-.today-modal-actions .btn-ghost:focus-visible {
-  outline: 2px solid var(--tg-button);
+.entry-body:focus-visible {
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
+  border-radius: 4px;
 }
 
-/* Narrow phones --------------------------------------------------------- */
+/* The whole row is the tap target; the title button is the keyboard path. */
+.entry.is-link {
+  cursor: pointer;
+}
 
-/* 320px-class screens cannot fit four 11px labels comfortably, so the labels
-   shrink rather than the numbers. */
+/* Three actions share the foot with the meta line, so they run slightly under
+   the stand-alone 40px control to keep all three on a 375px row. */
+.entry-actions .icon-btn {
+  width: 36px;
+  height: 36px;
+}
+
+.entry-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* All parts stay readable: when the row is too narrow the last parts wrap to
+     a second line instead of clipping the project code behind them. */
+  flex-wrap: wrap;
+  row-gap: 0;
+}
+
+/* The sheet title is a notice title: it can be long and has no spaces. */
+#view-today .sheet-title,
+#view-today .sheet-kicker {
+  overflow-wrap: anywhere;
+}
+
+#view-today .sheet-actions {
+  align-items: center;
+}
+
+/* Narrow phones: the actions shrink so every one of the three stays beside the
+   meta line; the meta itself is already allowed to wrap above. */
 @media (max-width: 359px) {
-  .today-stat {
-    padding: 8px 4px;
+  .entry-actions .icon-btn {
+    width: 34px;
+    height: 34px;
   }
 
-  .today-stat-value {
-    font-size: 15px;
+  .stat {
+    padding-left: 6px;
+    padding-right: 6px;
   }
 
-  .today-stat-label {
-    font-size: 11px;
+  .stat-k {
+    letter-spacing: 0.05em;
   }
+}
+
+/* The shared wide button carries no focus ring of its own. */
+#view-today .list-foot .btn-wide:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

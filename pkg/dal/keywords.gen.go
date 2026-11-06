@@ -36,6 +36,7 @@ func newKeyword(db *gorm.DB, opts ...gen.DOOption) keyword {
 	_keyword.UserID = field.NewInt64(tableName, "user_id")
 	_keyword.Type = field.NewInt32(tableName, "type")
 	_keyword.Counter = field.NewInt32(tableName, "counter")
+	_keyword.ArchivedAt = field.NewTime(tableName, "archived_at")
 
 	_keyword.fillFieldMap()
 
@@ -45,15 +46,16 @@ func newKeyword(db *gorm.DB, opts ...gen.DOOption) keyword {
 type keyword struct {
 	keywordDo
 
-	ALL       field.Asterisk
-	ID        field.Int32
-	CreatedAt field.Time
-	UpdatedAt field.Time
-	DeletedAt field.Field
-	Keyword   field.String
-	UserID    field.Int64
-	Type      field.Int32
-	Counter   field.Int32
+	ALL        field.Asterisk
+	ID         field.Int32
+	CreatedAt  field.Time
+	UpdatedAt  field.Time
+	DeletedAt  field.Field
+	Keyword    field.String
+	UserID     field.Int64
+	Type       field.Int32
+	Counter    field.Int32
+	ArchivedAt field.Time
 
 	fieldMap map[string]field.Expr
 }
@@ -64,7 +66,7 @@ func (k keyword) Table(newTableName string) *keyword {
 }
 
 func (k keyword) As(alias string) *keyword {
-	k.keywordDo.DO = *(k.keywordDo.As(alias).(*gen.DO))
+	k.keywordDo.DO = *k.keywordDo.As(alias).(*gen.DO)
 	return k.updateTableName(alias)
 }
 
@@ -78,6 +80,7 @@ func (k *keyword) updateTableName(table string) *keyword {
 	k.UserID = field.NewInt64(table, "user_id")
 	k.Type = field.NewInt32(table, "type")
 	k.Counter = field.NewInt32(table, "counter")
+	k.ArchivedAt = field.NewTime(table, "archived_at")
 
 	k.fillFieldMap()
 
@@ -94,7 +97,7 @@ func (k *keyword) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (k *keyword) fillFieldMap() {
-	k.fieldMap = make(map[string]field.Expr, 8)
+	k.fieldMap = make(map[string]field.Expr, 9)
 	k.fieldMap["id"] = k.ID
 	k.fieldMap["created_at"] = k.CreatedAt
 	k.fieldMap["updated_at"] = k.UpdatedAt
@@ -103,6 +106,7 @@ func (k *keyword) fillFieldMap() {
 	k.fieldMap["user_id"] = k.UserID
 	k.fieldMap["type"] = k.Type
 	k.fieldMap["counter"] = k.Counter
+	k.fieldMap["archived_at"] = k.ArchivedAt
 }
 
 func (k keyword) clone(db *gorm.DB) keyword {

@@ -22,6 +22,9 @@ type Keyword struct {
 	UserID    int64          `gorm:"column:user_id;not null" json:"userId"`
 	Type      int32          `gorm:"column:type;not null" json:"type"`
 	Counter   int32          `gorm:"column:counter;not null" json:"counter"`
+	// ArchivedAt is set when the user archives a keyword. The row is kept and
+	// excluded from matching, statistics and the default list; NULL means active.
+	ArchivedAt *time.Time `gorm:"column:archived_at" json:"archivedAt,omitempty"`
 }
 
 // TableName Keyword's table name

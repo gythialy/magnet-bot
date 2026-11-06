@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gythialy/magnet/pkg/model"
 )
@@ -66,14 +67,24 @@ func (k *keyword) InsertMany(userId int64, t model.KeywordType, keywords []strin
 	if err != nil {
 		return nil, nil, err
 	}
-	exists := make(map[string]struct{}, len(existing))
+	byKeyword := make(map[string]*model.Keyword, len(existing))
 	for _, keyword := range existing {
-		exists[keyword.Keyword] = struct{}{}
+		byKeyword[keyword.Keyword] = keyword
 	}
 
 	data := make([]*model.Keyword, 0, len(candidates))
+	restoreIDs := make([]int32, 0)
 	for _, keyword := range candidates {
-		if _, ok := exists[keyword]; ok {
+		if row, ok := byKeyword[keyword]; ok {
+			// Re-adding an archived word un-archives the row instead of creating
+			// a duplicate; it counts as added because it is usable again.
+			if row.ArchivedAt != nil {
+				added = append(added, keyword)
+				if row.ID != nil {
+					restoreIDs = append(restoreIDs, *row.ID)
+				}
+				continue
+			}
 			skipped = append(skipped, keyword)
 			continue
 		}
@@ -83,6 +94,11 @@ func (k *keyword) InsertMany(userId int64, t model.KeywordType, keywords []strin
 			UserID:  userId,
 			Type:    int32(t),
 		})
+	}
+	if len(restoreIDs) > 0 {
+		if _, err := k.Where(k.ID.In(restoreIDs...)).UpdateColumn(k.ArchivedAt, nil); err != nil {
+			return nil, nil, err
+		}
 	}
 	if len(data) == 0 {
 		return added, skipped, nil
@@ -168,8 +184,19 @@ func (k *keyword) DeleteByIds(userId int64, ids string) (string, error) {
 	return strings.Join(result, ";"), nil
 }
 
+// GetByUserIdAndType returns the user's active keywords of one type.
 func (k *keyword) GetByUserIdAndType(userId int64, t model.KeywordType) []*model.Keyword {
-	result, err := k.Where(k.UserID.Eq(userId), k.Type.Eq(int32(t))).Find()
+	return k.GetByUserIdAndTypeIncludingArchived(userId, t, false)
+}
+
+// GetByUserIdAndTypeIncludingArchived returns the user's keywords of one type,
+// archived ones included when includeArchived is set.
+func (k *keyword) GetByUserIdAndTypeIncludingArchived(userId int64, t model.KeywordType, includeArchived bool) []*model.Keyword {
+	query := k.Where(k.UserID.Eq(userId), k.Type.Eq(int32(t)))
+	if !includeArchived {
+		query = query.Where(k.ArchivedAt.IsNull())
+	}
+	result, err := query.Find()
 	if err != nil {
 		return nil
 	}
@@ -190,6 +217,42 @@ func (k *keyword) GetKeywords(userId int64, t model.KeywordType) []string {
 	return keywords
 }
 
+// GetOwned reads one keyword by id only while it belongs to the user. It backs
+// the PATCH echo, which must describe exactly what was stored.
+func (k *keyword) GetOwned(userId int64, id int32) (*model.Keyword, bool) {
+	row, err := k.Where(k.UserID.Eq(userId), k.ID.Eq(id)).First()
+	if err != nil {
+		return nil, false
+	}
+	return row, true
+}
+
+// SetArchivedOwned archives or restores one keyword by id only while it belongs
+// to the user. The boolean reports whether a row matched.
+//
+// A zero RowsAffected cannot be read as "not found": MySQL reports 0 when the
+// statement sets the value the row already had, so a miss triggers one
+// ownership-scoped count to tell "unchanged" from "missing".
+func (k *keyword) SetArchivedOwned(userId int64, id int32, archived bool) (bool, error) {
+	var value any
+	if archived {
+		value = time.Now()
+	}
+	info, err := k.Where(k.UserID.Eq(userId), k.ID.Eq(id)).UpdateColumn(k.ArchivedAt, value)
+	if err != nil {
+		return false, err
+	}
+	if info.RowsAffected > 0 {
+		return true, nil
+	}
+
+	count, err := k.Where(k.UserID.Eq(userId), k.ID.Eq(id)).Count()
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 func (k *keyword) Ids() []int64 {
 	result, err := k.Distinct(k.UserID).Find()
 	if err != nil {
@@ -208,13 +271,58 @@ func (k *keyword) UpdateCounter(id, counter int32) error {
 	return err
 }
 
-// CountByUserId returns how many keywords of one type the user has.
+// CountByUserId returns how many active keywords of one type the user has.
 func (k *keyword) CountByUserId(userId int64, t model.KeywordType) int64 {
-	c, err := k.Where(k.UserID.Eq(userId), k.Type.Eq(int32(t))).Count()
+	c, err := k.Where(k.UserID.Eq(userId), k.Type.Eq(int32(t)), k.ArchivedAt.IsNull()).Count()
 	if err != nil {
 		return 0
 	}
 	return c
+}
+
+// KeywordCounts is the per-user active keyword count of each list.
+type KeywordCounts struct {
+	Project int64
+	Alarm   int64
+}
+
+// CountByUserIDs returns the active keyword counts of every requested account
+// in one grouped query, so the admin list does not issue two queries per row.
+// Accounts without keywords are absent from the map (callers read the zero
+// value).
+func (k *keyword) CountByUserIDs(userIDs []int64) map[int64]KeywordCounts {
+	counts := make(map[int64]KeywordCounts, len(userIDs))
+	if len(userIDs) == 0 {
+		return counts
+	}
+
+	rows := make([]struct {
+		UserID int64
+		Type   int32
+		Total  int64
+	}, 0, len(userIDs))
+	err := k.UnderlyingDB().
+		Model(&model.Keyword{}).
+		Select("user_id, type, COUNT(*) AS total").
+		Where("user_id IN ?", userIDs).
+		Where("archived_at IS NULL").
+		Group("user_id, type").
+		Scan(&rows).Error
+	if err != nil {
+		return counts
+	}
+
+	for _, row := range rows {
+		count := counts[row.UserID]
+		switch model.KeywordType(row.Type) {
+		case model.PROJECT:
+			count.Project = row.Total
+		case model.ALARM:
+			count.Alarm = row.Total
+		}
+		counts[row.UserID] = count
+	}
+	return counts
 }
 
 // EditById renames the user's keywords. Every entry is "id=keyword"; entries

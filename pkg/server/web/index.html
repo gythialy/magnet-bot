@@ -8,62 +8,70 @@
     <title>magnet</title>
     <link rel="stylesheet" href="css/base.css?v=2" />
     <link rel="stylesheet" href="css/today.css?v=2" />
-    <link rel="stylesheet" href="css/keywords.css?v=2" />
-    <link rel="stylesheet" href="css/alarms.css?v=2" />
+    <link rel="stylesheet" href="css/library.css?v=2" />
     <link rel="stylesheet" href="css/records.css?v=2" />
     <link rel="stylesheet" href="css/settings.css?v=2" />
+    <link rel="stylesheet" href="css/members.css?v=2" />
   </head>
   <body>
     <!-- Shown only when Telegram did not inject initData. It replaces the whole
          shell because every /api call would be rejected without credentials. -->
     <div id="app-gate" hidden>
       <div class="gate">
-        <h1 class="gate-title">Open this app from the bot.</h1>
-        <p class="gate-hint">This Mini App only works inside Telegram.</p>
+        <h1 class="gate-title" data-i18n="app.gateTitle">Open this app from the bot.</h1>
+        <p class="gate-hint" data-i18n="app.gateHint">This Mini App only works inside Telegram.</p>
       </div>
     </div>
 
     <div id="app-shell">
       <main id="view">
         <section id="view-today" class="view" data-view="today">
-          <div class="skeleton" data-slot="loading">Loading…</div>
-          <div class="empty" data-slot="empty" hidden>No notices yet.</div>
-          <div class="error" data-slot="error" hidden></div>
+          <div class="screen">
+            <div class="sk-block" aria-hidden="true"><span class="sk w60"></span><span class="sk w40"></span></div>
+            <div class="sk-block" aria-hidden="true"><span class="sk w80"></span><span class="sk w40"></span></div>
+          </div>
         </section>
 
-        <section id="view-keywords" class="view" data-view="keywords" hidden>
-          <div class="skeleton" data-slot="loading">Loading…</div>
-          <div class="empty" data-slot="empty" hidden>No keywords yet.</div>
-          <div class="error" data-slot="error" hidden></div>
-        </section>
-
-        <section id="view-alarms" class="view" data-view="alarms" hidden>
-          <div class="skeleton" data-slot="loading">Loading…</div>
-          <div class="empty" data-slot="empty" hidden>No alarm keywords yet.</div>
-          <div class="error" data-slot="error" hidden></div>
+        <section id="view-library" class="view" data-view="library" hidden>
+          <div class="screen">
+            <div class="sk-block" aria-hidden="true"><span class="sk w60"></span><span class="sk w40"></span></div>
+          </div>
         </section>
 
         <section id="view-records" class="view" data-view="records" hidden>
-          <div class="skeleton" data-slot="loading">Loading…</div>
-          <div class="empty" data-slot="empty" hidden>No alarm records yet.</div>
-          <div class="error" data-slot="error" hidden></div>
+          <div class="screen">
+            <div class="sk-block" aria-hidden="true"><span class="sk w60"></span><span class="sk w40"></span></div>
+          </div>
         </section>
 
-        <!-- Admin-only. The nav entry stays hidden until js/settings.js has
-             confirmed the caller's role, so a normal account never sees it. -->
         <section id="view-settings" class="view" data-view="settings" hidden>
-          <div class="skeleton" data-slot="loading">Loading…</div>
-          <div class="empty" data-slot="empty" hidden>Admins only</div>
-          <div class="error" data-slot="error" hidden></div>
+          <div class="screen">
+            <div class="sk-block" aria-hidden="true"><span class="sk w60"></span><span class="sk w40"></span></div>
+          </div>
         </section>
+
+        <!-- Administrator sub-pages: no tab of their own. -->
+        <section id="view-members" class="view" data-view="members" hidden></section>
+        <section id="view-admin" class="view" data-view="admin" hidden></section>
       </main>
 
       <nav id="tabbar" aria-label="Sections">
-        <a class="tab is-active" href="#/today" data-route="#/today">Today</a>
-        <a class="tab" href="#/keywords" data-route="#/keywords">Keywords</a>
-        <a class="tab" href="#/alarms" data-route="#/alarms">Alarms</a>
-        <a class="tab" href="#/records" data-route="#/records">Records</a>
-        <a class="tab" href="#/settings" data-route="#/settings" hidden>Settings</a>
+        <a class="tab is-active" href="#/today" data-route="#/today">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h14"/><path d="M5 12h14"/><path d="M5 17h9"/></svg>
+          <span data-i18n="nav.today">Today</span>
+        </a>
+        <a class="tab" href="#/library" data-route="#/library">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L7 20"/><path d="M17 4l-2 16"/><path d="M4 9h16"/><path d="M3 15h16"/></svg>
+          <span data-i18n="nav.library">Watchlist</span>
+        </a>
+        <a class="tab" href="#/records" data-route="#/records">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 1.8"/></svg>
+          <span data-i18n="nav.records">Records</span>
+        </a>
+        <a class="tab" href="#/settings" data-route="#/settings">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h9"/><path d="M17 8h3"/><circle cx="15" cy="8" r="2"/><path d="M4 16h3"/><path d="M11 16h9"/><circle cx="9" cy="16" r="2"/></svg>
+          <span data-i18n="nav.settings">Settings</span>
+        </a>
       </nav>
     </div>
 
@@ -73,12 +81,16 @@
          window.Telegram object, so the page has to load the SDK itself. Served from
          the same origin, which keeps the Mini App free of external CDNs. -->
     <script src="js/telegram-web-app.js?v=2"></script>
+    <script src="js/locales/en.js?v=2"></script>
+    <script src="js/locales/zh.js?v=2"></script>
+    <script src="js/i18n.js?v=2"></script>
     <script src="js/core.js?v=2"></script>
     <script src="js/api.js?v=2"></script>
     <script src="js/today.js?v=2"></script>
-    <script src="js/keywords.js?v=2"></script>
-    <script src="js/alarms.js?v=2"></script>
+    <script src="js/library.js?v=2"></script>
     <script src="js/records.js?v=2"></script>
     <script src="js/settings.js?v=2"></script>
+    <script src="js/members.js?v=2"></script>
+    <script src="js/admin.js?v=2"></script>
   </body>
 </html>

@@ -762,3 +762,85 @@ func TestAPIUnderProductionRouter(t *testing.T) {
 		t.Fatalf("anonymous status = %d, want %d", unauthorized.Code, http.StatusUnauthorized)
 	}
 }
+
+// TestAPIKeywordsIncludeArchived covers the archived wire shape: the default
+// answer hides archived rows but still reports their count, and
+// includeArchived=1 returns them with an RFC3339 archivedAt.
+func TestAPIKeywordsIncludeArchived(t *testing.T) {
+	setupAPITestDB(t)
+
+	now := time.Now().Truncate(time.Second)
+	handler := apiTestHandler(APIConfig{BotToken: testBotToken}, now)
+	raw := apiTestInitData(t, now, testUserID)
+	archivedAt := now.Add(-2 * time.Hour)
+
+	seedKeywords(t,
+		&model.Keyword{ID: new(int32(1)), UserID: testUserID, Type: int32(model.PROJECT), Keyword: "active", Counter: 1, CreatedAt: now},
+		&model.Keyword{ID: new(int32(2)), UserID: testUserID, Type: int32(model.PROJECT), Keyword: "archived", Counter: 5, CreatedAt: now, ArchivedAt: &archivedAt},
+		&model.Keyword{ID: new(int32(3)), UserID: testUserID, Type: int32(model.ALARM), Keyword: "alarm-active", CreatedAt: now},
+		&model.Keyword{ID: new(int32(4)), UserID: testUserID, Type: int32(model.ALARM), Keyword: "alarm-archived", CreatedAt: now, ArchivedAt: &archivedAt},
+	)
+
+	t.Run("default hides archived but reports the count", func(t *testing.T) {
+		keywords := decodeAPI[keywordsResponse](t, sendAPI(t, handler, apiKeywordsPath, raw))
+		if len(keywords.Items) != 1 || keywords.Items[0].ID != 1 {
+			t.Fatalf("items = %+v, want only the active keyword", keywords.Items)
+		}
+		if keywords.Items[0].ArchivedAt != nil {
+			t.Fatalf("active archivedAt = %q, want absent", *keywords.Items[0].ArchivedAt)
+		}
+		if keywords.ArchivedCount != 1 {
+			t.Fatalf("archivedCount = %d, want 1", keywords.ArchivedCount)
+		}
+
+		alarms := decodeAPI[alarmsResponse](t, sendAPI(t, handler, apiAlarmsPath, raw))
+		if len(alarms.Items) != 1 || alarms.Items[0].ID != 3 || alarms.ArchivedCount != 1 {
+			t.Fatalf("alarms = %+v, want the active row and archivedCount 1", alarms)
+		}
+	})
+
+	t.Run("includeArchived returns both", func(t *testing.T) {
+		keywords := decodeAPI[keywordsResponse](t, sendAPI(t, handler, apiKeywordsPath+"?includeArchived=1", raw))
+		if len(keywords.Items) != 2 || keywords.ArchivedCount != 1 {
+			t.Fatalf("keywords = (%d items, count %d), want (2, 1)", len(keywords.Items), keywords.ArchivedCount)
+		}
+		if keywords.Items[0].ID != 2 || keywords.Items[0].ArchivedAt == nil {
+			t.Fatalf("first item = %+v, want the archived leaderboard row", keywords.Items[0])
+		}
+		if got := parseAPITime(t, *keywords.Items[0].ArchivedAt); !got.Equal(archivedAt) {
+			t.Fatalf("archivedAt = %v, want %v", got, archivedAt)
+		}
+
+		alarms := decodeAPI[alarmsResponse](t, sendAPI(t, handler, apiAlarmsPath+"?includeArchived=1", raw))
+		if len(alarms.Items) != 2 {
+			t.Fatalf("alarms = %d items, want 2", len(alarms.Items))
+		}
+		if alarms.Items[1].ID != 4 || alarms.Items[1].ArchivedAt == nil {
+			t.Fatalf("archived alarm item = %+v", alarms.Items[1])
+		}
+	})
+}
+
+// TestAPIStatisticsExcludesArchivedKeywords pins the /api/statistics numbers:
+// archived words contribute neither to the keyword counts nor to the summed
+// related notices.
+func TestAPIStatisticsExcludesArchivedKeywords(t *testing.T) {
+	setupAPITestDB(t)
+
+	now := time.Now().Truncate(time.Second)
+	handler := apiTestHandler(APIConfig{BotToken: testBotToken}, now)
+	raw := apiTestInitData(t, now, testUserID)
+	archivedAt := now.Add(-time.Hour)
+
+	seedKeywords(t,
+		&model.Keyword{ID: new(int32(1)), UserID: testUserID, Type: int32(model.PROJECT), Keyword: "active", Counter: 4, CreatedAt: now},
+		&model.Keyword{ID: new(int32(2)), UserID: testUserID, Type: int32(model.PROJECT), Keyword: "archived", Counter: 9, CreatedAt: now, ArchivedAt: &archivedAt},
+		&model.Keyword{ID: new(int32(3)), UserID: testUserID, Type: int32(model.ALARM), Keyword: "alarm-active", CreatedAt: now},
+		&model.Keyword{ID: new(int32(4)), UserID: testUserID, Type: int32(model.ALARM), Keyword: "alarm-archived", CreatedAt: now, ArchivedAt: &archivedAt},
+	)
+
+	payload := decodeAPI[statisticsResponse](t, sendAPI(t, handler, apiStatisticsPath, raw))
+	if payload.Keywords != 1 || payload.RelatedNotices != 4 || payload.AlarmKeywords != 1 {
+		t.Fatalf("statistics = %+v, want 1 keyword, related 4, 1 alarm", payload)
+	}
+}

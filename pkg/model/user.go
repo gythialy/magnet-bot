@@ -27,6 +27,14 @@ type User struct {
 	// affects authorisation.
 	Remark string `gorm:"column:remark;not null;default:''" json:"remark"`
 
+	// Name is the Telegram first+last name seen on the account's latest
+	// authenticated interaction. Empty on rows that predate this column.
+	Name string `gorm:"column:name;not null;default:''" json:"name"`
+
+	// Username is the Telegram @username, without the "@". It may legitimately
+	// be empty because Telegram usernames are optional.
+	Username string `gorm:"column:username;not null;default:''" json:"username"`
+
 	// Role is RoleUser or RoleAdmin.
 	Role int32 `gorm:"column:role;not null;default:0" json:"role"`
 

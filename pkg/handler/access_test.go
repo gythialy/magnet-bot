@@ -649,3 +649,25 @@ func TestSystemStatus(t *testing.T) {
 		t.Fatalf("SystemStatus().Webhook = %+v after a failed lookup, want nil", got)
 	}
 }
+
+// TestAccessMiddlewarePersistsTelegramIdentity guards the identity write: the
+// throttled last-seen touch also stores the Telegram name and username from the
+// update that was already parsed.
+func TestAccessMiddlewarePersistsTelegramIdentity(t *testing.T) {
+	_, ctx, telegramBot, _ := setupRestrictedAccessMW(t)
+
+	if calls := runAccessMW(t, ctx, telegramBot, accessMWPrivateMessage(accessMWAllowedID, "hello")); calls != 1 {
+		t.Fatalf("next calls = %d, want 1", calls)
+	}
+
+	row, ok := dal.User.Get(accessMWAllowedID)
+	if !ok {
+		t.Fatalf("user %d disappeared", accessMWAllowedID)
+	}
+	if row.Name != "Test Account" {
+		t.Fatalf("name = %q, want the Telegram first+last name", row.Name)
+	}
+	if want := fmt.Sprintf("user%d", accessMWAllowedID); row.Username != want {
+		t.Fatalf("username = %q, want %q", row.Username, want)
+	}
+}
