@@ -1,0 +1,66 @@
+# docker-compose.debug.yml — run the bot on this machine against the real
+# local `.env` and `./bot.db` for debugging. Not a deployment file.
+#
+# The container sees the repository's bot.db read-write (so AutoMigrate and any
+# debug writes stay in the file under review) and bot.log for inspection.
+# `.env` is loaded as environment, never baked into the image: see
+# .dockerignore.
+#
+# Telegram cannot reach a container on this machine, so the debug run requires
+# a live public tunnel. Start a Cloudflare quick tunnel first:
+#
+#   set -a; . ./.env; set +a
+#   docker run -d --rm --name magnet-debug-tunnel \
+#     cloudflare/cloudflared:latest tunnel --no-autoupdate \
+#     --url "http://host.docker.internal:${WEBHOOK_SERVER_PORT}"
+#   docker logs magnet-debug-tunnel 2>&1 | grep -o 'https://[a-z0-9-]*\.trycloudflare\.com'
+#
+# Then start the bot with that URL:
+#
+#   DEBUG_PUBLIC_BASE_URL=https://<tunnel> \
+#     docker compose -f docker-compose.debug.yml up --build
+#
+# Without DEBUG_PUBLIC_BASE_URL the service falls back to the .env value; that
+# URL is an expired quick tunnel, so Telegram updates will not arrive and
+# setWebhook retries will be logged. It is still enough to exercise the Mini App
+# over the published port with a signed initData payload.
+#
+# Stopping the bot leaves the webhook pointing at the tunnel until the next
+# instance registers; keep the tunnel running while the bot runs, and stop both
+# together. Use a separate debug bot token when the production bot must keep
+# receiving updates during the session.
+name: magnet-debug
+
+services:
+  magnet:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: magnet:debug
+    container_name: magnet-debug
+    restart: "no"
+    # The SQLite file is bind-mounted from the host. Root keeps it writable
+    # regardless of the host uid, which is the whole point of using ./bot.db.
+    user: "0:0"
+    env_file:
+      - .env
+    environment:
+      CONFIG_PATH: /etc/magnet
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+      # Defaults to the .env public URL, which is a dead quick tunnel here;
+      # pass DEBUG_PUBLIC_BASE_URL to use a live one. An empty value would make
+      # the bot fall back to polling and delete the webhook, so the fallback is
+      # the configured URL, not empty.
+      PUBLIC_BASE_URL: ${DEBUG_PUBLIC_BASE_URL:-${PUBLIC_BASE_URL}}
+      TELEGRAM_WEBHOOK_ENABLED: ${TELEGRAM_WEBHOOK_ENABLED:-true}
+      MINI_APP_ENABLED: ${MINI_APP_ENABLED:-true}
+      # Debug runs must not race the deployed crawler; 24h keeps it idle.
+      SCHEDULE_INTERVAL: ${DEBUG_SCHEDULE_INTERVAL:-24}
+    extra_hosts:
+      # The cloudflared container reaches the published port through this name.
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./bot.db:/etc/magnet/bot.db
+      - ./bot.log:/etc/magnet/bot.log
+    ports:
+      - "${WEBHOOK_SERVER_PORT:-8080}:${WEBHOOK_SERVER_PORT:-8080}"
