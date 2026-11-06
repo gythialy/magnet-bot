@@ -364,20 +364,28 @@ func TestIndexReferencesOnlyEmbeddedAssets(t *testing.T) {
 		t.Fatalf("read embedded %s: %v", appIndexName, err)
 	}
 
-	// The documents the shell must load: four stylesheets (base + one per view)
-	// and four scripts (core, api helper, one per view).
+	// The documents the shell must load: the design tokens + one stylesheet per
+	// view, the bilingual layer (dictionaries before the engine), and one script
+	// per view. A missing locale file or a forgotten sub-page script is a silent
+	// runtime hole in Telegram, so the contract is listed here.
 	required := []string{
 		"css/base.css",
 		"css/today.css",
-		"css/keywords.css",
-		"css/alarms.css",
+		"css/library.css",
 		"css/records.css",
+		"css/settings.css",
+		"css/members.css",
+		"js/locales/en.js",
+		"js/locales/zh.js",
+		"js/i18n.js",
 		"js/core.js",
 		"js/api.js",
 		"js/today.js",
-		"js/keywords.js",
-		"js/alarms.js",
+		"js/library.js",
 		"js/records.js",
+		"js/settings.js",
+		"js/members.js",
+		"js/admin.js",
 	}
 
 	refs := referencedAssets(string(index))

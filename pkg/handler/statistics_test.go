@@ -445,3 +445,40 @@ func TestRecordKeywordMatchesCountsDistinctNotices(t *testing.T) {
 		t.Fatalf("late keyword counter = %d, want 1", got)
 	}
 }
+
+// TestArchivedKeywordsAreExcludedFromMatchingAndStatistics is the correctness
+// guard for the archive feature: an archived word must not feed the crawler
+// matcher and must not appear in the /statistics counters.
+func TestArchivedKeywordsAreExcludedFromMatchingAndStatistics(t *testing.T) {
+	db := setupStatisticsDB(t)
+
+	archivedAt := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	rows := []*model.Keyword{
+		{UserID: 881, Keyword: "active-project", Type: int32(model.PROJECT), Counter: 4},
+		{UserID: 881, Keyword: "archived-project", Type: int32(model.PROJECT), Counter: 9, ArchivedAt: &archivedAt},
+		{UserID: 881, Keyword: "active-alarm", Type: int32(model.ALARM)},
+		{UserID: 881, Keyword: "archived-alarm", Type: int32(model.ALARM), ArchivedAt: &archivedAt},
+	}
+	for _, row := range rows {
+		if err := db.Create(row).Error; err != nil {
+			t.Fatalf("seed keyword %q: %v", row.Keyword, err)
+		}
+	}
+
+	view := (&CommandsHandler{}).loadStatistics(881)
+	if len(view.Keywords) != 1 || view.Keywords[0].Keyword != "active-project" {
+		t.Fatalf("statistics keywords = %+v, want only the active one", view.Keywords)
+	}
+	if len(view.Alarms) != 1 || view.Alarms[0].Keyword != "active-alarm" {
+		t.Fatalf("statistics alarms = %+v, want only the active one", view.Alarms)
+	}
+
+	processor := &InfoProcessor{ctx: testBotContext("")}
+	data := processor.get(881)
+	if len(data.ProjectRules) != 1 || data.ProjectRules[0].Rule.Keyword != "active-project" {
+		t.Fatalf("matching rules = %+v, want only the active project rule", data.ProjectRules)
+	}
+	if len(data.AlarmKeyword) != 1 || data.AlarmKeyword[0] != "active-alarm" {
+		t.Fatalf("alarm matching keywords = %v, want [active-alarm]", data.AlarmKeyword)
+	}
+}

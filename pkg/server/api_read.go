@@ -67,27 +67,33 @@ type noticeItem struct {
 	HasTenderCode bool   `json:"hasTenderCode"`
 }
 
-// keywordsResponse is the payload of GET /api/keywords.
+// keywordsResponse is the payload of GET /api/keywords. ArchivedCount is the
+// number of archived rows regardless of includeArchived, because the list header
+// shows the count next to the toggle.
 type keywordsResponse struct {
-	Items []keywordItem `json:"items"`
+	Items         []keywordItem `json:"items"`
+	ArchivedCount int           `json:"archivedCount"`
 }
 
 type keywordItem struct {
-	ID        int32  `json:"id"`
-	Keyword   string `json:"keyword"`
-	Counter   int32  `json:"counter"`
-	CreatedAt string `json:"createdAt"`
+	ID         int32   `json:"id"`
+	Keyword    string  `json:"keyword"`
+	Counter    int32   `json:"counter"`
+	CreatedAt  string  `json:"createdAt"`
+	ArchivedAt *string `json:"archivedAt,omitempty"`
 }
 
 // alarmsResponse is the payload of GET /api/alarms.
 type alarmsResponse struct {
-	Items []alarmKeywordItem `json:"items"`
+	Items         []alarmKeywordItem `json:"items"`
+	ArchivedCount int                `json:"archivedCount"`
 }
 
 type alarmKeywordItem struct {
-	ID        int32  `json:"id"`
-	Keyword   string `json:"keyword"`
-	CreatedAt string `json:"createdAt"`
+	ID         int32   `json:"id"`
+	Keyword    string  `json:"keyword"`
+	CreatedAt  string  `json:"createdAt"`
+	ArchivedAt *string `json:"archivedAt,omitempty"`
 }
 
 // alarmRecordsResponse is the payload of GET /api/alarm-records.
@@ -200,51 +206,72 @@ func (a *apiHandler) handleNotices(w http.ResponseWriter, r *http.Request) {
 
 // handleKeywords serves the user's project keywords, the leaderboard order the
 // /statistics report uses: most related notices first, id as tie-breaker.
+// Archived rows are hidden unless includeArchived=1.
 func (a *apiHandler) handleKeywords(w http.ResponseWriter, r *http.Request) {
 	user, ok := apiUser(w, r)
 	if !ok {
 		return
 	}
 
-	sorted := slices.Clone(dal.Keyword.GetByUserIdAndType(user.ID, model.PROJECT))
-	// Clone before sorting: the DAL returns a fresh slice today, but the
-	// endpoint must not depend on that staying true to keep its ordering local.
+	includeArchived := parseIncludeArchived(r.URL.Query())
+	// Archived rows are always loaded: archivedCount is needed even when the
+	// client keeps them hidden. Clone before sorting because the DAL may reuse
+	// storage.
+	sorted := slices.Clone(dal.Keyword.GetByUserIdAndTypeIncludingArchived(user.ID, model.PROJECT, true))
 	slices.SortStableFunc(sorted, compareKeywordsByCounter)
 
 	items := make([]keywordItem, 0, len(sorted))
+	archivedCount := 0
 	for _, keyword := range sorted {
+		if keyword.ArchivedAt != nil {
+			archivedCount++
+			if !includeArchived {
+				continue
+			}
+		}
 		items = append(items, keywordItem{
-			ID:        keywordID(keyword),
-			Keyword:   keyword.Keyword,
-			Counter:   keyword.Counter,
-			CreatedAt: formatAPITime(keyword.CreatedAt),
+			ID:         keywordID(keyword),
+			Keyword:    keyword.Keyword,
+			Counter:    keyword.Counter,
+			CreatedAt:  formatAPITime(keyword.CreatedAt),
+			ArchivedAt: archivedAtString(keyword.ArchivedAt),
 		})
 	}
 
-	WriteJSON(w, http.StatusOK, keywordsResponse{Items: items})
+	WriteJSON(w, http.StatusOK, keywordsResponse{Items: items, ArchivedCount: archivedCount})
 }
 
 // handleAlarms serves the user's alarm keywords in creation (id) order, which
-// is how the /statistics alarm list renders them.
+// is how the /statistics alarm list renders them. Archived rows are hidden
+// unless includeArchived=1.
 func (a *apiHandler) handleAlarms(w http.ResponseWriter, r *http.Request) {
 	user, ok := apiUser(w, r)
 	if !ok {
 		return
 	}
 
-	sorted := slices.Clone(dal.Keyword.GetByUserIdAndType(user.ID, model.ALARM))
+	includeArchived := parseIncludeArchived(r.URL.Query())
+	sorted := slices.Clone(dal.Keyword.GetByUserIdAndTypeIncludingArchived(user.ID, model.ALARM, true))
 	slices.SortStableFunc(sorted, compareKeywordsByID)
 
 	items := make([]alarmKeywordItem, 0, len(sorted))
+	archivedCount := 0
 	for _, keyword := range sorted {
+		if keyword.ArchivedAt != nil {
+			archivedCount++
+			if !includeArchived {
+				continue
+			}
+		}
 		items = append(items, alarmKeywordItem{
-			ID:        keywordID(keyword),
-			Keyword:   keyword.Keyword,
-			CreatedAt: formatAPITime(keyword.CreatedAt),
+			ID:         keywordID(keyword),
+			Keyword:    keyword.Keyword,
+			CreatedAt:  formatAPITime(keyword.CreatedAt),
+			ArchivedAt: archivedAtString(keyword.ArchivedAt),
 		})
 	}
 
-	WriteJSON(w, http.StatusOK, alarmsResponse{Items: items})
+	WriteJSON(w, http.StatusOK, alarmsResponse{Items: items, ArchivedCount: archivedCount})
 }
 
 // handleAlarmRecords serves one page of the user's alarm records, most recent
@@ -391,6 +418,23 @@ func apiString(value *string) string {
 
 func formatAPITime(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
+}
+
+// archivedAtString renders the nullable archive timestamp for the wire: absent
+// when the row is active, RFC3339 when archived.
+func archivedAtString(at *time.Time) *string {
+	if at == nil {
+		return nil
+	}
+	formatted := formatAPITime(*at)
+	return &formatted
+}
+
+// parseIncludeArchived reports whether the caller asked for archived rows. Only
+// the documented "1" enables them; any other value keeps the active-only
+// default rather than guessing at a truthy spelling.
+func parseIncludeArchived(query url.Values) bool {
+	return query.Get("includeArchived") == "1"
 }
 
 // alarmLink builds the deep link that reopens the bot on one alarm record.

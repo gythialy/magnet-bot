@@ -7,9 +7,12 @@
  * browsing surface, not a setting, so they get their own tab and the detail
  * opens as a sheet built from data the page already has.
  *
- * Records page with the API's nextOffset cursor; "Load more" disappears once the
- * cursor is null. A monotonic request token keeps a slow response from a
- * superseded search from overwriting the newer result.
+ * The page is on the shared v4 shell vocabulary: topbar -> view-head ->
+ * controls band -> row list -> sheet. Records pages with the API's nextOffset
+ * cursor; "Load more" disappears once the cursor is null. A monotonic request
+ * token keeps a slow response from a superseded search from overwriting the
+ * newer result, and onLang only rewrites text nodes so the draft, focus, open
+ * sheet and scroll survive a language switch.
  */
 (function (global) {
   "use strict";
@@ -21,6 +24,7 @@
     return;
   }
 
+  var i18n = global.MagnetI18n;
   var VIEW = "records";
   var SECTION_ID = "view-records";
   var PAGE_SIZE = 20;
@@ -29,6 +33,9 @@
   // compromised API, a field whose meaning changes later) is dropped rather than
   // passed to a client method that trusts its argument.
   var TELEGRAM_LINK_PREFIX = "https://t.me/";
+  // Source pages are ordinary web targets; only http(s) is ever rendered as a
+  // link, so a javascript: value from the API can never be followed.
+  var WEB_URL = /^https?:\/\//i;
 
   var els = null;
   var state = {
@@ -40,66 +47,119 @@
     seq: 0,
     total: 0,
     updatedAt: "",
+    errorStatus: 0,
   };
-  var sheet = { el: null, title: null, body: null, actions: null, lastFocus: null };
+  var sheet = { el: null, item: null, title: null, body: null, actions: null, lastFocus: null };
+
+  function t(key, vars) {
+    return i18n ? i18n.t(key, vars) : key;
+  }
+
+  function plural(key, count) {
+    return i18n ? i18n.plural(key, count) : key;
+  }
+
+  function num(value) {
+    return i18n ? i18n.num(value) : String(value);
+  }
+
+  function date(value) {
+    return i18n ? i18n.date(value) : "";
+  }
+
+  function time(value) {
+    return i18n ? i18n.time(value) : "";
+  }
+
+  function esc(value) {
+    return core.escapeHTML(value);
+  }
 
   var TEMPLATE =
-    '<div class="column-head">' +
-    '<span class="column-head-label">Records</span>' +
-    '<span class="column-head-count" data-slot="head-count">\u2014</span>' +
-    '<span class="column-head-time" data-slot="head-time"></span>' +
+    '<div class="screen" data-role="screen">' +
+    core.topbarHTML() +
+    '<div class="view-head">' +
+    '<div class="view-head-row">' +
+    "<div>" +
+    '<h2 class="view-title" data-i18n="records.title">' + esc(t("records.title")) + "</h2>" +
+    '<p class="view-sub" data-slot="sub"></p>' +
     "</div>" +
-    '<div class="records-toolbar">' +
-    '<input class="search-input" type="search" data-role="search" ' +
-    'placeholder="Search by credit name" aria-label="Search alarm records" autocomplete="off" />' +
     "</div>" +
-
-    '<div class="skeleton" data-slot="loading">Loading\u2026</div>' +
-    '<div class="error" data-slot="error" role="alert" hidden></div>' +
-    '<div class="empty" data-slot="empty" hidden></div>' +
-    '<ul class="record-list" data-slot="list" hidden></ul>' +
-    '<button type="button" class="btn-ghost load-more" data-role="load-more" hidden>Load more</button>' +
-    '<div class="sheet-backdrop" data-role="sheet" hidden>' +
-    '<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="record-sheet-title">' +
+    "</div>" +
+    '<div class="controls-band">' +
+    '<label class="search">' +
+    core.icon("search", "icon-sm") +
+    '<input type="search" data-role="search" data-i18n-ph="records.searchPh"' +
+    ' data-i18n-aria="records.searchPh" aria-label="' + esc(t("records.searchPh")) + '"' +
+    ' placeholder="' + esc(t("records.searchPh")) + '"' +
+    ' autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" />' +
+    "</label>" +
+    "</div>" +
+    '<div data-slot="loading">' +
+    '<p class="label state-label" role="status" data-i18n="common.loading">' +
+    esc(t("common.loading")) +
+    "</p>" +
+    '<div class="sk-block" aria-hidden="true"><span class="sk w60"></span><span class="sk w40"></span></div>' +
+    '<div class="sk-block" aria-hidden="true"><span class="sk w80"></span><span class="sk w40"></span></div>' +
+    '<div class="sk-block" aria-hidden="true"><span class="sk w60"></span><span class="sk w40"></span></div>' +
+    "</div>" +
+    '<div class="inline-error" data-slot="error" role="alert" hidden>' +
+    core.icon("alert") +
+    '<div class="msg">' +
+    '<span data-slot="error-msg"></span>' +
+    '<span class="sub" data-slot="error-sub" hidden></span>' +
+    "</div>" +
+    '<button type="button" class="btn-ghost btn-sm" data-role="retry"' +
+    ' data-i18n="common.retry">' + esc(t("common.retry")) + "</button>" +
+    "</div>" +
+    '<div class="empty-block" data-slot="empty" hidden>' +
+    '<p class="empty-title" data-slot="empty-title"></p>' +
+    "</div>" +
+    '<div class="list" data-slot="list" hidden></div>' +
+    '<div class="list-foot" data-slot="more" hidden>' +
+    '<button type="button" class="btn-wide" data-role="load-more"' +
+    ' data-i18n="records.loadMore">' + esc(t("records.loadMore")) + "</button>" +
+    "</div>" +
+    '<div class="scrim" data-slot="scrim" aria-hidden="true" hidden></div>' +
+    '<div class="sheet" data-slot="sheet" role="dialog" aria-modal="true"' +
+    ' aria-labelledby="record-sheet-title" hidden>' +
     '<div class="sheet-grab" aria-hidden="true"></div>' +
     '<div class="sheet-head">' +
+    "<div>" +
     '<h2 class="sheet-title" id="record-sheet-title" data-slot="sheet-title"></h2>' +
-    '<button class="icon-btn" type="button" data-role="sheet-close" aria-label="Close record">' + core.icon("close") + '</button>' +
+    '<p class="sheet-kicker" data-i18n="records.detailTitle">' +
+    esc(t("records.detailTitle")) +
+    "</p>" +
+    "</div>" +
+    '<button type="button" class="icon-btn" data-role="sheet-close"' +
+    ' data-i18n-aria="aria.close" aria-label="' + esc(t("aria.close")) + '">' +
+    core.icon("close") +
+    "</button>" +
     "</div>" +
     '<div class="sheet-body" data-slot="sheet-body"></div>' +
     '<div class="sheet-actions" data-slot="sheet-actions"></div>' +
     "</div>" +
     "</div>";
 
-  function api() {
-    var apiNamespace = global.MagnetAPI;
-    if (!apiNamespace) {
-      throw new Error("MagnetAPI is not loaded");
-    }
-    return apiNamespace;
-  }
-
-  function pad2(value) {
-    return value < 10 ? "0" + value : String(value);
-  }
-
-  // ISO timestamps arrive in UTC; the record dates are calendar days, so they are
-  // rendered in the device zone instead of the raw UTC day.
-  function formatDate(value) {
-    if (!value) {
-      return "";
-    }
-
-    var parsed = new Date(value);
-    if (isNaN(parsed.getTime())) {
-      return "";
-    }
-
-    return parsed.getFullYear() + "-" + pad2(parsed.getMonth() + 1) + "-" + pad2(parsed.getDate());
-  }
+  /* Small helpers --------------------------------------------------------- */
 
   function text(value) {
     return value == null ? "" : String(value).trim();
+  }
+
+  function safeTelegramLink(value) {
+    var raw = text(value);
+    return raw.indexOf(TELEGRAM_LINK_PREFIX) === 0 ? raw : "";
+  }
+
+  function safeWebLink(value) {
+    var raw = text(value);
+    return WEB_URL.test(raw) ? raw : "";
+  }
+
+  function nextOffsetOf(payload) {
+    var value = payload && payload.nextOffset;
+    return typeof value === "number" && isFinite(value) && value >= 0 ? value : null;
   }
 
   function normalizeRecords(payload) {
@@ -122,8 +182,8 @@
         handleDepartment: text(item.handleDepartment),
         handleUnit: text(item.handleUnit),
         handleResult: text(item.handleResult),
-        pageUrl1: text(item.pageUrl1),
-        pageUrl2: text(item.pageUrl2),
+        pageUrl1: safeWebLink(item.pageUrl1),
+        pageUrl2: safeWebLink(item.pageUrl2),
         noticeId: text(item.noticeId),
         originNoticeId: text(item.originNoticeId),
         link: safeTelegramLink(item.link),
@@ -133,199 +193,240 @@
     return result;
   }
 
-  function safeTelegramLink(value) {
-    var raw = text(value);
-    return raw.indexOf(TELEGRAM_LINK_PREFIX) === 0 ? raw : "";
-  }
-
-  function nextOffsetOf(payload) {
-    var value = payload && payload.nextOffset;
-    return typeof value === "number" && isFinite(value) && value >= 0 ? value : null;
-  }
-
   /* Rendering ------------------------------------------------------------- */
 
-  function recordRow(item) {
-    var esc = core.escapeHTML;
-    var name = item.creditName || "Unknown credit name";
-    var meta = [item.businessId, formatDate(item.startDate)].filter(Boolean).join(" \u00b7 ");
+  function rowHTML(item) {
+    var name = item.creditName || t("records.unknownCredit");
+    var start = date(item.startDate);
+    var datePart = start
+      ? '<span class="sep" aria-hidden="true">\u00b7</span>' +
+        '<span class="num" data-row="date">' + esc(start) + "</span>"
+      : "";
 
     return (
-      '<li class="record-row">' +
-      '<button type="button" class="entry record-button" data-id="' +
-      esc(item.businessId) +
-      '">' +
-      '<span class="entry-main">' +
-      '<span class="entry-lead">' +
-      esc(name) +
-      "</span>" +
-      '<span class="entry-meta">' +
-      esc(meta) +
+      '<button type="button" class="row is-link" data-id="' + esc(item.businessId) + '">' +
+      '<span class="row-main">' +
+      '<span class="row-lead" data-row="name">' + esc(name) + "</span>" +
+      '<span class="row-meta">' +
+      '<span class="num" data-row="id">' + esc(item.businessId) + "</span>" +
+      datePart +
       "</span>" +
       "</span>" +
-      '<span class="record-chevron" aria-hidden="true"></span>' +
-      "</button>" +
-      "</li>"
+      core.icon("chevron", "icon-sm") +
+      "</button>"
     );
   }
 
-  function renderRetry(container, message) {
-    container.textContent = "";
+  function renderList() {
+    if (!els) {
+      return;
+    }
+    var html = "";
+    for (var i = 0; i < state.items.length; i++) {
+      html += rowHTML(state.items[i]);
+    }
+    els.list.innerHTML = html;
+  }
 
-    var label = document.createElement("span");
-    label.textContent = message;
+  /* The sub line carries the count and the clock; the list below changes, this
+     strip only fades, so switching a search never reflows the page. */
+  function renderSub() {
+    if (!els) {
+      return;
+    }
+    var shown = state.items.length;
+    var total = state.total > shown ? state.total : shown;
+    var placeholder = (state.status === "loading" || state.status === "error") && shown === 0;
+    var textValue = placeholder ? "\u2014" : num(total) + " " + plural("unit.records", total);
+    if (!placeholder && state.updatedAt) {
+      textValue += " \u00b7 " + t("today.updated", { time: time(state.updatedAt) });
+    }
+    els.sub.textContent = textValue;
+  }
 
-    var button = document.createElement("button");
-    button.type = "button";
-    button.className = "btn-ghost";
-    button.textContent = "Try again";
-    button.addEventListener("click", function () {
-      loadRecords(state.items.length === 0);
-    });
+  function renderStates() {
+    if (!els) {
+      return;
+    }
 
-    container.appendChild(label);
-    container.appendChild(button);
-    container.hidden = false;
+    var skeleton = state.status === "loading" && state.items.length === 0;
+    var empty = state.status === "ready" && state.items.length === 0;
+    var failed = state.status === "error";
+
+    els.loading.hidden = !skeleton;
+    els.empty.hidden = !empty;
+    els.list.hidden = state.items.length === 0;
+    els.error.hidden = !failed;
+
+    if (failed) {
+      renderError();
+    }
+    if (empty) {
+      els.emptyTitle.textContent = state.q
+        ? t("records.emptyMatch", { q: state.q })
+        : t("records.empty");
+    }
+  }
+
+  function renderError() {
+    els.errorMsg.textContent =
+      state.errorStatus === 429 ? t("app.rateLimited") : t("records.loadFailed");
+
+    // A failed page keeps the rows already read; the sub line says how old the
+    // list is instead of pretending it is empty.
+    var sub =
+      state.items.length > 0 && state.updatedAt
+        ? t("lib.stillShowing", { time: time(state.updatedAt) })
+        : "";
+    els.errorSub.textContent = sub;
+    els.errorSub.hidden = !sub;
+  }
+
+  function renderMore() {
+    if (!els) {
+      return;
+    }
+    var hasMore = state.nextOffset !== null && state.items.length > 0;
+    els.more.hidden = !hasMore;
+    els.loadMore.disabled = state.status === "loading" || state.status === "error";
+    els.loadMore.setAttribute("aria-busy", state.status === "loading" ? "true" : "false");
+    els.loadMore.textContent =
+      state.status === "loading" ? t("common.loading") : t("records.loadMore");
   }
 
   function render() {
-    var showSkeleton = state.status === "loading" && state.items.length === 0;
-    var showEmpty = state.status === "ready" && state.items.length === 0;
-
-    els.loading.hidden = !showSkeleton;
-    els.empty.hidden = !showEmpty;
-    els.list.hidden = state.items.length === 0;
-
-    if (state.status === "error") {
-      renderRetry(els.error, "Could not load alarm records.");
-    } else {
-      els.error.hidden = true;
-    }
-
-    var hasCursor = state.nextOffset !== null;
-    els.loadMore.hidden = !hasCursor || state.items.length === 0;
-    els.loadMore.disabled = state.status === "loading" || state.status === "error";
-
-    renderHead();
-
-    if (showEmpty) {
-      els.empty.textContent = state.q
-        ? 'No alarm records match "' + state.q + '".'
-        : "No alarm records yet. Alarm keywords add them as hits arrive.";
-    }
-
-    els.list.innerHTML = state.items.length > 0 ? state.items.map(recordRow).join("") : "";
+    renderSub();
+    renderList();
+    renderStates();
+    renderMore();
   }
 
   /* Detail sheet ---------------------------------------------------------- */
 
-  /* The head carries the count and the clock; the list below changes, this
-     strip only fades, so switching a search never reflows the page. */
-  function renderHead() {
-    if (els.headCount) {
-      var shown = state.items.length;
-      var total = state.total > shown ? state.total : shown;
-      els.headCount.textContent = state.loading
-        ? "Loading\u2026"
-        : total === 0
-          ? "No records"
-          : total === shown
-            ? shown + (shown === 1 ? " record" : " records")
-            : shown + " of " + total + " records";
-    }
-    if (els.headTime) {
-      els.headTime.textContent = state.updatedAt || "";
+  function setSheetField(field, value) {
+    var node = sheet.body.querySelector('[data-field="' + field + '"]');
+    if (node) {
+      node.textContent = value;
     }
   }
 
-  function detailRow(label, value, options) {
-    var opts = options || {};
-    if (!value) {
-      return "";
-    }
+  function sheetRow(labelKey, value, field) {
+    return (
+      '<div class="sheet-row">' +
+      '<span class="label sheet-key" data-i18n="' + labelKey + '">' + esc(t(labelKey)) + "</span>" +
+      '<span class="sheet-val"' + (field ? ' data-field="' + field + '"' : "") + ">" +
+      value +
+      "</span>" +
+      "</div>"
+    );
+  }
 
-    var esc = core.escapeHTML;
-    var cell = opts.href
-      ? '<a class="sheet-link" href="' +
-        esc(opts.href) +
-        '" target="_blank" rel="noopener noreferrer">' +
-        esc(value) +
-        "</a>"
-      : '<span class="sheet-value">' + esc(value) + "</span>";
-
-    return '<div class="sheet-row"><span class="sheet-label">' + esc(label) + "</span>" + cell + "</div>";
+  function sheetLinkRow(labelKey, label, url) {
+    return (
+      '<div class="sheet-row">' +
+      '<span class="label sheet-key" data-i18n="' + labelKey + '">' + esc(t(labelKey)) + "</span>" +
+      '<span class="sheet-val">' +
+      '<a class="sheet-link" href="' + esc(url) + '" data-url="' + esc(url) + '"' +
+      ' target="_blank" rel="noopener noreferrer">' + esc(label) + "</a>" +
+      "</span>" +
+      "</div>"
+    );
   }
 
   function renderSheet(item) {
-    var esc = core.escapeHTML;
-    var start = formatDate(item.startDate);
-    var end = formatDate(item.endDate);
+    var start = date(item.startDate);
+    var end = date(item.endDate);
 
-    sheet.title.textContent = item.creditName || "Alarm record";
+    sheet.title.textContent = item.creditName || t("records.unknownCredit");
 
-    var links = "";
+    var rows = "";
+    rows += item.title
+      ? '<p class="sheet-lede">' + esc(item.title) + "</p>"
+      : "";
+    if (item.creditCode) {
+      rows += sheetRow("records.field.creditCode", esc(item.creditCode));
+    }
+    if (item.businessId) {
+      rows += sheetRow("records.field.businessId", esc(item.businessId));
+    }
+    if (start) {
+      rows += sheetRow("records.field.startDate", esc(start), "startDate");
+    }
+    if (end) {
+      rows += sheetRow("records.field.endDate", esc(end), "endDate");
+    }
+    if (item.handleDepartment) {
+      rows += sheetRow("records.field.handleDepartment", esc(item.handleDepartment));
+    }
+    if (item.handleUnit) {
+      rows += sheetRow("records.field.handleUnit", esc(item.handleUnit));
+    }
+    if (item.detailReason) {
+      rows += sheetRow("records.field.detailReason", esc(item.detailReason));
+    }
+    if (item.handleResult) {
+      rows += sheetRow("records.field.handleResult", esc(item.handleResult));
+    }
     if (item.pageUrl1) {
-      links += detailRow("公告链接", item.noticeId || "打开", { href: item.pageUrl1 });
+      rows += sheetLinkRow(
+        "records.field.notice",
+        item.noticeId || t("records.field.notice"),
+        item.pageUrl1
+      );
     }
     if (item.pageUrl2) {
-      links += detailRow("原始公告", item.originNoticeId || "打开", { href: item.pageUrl2 });
+      rows += sheetLinkRow(
+        "records.field.sourcePage",
+        item.originNoticeId || t("records.field.sourcePage"),
+        item.pageUrl2
+      );
     }
 
-    sheet.body.innerHTML =
-      (item.title ? '<p class="sheet-lead">' + esc(item.title) + "</p>" : "") +
-      '<div class="sheet-rows">' +
-      detailRow("主体", item.creditName) +
-      detailRow("信用代码", item.creditCode) +
-      detailRow("开始时间", start) +
-      detailRow("结束时间", end) +
-      detailRow("处罚部门", item.handleDepartment) +
-      detailRow("处罚单位", item.handleUnit) +
-      detailRow("具体情形", item.detailReason) +
-      detailRow("处罚结果", item.handleResult) +
-      detailRow("记录编号", item.businessId) +
-      links +
-      "</div>";
+    sheet.body.innerHTML = rows;
 
-    sheet.actions.innerHTML = "";
+    var actions = "";
     if (item.link) {
-      var open = document.createElement("button");
-      open.type = "button";
-      open.className = "btn";
-      open.textContent = "Open in chat";
+      actions +=
+        '<button type="button" class="btn is-grow" data-role="sheet-open"' +
+        ' data-i18n="records.openInChat">' + esc(t("records.openInChat")) + "</button>";
+    }
+    actions +=
+      '<button type="button" class="btn-ghost" data-role="sheet-dismiss"' +
+      ' data-i18n="common.close">' + esc(t("common.close")) + "</button>";
+    sheet.actions.innerHTML = actions;
+
+    var open = sheet.actions.querySelector('[data-role="sheet-open"]');
+    if (open) {
       open.addEventListener("click", function () {
         // Deep links stay inside Telegram: openLink would hand them to the
         // system browser and bounce back.
         core.openTelegramLink(item.link);
         closeSheet();
       });
-      sheet.actions.appendChild(open);
     }
-
-    var close = document.createElement("button");
-    close.type = "button";
-    close.className = "btn-ghost";
-    close.textContent = "Close";
-    close.addEventListener("click", closeSheet);
-    sheet.actions.appendChild(close);
+    sheet.actions
+      .querySelector('[data-role="sheet-dismiss"]')
+      .addEventListener("click", closeSheet);
 
     // Links are ordinary web targets, so they keep the browser.
-    var anchors = sheet.body.querySelectorAll("a.sheet-link");
-    Array.prototype.forEach.call(anchors, function (anchor) {
+    Array.prototype.forEach.call(sheet.body.querySelectorAll("a.sheet-link"), function (anchor) {
       anchor.addEventListener("click", function (event) {
         event.preventDefault();
-        core.openLink(anchor.getAttribute("href"));
+        core.openLink(anchor.getAttribute("data-url"));
       });
     });
   }
 
   function openSheet(item) {
+    sheet.item = item;
     sheet.lastFocus = document.activeElement;
     renderSheet(item);
     sheet.el.hidden = false;
+    els.scrim.hidden = false;
+    document.body.classList.add("is-sheet-open");
     if (sheet.body.scrollTop) {
       sheet.body.scrollTop = 0;
     }
-    document.body.classList.add("is-sheet-open");
     var first = sheet.actions.querySelector("button");
     if (first) {
       first.focus({ preventScroll: true });
@@ -337,12 +438,20 @@
       return;
     }
 
+    var returnTo = sheet.lastFocus;
     sheet.el.hidden = true;
+    els.scrim.hidden = true;
     document.body.classList.remove("is-sheet-open");
-    if (sheet.lastFocus && typeof sheet.lastFocus.focus === "function") {
-      sheet.lastFocus.focus({ preventScroll: true });
-    }
+    sheet.item = null;
     sheet.lastFocus = null;
+
+    if (returnTo && typeof returnTo.focus === "function") {
+      try {
+        returnTo.focus({ preventScroll: true });
+      } catch (err) {
+        returnTo.focus();
+      }
+    }
   }
 
   /* Data ------------------------------------------------------------------ */
@@ -351,21 +460,30 @@
     if (!reset && state.nextOffset === null) {
       return Promise.resolve();
     }
+    if (!core.state || !core.state.initData || !global.MagnetAPI) {
+      return Promise.resolve();
+    }
+
     // Bumping the token before the request means any response still in flight
     // belongs to a superseded query and is dropped when it lands.
     var token = (state.seq += 1);
     state.status = "loading";
+    state.errorStatus = 0;
     if (reset) {
       state.items = [];
       state.total = 0;
+      state.nextOffset = null;
+      renderList();
     }
-    render();
+    renderSub();
+    renderStates();
+    renderMore();
 
     var offset = reset ? 0 : state.nextOffset;
 
     return Promise.resolve()
       .then(function () {
-        return api().alarmRecords({ q: state.q, offset: offset, limit: PAGE_SIZE });
+        return global.MagnetAPI.alarmRecords({ q: state.q, offset: offset, limit: PAGE_SIZE });
       })
       .then(function (payload) {
         if (token !== state.seq) {
@@ -377,37 +495,45 @@
         state.nextOffset = nextOffsetOf(payload);
         state.loaded = true;
         state.status = "ready";
-        var now = new Date();
-        state.updatedAt =
-          "updated " + (now.getHours() < 10 ? "0" : "") + now.getHours() + ":" +
-          (now.getMinutes() < 10 ? "0" : "") + now.getMinutes();
+        state.updatedAt = new Date().toISOString();
         render();
       })
-      .catch(function () {
+      .catch(function (err) {
         if (token !== state.seq) {
           return;
         }
         state.status = "error";
-        render();
+        state.errorStatus = err && err.status ? err.status : 0;
+        renderStates();
+        renderSub();
+        renderMore();
       });
   }
 
   /* Events ---------------------------------------------------------------- */
 
+  function itemById(id) {
+    for (var i = 0; i < state.items.length; i++) {
+      if (state.items[i].businessId === id) {
+        return state.items[i];
+      }
+    }
+    return null;
+  }
+
   function onListClick(event) {
     var target = event.target;
     var button =
-      target && typeof target.closest === "function" ? target.closest("button[data-id]") : null;
+      target && typeof target.closest === "function"
+        ? target.closest("button[data-id]")
+        : null;
     if (!button) {
       return;
     }
 
-    var id = button.getAttribute("data-id");
-    for (var i = 0; i < state.items.length; i++) {
-      if (state.items[i].businessId === id) {
-        openSheet(state.items[i]);
-        return;
-      }
+    var item = itemById(button.getAttribute("data-id"));
+    if (item) {
+      openSheet(item);
     }
   }
 
@@ -417,31 +543,29 @@
     }
   }
 
-  /* View ------------------------------------------------------------------ */
-
-  function slot(root, name) {
-    return root.querySelector('[data-slot="' + name + '"]');
-  }
-
   function build(section) {
     section.innerHTML = TEMPLATE;
 
-    var search = section.querySelector('[data-role="search"]');
-
-    sheet.el = section.querySelector('[data-role="sheet"]');
-    sheet.title = slot(section, "sheet-title");
-    sheet.body = slot(section, "sheet-body");
-    sheet.actions = slot(section, "sheet-actions");
+    sheet.el = section.querySelector('[data-slot="sheet"]');
+    sheet.title = section.querySelector('[data-slot="sheet-title"]');
+    sheet.body = section.querySelector('[data-slot="sheet-body"]');
+    sheet.actions = section.querySelector('[data-slot="sheet-actions"]');
 
     return {
-      search: search,
-      headCount: slot(section, "head-count"),
-      headTime: slot(section, "head-time"),
-      loading: slot(section, "loading"),
-      error: slot(section, "error"),
-      empty: slot(section, "empty"),
-      list: slot(section, "list"),
+      screen: section.querySelector('[data-role="screen"]'),
+      search: section.querySelector('[data-role="search"]'),
+      sub: section.querySelector('[data-slot="sub"]'),
+      loading: section.querySelector('[data-slot="loading"]'),
+      error: section.querySelector('[data-slot="error"]'),
+      errorMsg: section.querySelector('[data-slot="error-msg"]'),
+      errorSub: section.querySelector('[data-slot="error-sub"]'),
+      empty: section.querySelector('[data-slot="empty"]'),
+      emptyTitle: section.querySelector('[data-slot="empty-title"]'),
+      list: section.querySelector('[data-slot="list"]'),
+      more: section.querySelector('[data-slot="more"]'),
       loadMore: section.querySelector('[data-role="load-more"]'),
+      retry: section.querySelector('[data-role="retry"]'),
+      scrim: section.querySelector('[data-slot="scrim"]'),
       sheetClose: section.querySelector('[data-role="sheet-close"]'),
     };
   }
@@ -458,6 +582,10 @@
       loadRecords(true);
     }, SEARCH_DEBOUNCE_MS);
 
+    core.bindRefresh(els.screen, function () {
+      loadRecords(true);
+    });
+
     els.search.addEventListener("input", runSearch);
     els.list.addEventListener("click", onListClick);
     els.loadMore.addEventListener("click", function () {
@@ -465,16 +593,59 @@
         loadRecords(false);
       }
     });
+    els.retry.addEventListener("click", function () {
+      loadRecords(state.items.length === 0);
+    });
 
     els.sheetClose.addEventListener("click", closeSheet);
-    sheet.el.addEventListener("click", function (event) {
-      // The backdrop closes; a click inside the panel does not.
-      if (event.target === sheet.el) {
-        closeSheet();
-      }
-    });
+    els.scrim.addEventListener("click", closeSheet);
     document.addEventListener("keydown", onKeydown);
   }
+
+  /* Language ------------------------------------------------------------- */
+
+  function syncRowText() {
+    var rows = els.list.querySelectorAll("button.row[data-id]");
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      var item = itemById(row.getAttribute("data-id"));
+      if (!item) {
+        continue;
+      }
+      var name = row.querySelector('[data-row="name"]');
+      if (name) {
+        name.textContent = item.creditName || t("records.unknownCredit");
+      }
+      var start = row.querySelector('[data-row="date"]');
+      if (start) {
+        start.textContent = date(item.startDate);
+      }
+    }
+  }
+
+  function syncSheetText() {
+    if (!sheet.item || sheet.el.hidden) {
+      return;
+    }
+    sheet.title.textContent = sheet.item.creditName || t("records.unknownCredit");
+    setSheetField("startDate", date(sheet.item.startDate));
+    setSheetField("endDate", date(sheet.item.endDate));
+  }
+
+  // Rewrites only the text this view owns; the shell has already applied the
+  // static data-i18n nodes, and nothing here rebuilds the list.
+  function onLang() {
+    if (!els) {
+      return;
+    }
+    renderSub();
+    renderStates();
+    renderMore();
+    syncRowText();
+    syncSheetText();
+  }
+
+  /* View ------------------------------------------------------------------ */
 
   function mount() {
     var section = document.getElementById(SECTION_ID);
@@ -487,10 +658,26 @@
       bind();
     }
 
+    // Returning to the tab with a sheet open should show the list, not a stale
+    // dialog over the current data.
+    closeSheet();
+
+    if (!core.state || !core.state.initData) {
+      els.loading.hidden = false;
+      els.list.hidden = true;
+      els.empty.hidden = true;
+      els.error.hidden = true;
+      els.more.hidden = true;
+      return;
+    }
+
     if (!state.loaded || core.state.isStale(VIEW)) {
       loadRecords(true);
+      return;
     }
+
+    render();
   }
 
-  core.registerView(VIEW, { mount: mount });
+  core.registerView(VIEW, { mount: mount, onLang: onLang });
 })(window);

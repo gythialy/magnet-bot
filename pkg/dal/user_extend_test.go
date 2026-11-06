@@ -894,3 +894,80 @@ func TestAccessCacheConcurrent(t *testing.T) {
 		t.Fatal("cache lost the seeded rows after concurrent usage")
 	}
 }
+
+// TestTouchUserIdentity covers the throttled interaction write: it records
+// last_seen plus the Telegram name/username and leaves updated_at alone, and a
+// missing row still answers ErrNotFound.
+func TestTouchUserIdentity(t *testing.T) {
+	setupAccessTestDB(t)
+
+	seedAccessUser(t, 21001, model.RoleUser, true, false, "old label")
+	before := mustUser(t, 21001).UpdatedAt
+	seen := time.Date(2026, 4, 1, 9, 30, 0, 0, time.UTC)
+
+	if err := User.Touch(21001, seen, "王小明", "wangxm"); err != nil {
+		t.Fatalf("Touch() error: %v", err)
+	}
+	row := mustUser(t, 21001)
+	if row.LastSeen == nil || !row.LastSeen.Equal(seen) {
+		t.Fatalf("last_seen = %v, want %v", row.LastSeen, seen)
+	}
+	if row.Name != "王小明" || row.Username != "wangxm" {
+		t.Fatalf("identity = (%q, %q), want (王小明, wangxm)", row.Name, row.Username)
+	}
+	if row.Remark != "old label" {
+		t.Fatalf("remark = %q, want the stored label untouched", row.Remark)
+	}
+	if !row.UpdatedAt.Equal(before) {
+		t.Fatalf("updated_at = %v, want %v (touch must not look like an edit)", row.UpdatedAt, before)
+	}
+
+	if err := User.Touch(99999, seen, "nobody", ""); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Touch(missing) error = %v, want ErrNotFound", err)
+	}
+}
+
+// TestListRecentOrdersByActivity covers the member-picker order: most recent
+// activity first, never-seen rows last, account id as the tie-break. The default
+// List order stays id asc.
+func TestListRecentOrdersByActivity(t *testing.T) {
+	setupAccessTestDB(t)
+
+	seedAccessUser(t, 30001, model.RoleUser, true, false, "never seen")
+	seedAccessUser(t, 30002, model.RoleUser, true, false, "older")
+	seedAccessUser(t, 30003, model.RoleUser, true, false, "newer")
+	older := time.Date(2026, 4, 1, 8, 0, 0, 0, time.UTC)
+	newer := older.Add(time.Hour)
+	if err := User.SetLastSeen(30002, older); err != nil {
+		t.Fatalf("SetLastSeen(30002) error: %v", err)
+	}
+	if err := User.SetLastSeen(30003, newer); err != nil {
+		t.Fatalf("SetLastSeen(30003) error: %v", err)
+	}
+
+	rows, total := User.List("", 0, 0)
+	if total != 3 || len(rows) != 3 {
+		t.Fatalf("List = (%d rows, %d total), want 3", len(rows), total)
+	}
+	for i, want := range []int64{30001, 30002, 30003} {
+		if rows[i].UserID != want {
+			t.Fatalf("List()[%d] = %d, want the default id order %d", i, rows[i].UserID, want)
+		}
+	}
+
+	rows, total = User.ListRecent("", 0, 0)
+	if total != 3 || len(rows) != 3 {
+		t.Fatalf("ListRecent = (%d rows, %d total), want 3", len(rows), total)
+	}
+	for i, want := range []int64{30003, 30002, 30001} {
+		if rows[i].UserID != want {
+			t.Fatalf("ListRecent()[%d] = %d, want %d", i, rows[i].UserID, want)
+		}
+	}
+
+	// Search and paging share the filter; only the ordering changes.
+	rows, total = User.ListRecent("newer", 0, 1)
+	if total != 1 || len(rows) != 1 || rows[0].UserID != 30003 {
+		t.Fatalf("ListRecent(search) = (%d rows, %d total), want the remark match", len(rows), total)
+	}
+}

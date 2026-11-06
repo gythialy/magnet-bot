@@ -1,0 +1,34 @@
+/*
+ * library.css — the watchlist page's own geometry.
+ *
+ * The shared vocabulary (rows, segmented control, search, sheet) lives in
+ * base.css; this file only carries what the merged list adds: a two-line word
+ * row whose meta line never steals width from the actions, and the archived
+ * group that follows the active rows without a card or a second border.
+ */
+[data-view="library"] .row-lead,
+[data-view="library"] .row-meta {
+  padding-right: 4px;
+}
+
+/* The archived group already draws its own top rule; the row below it must not
+   draw a second one on top of the group label. */
+[data-view="library"] .group-label + .row {
+  border-top: 0;
+}
+
+/* 320px phones: the three row actions must stay reachable without wrapping the
+   word onto a second line. */
+@media (max-width: 359px) {
+  [data-view="library"] .row-actions .icon-btn {
+    width: 36px;
+  }
+
+  [data-view="library"] .list-head .toggle-inline > span:first-child {
+    /* The count chip and the switch carry the meaning; the label shortens. */
+    max-width: 96px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

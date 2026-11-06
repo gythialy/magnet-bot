@@ -1,42 +1,51 @@
 /*
  * today.js — the Today view.
  *
- * Owns #view-today: the statistics bar, the search box, the date-range chips,
- * the notice list, the "Load more" pager and the notice detail sheet.
+ * Owns #view-today: the running head, the statistics strip, the range/search
+ * band, the notice list, the "Load more" pager and the notice detail sheet.
  *
- * The document only ships three placeholders inside the section
- * (data-slot="loading" / "empty" / "error"); every other node is built here on
- * the first mount and reused afterwards. index.html is owned by the shell and
- * must not need a change every time this view grows.
+ * The structure is the settled v4 vocabulary from css/base.css: topbar ->
+ * runhead -> stats -> controls-band -> entry list. This file builds every node
+ * on the first mount and reuses them afterwards; index.html only carries the
+ * skeleton it replaces.
  *
  * Behaviour notes that are easy to get wrong later:
  *   - core.js calls mount() once when this script registers (before init() has
  *     run, so before initData exists) and again from route(). The first call
  *     only draws the skeleton; the second one fetches.
- *   - core.js deletes the "stale" flag *before* calling mount(), so mount() has
+ *   - core.js deletes the "stale" flag before calling mount(), so mount() has
  *     to decide on its own whether it owes a request. It fetches when nothing
  *     has loaded yet, when the previous attempt failed, or when someone
  *     invalidated the view between renders.
+ *   - A refresh keeps the current rows: if it fails the list stays readable and
+ *     an inline error names how old the list is. Range and search changes do
+ *     clear first, because the old rows would belong to a different query.
+ *   - onLang only rewrites text nodes. The search draft, focus, the open sheet,
+ *     the scroll position and the rendered rows all survive a language switch.
  *   - Titles, project codes, the search text and any server date string are
  *     user data: they are escaped before being interpolated into innerHTML.
- *     URLs are never interpolated at all — a card carries an index and the
+ *     URLs are never interpolated at all — an entry carries an index and the
  *     link is read back from state, and only https:// links are kept.
  *
  * No build step, no third-party code, no external requests.
  */
-(function () {
+(function (global) {
   "use strict";
 
-  var app = window.MagnetApp;
+  var app = global.MagnetApp;
   if (!app || typeof app.registerView !== "function") {
     // Without core.js there is no shell to register against; refusing here is
     // better than half-rendering a view the router will never mount.
     return;
   }
 
+  var i18n = global.MagnetI18n;
+
+  var VIEW = "today";
   var RANGES = ["today", "7d", "all"];
   var PAGE_LIMIT = 20;
   var SEARCH_DEBOUNCE_MS = 300;
+  var STORAGE_SEEN = "magnet.today.seenAt";
 
   // Project codes. The first pattern is the bot's own codeRegx from
   // pkg/handler/commands_handler.go, so the app and /today agree on what counts
@@ -49,23 +58,19 @@
   var CODE_BARE = /(?:^|[^0-9A-Z-])([0-9]{4}-[A-Z]+-[A-Z0-9]+)(?![0-9A-Z-])/;
 
   var HTTPS_ONLY = /^https:\/\//i;
-  var GROUP_SEPARATOR = /\B(?=(\d{3})+(?!\d))/g;
 
-  // The column head names the range in the same words the chips use.
-  var RANGE_LABELS = { today: "Today", "7d": "7 days", all: "All" };
-
-  var RANGE_EMPTY_TEXT = {
-    today: "No notices today.",
-    "7d": "No notices in the last 7 days.",
-    all: "No notices yet.",
+  // Empty copy per range, keyed by the same words the segment uses.
+  var RANGE_EMPTY_KEYS = {
+    today: "today.empty",
+    "7d": "today.empty.7d",
+    all: "today.empty.all",
   };
 
-  // Conversion formats the bot understands, with the glyph and label each
-  // button shows. The server validates the format again, so this table is only
-  // the client-side contract.
+  // Conversion formats the bot understands. The label is the file format's own
+  // name (never translated); the aria key is the accessible verb phrase.
   var CONVERT_FORMATS = {
-    pdf: { label: "PDF", icon: "pdf" },
-    png: { label: "PNG", icon: "png" },
+    pdf: { label: "PDF", icon: "pdf", aria: "aria.sendPdf" },
+    png: { label: "PNG", icon: "png", aria: "aria.sendImage" },
   };
 
   // core.toast removes itself after 3s. The conversion flow needs a 2s
@@ -74,7 +79,7 @@
   var CONVERT_PENDING_TOAST_MS = 2000;
   var CONVERT_DONE_TOAST_MS = 3500;
 
-  // Nodes, queried or created once. null until ensureDOM() succeeds.
+  // Nodes, queried or created once. null until build() succeeds.
   var refs = null;
   // The document-level Esc listener is installed once, not once per mount.
   var escapeWired = false;
@@ -89,11 +94,13 @@
     nextOffset: null,
     total: 0,
     updatedAt: "",
+    lastSeenAt: readSeenAt(),
     loading: false,
     loaded: false,
     failed: false,
-    errorMessage: "",
+    errorStatus: 0,
     detailIndex: -1,
+    lastFocus: null,
   };
 
   // Bumped per request so a slow response for an old query can never overwrite
@@ -115,6 +122,26 @@
   };
 
   /* Small helpers --------------------------------------------------------- */
+
+  function t(key, vars) {
+    return i18n ? i18n.t(key, vars) : key;
+  }
+
+  function plural(key, count) {
+    return i18n ? i18n.plural(key, count) : key;
+  }
+
+  function num(value) {
+    return i18n ? i18n.num(value) : String(value);
+  }
+
+  function dateTime(value) {
+    return i18n ? i18n.dateTime(value) : "";
+  }
+
+  function time(value) {
+    return i18n ? i18n.time(value) : "";
+  }
 
   function escape(value) {
     return app.escapeHTML(value);
@@ -138,45 +165,6 @@
     return null;
   }
 
-  // Thousands separators without Intl: the grouping must not depend on the
-  // client locale, and every target webview has String.replace.
-  function formatCount(count) {
-    if (count === null || count === undefined) {
-      return "—";
-    }
-    return String(count).replace(GROUP_SEPARATOR, ",");
-  }
-
-  function pad2(number) {
-    return number < 10 ? "0" + number : String(number);
-  }
-
-  // The API sends RFC3339 in UTC; the list shows the phone's local wall clock
-  // as YYYY-MM-DD HH:mm, which is what the user compares against the notice.
-  function formatLocalTime(value) {
-    var raw = String(value == null ? "" : value);
-    if (!raw) {
-      return "";
-    }
-
-    var date = new Date(raw);
-    if (isNaN(date.getTime())) {
-      return "";
-    }
-
-    return (
-      date.getFullYear() +
-      "-" +
-      pad2(date.getMonth() + 1) +
-      "-" +
-      pad2(date.getDate()) +
-      " " +
-      pad2(date.getHours()) +
-      ":" +
-      pad2(date.getMinutes())
-    );
-  }
-
   function extractProjectCode(title) {
     var text = String(title == null ? "" : title);
     var match = CODE_IN_BRACKETS.exec(text);
@@ -193,6 +181,27 @@
     return HTTPS_ONLY.test(raw) ? raw : "";
   }
 
+  // The newest visit baseline, in local storage. Marks are "new since the last
+  // time this device opened Today"; a first visit stores a baseline and marks
+  // nothing, which keeps the very first screen calm.
+  function readSeenAt() {
+    try {
+      var raw = global.localStorage.getItem(STORAGE_SEEN);
+      var parsed = Number(raw);
+      return isFinite(parsed) && parsed > 0 ? parsed : 0;
+    } catch (err) {
+      return 0;
+    }
+  }
+
+  function storeSeenAt(value) {
+    try {
+      global.localStorage.setItem(STORAGE_SEEN, String(value));
+    } catch (err) {
+      // Storage failure only costs the unread marks, not the list.
+    }
+  }
+
   /* Model ---------------------------------------------------------------- */
 
   function normalizeItem(raw) {
@@ -202,20 +211,23 @@
 
     var title = typeof raw.title === "string" ? raw.title : "";
     var updatedAt = typeof raw.updatedAt === "string" ? raw.updatedAt : "";
+    var parsed = Date.parse(updatedAt);
 
     return {
       url: safeURL(raw.url),
       title: title,
       code: extractProjectCode(title),
-      time: formatLocalTime(updatedAt),
+      updatedAt: updatedAt,
+      at: isFinite(parsed) ? parsed : 0,
       // The contract says boolean; tolerate the numeric form a stale page of
       // JSON might still carry.
       hasTenderCode: raw.hasTenderCode === true || raw.hasTenderCode === 1,
+      unseen: false,
     };
   }
 
   function itemKey(item) {
-    return item.url || item.title + "\u0000" + item.time;
+    return item.url || item.title + "\u0000" + item.updatedAt;
   }
 
   function mergeItems(incoming) {
@@ -229,286 +241,285 @@
     }
   }
 
+  function markUnseen(incoming) {
+    if (!state.lastSeenAt) {
+      return;
+    }
+    for (var i = 0; i < incoming.length; i++) {
+      incoming[i].unseen = incoming[i].at > state.lastSeenAt;
+    }
+  }
+
+  function rememberSeen() {
+    var newest = Date.now();
+    for (var i = 0; i < state.items.length; i++) {
+      if (state.items[i].at > newest) {
+        newest = state.items[i].at;
+      }
+    }
+    state.lastSeenAt = newest;
+    storeSeenAt(newest);
+  }
+
+  /* Template ------------------------------------------------------------- */
+
+  function statHTML(key, labelKey) {
+    return (
+      '<div class="stat">' +
+      '<span class="stat-v num" data-stat="' + key + '">\u2014</span>' +
+      '<span class="label stat-k" data-i18n="' + labelKey + '">' + escape(t(labelKey)) + "</span>" +
+      "</div>"
+    );
+  }
+
   function metaHTML(item) {
     var parts = [];
+    if (item.unseen) {
+      parts.push('<span class="mark" aria-hidden="true"></span>');
+    }
+    parts.push(
+      '<span class="num" data-meta="time">' + escape(dateTime(item.updatedAt)) + "</span>"
+    );
     if (item.code) {
-      parts.push('<span class="today-code">' + escape(item.code) + "</span>");
+      parts.push('<span class="sep" aria-hidden="true">\u00b7</span>');
+      parts.push('<span class="num" data-meta="code">' + escape(item.code) + "</span>");
     }
-    if (item.time) {
-      parts.push('<span class="today-time">' + escape(item.time) + "</span>");
+    if (item.hasTenderCode) {
+      parts.push(
+        '<span class="tag">' +
+          app.icon("tender") +
+          '<span data-meta="tag-label">' + escape(t("today.tagTender")) + "</span>" +
+          "</span>"
+      );
     }
-    return parts.join(' <span class="today-sep" aria-hidden="true">·</span> ');
+    return parts.join("");
   }
 
-  /* DOM construction ----------------------------------------------------- */
-
-  function slot(root, name) {
-    var existing = root.querySelector('[data-slot="' + name + '"]');
-    if (existing) {
-      return existing;
-    }
-    // index.html ships all three placeholders; the fallback keeps this view
-    // working if the shell ever trims them.
-    var created = element("div", name === "loading" ? "skeleton" : name);
-    created.setAttribute("data-slot", name);
-    created.hidden = name !== "loading";
-    if (name === "loading") {
-      created.textContent = "Loading…";
-    }
-    root.appendChild(created);
-    return created;
-  }
-
-  function statHTML(key, label) {
+  function convertButton(index, format, scope) {
+    var meta = CONVERT_FORMATS[format];
     return (
-      '<div class="today-stat">' +
-      '<span class="today-stat-value" data-stat="' + key + '">—</span>' +
-      '<span class="today-stat-label">' + label + "</span>" +
-      "</div>"
+      '<button type="button" class="' + (scope === "detail" ? "btn-ghost" : "icon-btn") + '"' +
+      ' data-action="convert" data-format="' + format + '"' +
+      (scope === "detail" ? ' data-scope="detail"' : ' data-index="' + index + '"') +
+      ' data-i18n-aria="' + meta.aria + '" aria-label="' + escape(t(meta.aria)) + '">' +
+      app.icon(meta.icon, "icon-sm") +
+      (scope === "detail" ? "<span>" + meta.label + "</span>" : "") +
+      "</button>"
     );
   }
 
-  function toolbarHTML() {
+  function openButton(index) {
     return (
-      '<div class="column-head">' +
-      '<span class="column-head-label" data-slot="head-label">Today</span>' +
-      '<span class="column-head-count" data-slot="head-count">\u2014</span>' +
-      '<span class="column-head-time" data-slot="head-time"></span>' +
-      "</div>" +
-      '<div class="today-stats stat-strip">' +
-      statHTML("history", "History") +
-      statHTML("keywords", "Keywords") +
-      statHTML("related", "Related notices") +
-      statHTML("alarms", "Alarm keywords") +
-      "</div>" +
-      '<div class="today-search">' +
-      '<input class="today-search-input" type="search" data-slot="search"' +
-      ' placeholder="Search title or project code"' +
-      ' autocomplete="off" autocapitalize="off" spellcheck="false"' +
-      ' enterkeyhint="search" aria-label="Search title or project code" />' +
-      "</div>" +
-      '<div class="chip-row today-ranges" role="group" aria-label="Date range">' +
-      '<button class="chip is-active" type="button" data-action="range"' +
-      ' data-range="today" aria-pressed="true">Today</button>' +
-      '<button class="chip" type="button" data-action="range"' +
-      ' data-range="7d" aria-pressed="false">7 days</button>' +
-      '<button class="chip" type="button" data-action="range"' +
-      ' data-range="all" aria-pressed="false">All</button>' +
-      "</div>"
+      '<button type="button" class="icon-btn" data-action="open-link"' +
+      ' data-index="' + index + '" data-i18n-aria="aria.openNotice"' +
+      ' aria-label="' + escape(t("aria.openNotice")) + '">' +
+      app.icon("external", "icon-sm") +
+      "</button>"
     );
   }
 
-  function detailHTML() {
+  function entryHTML(item, index) {
+    var title = item.title || t("today.noTitle");
+    // Conversion and opening need a notice URL; the server re-checks ownership
+    // and the host allow-list, so a notice without an https URL gets disabled
+    // actions instead of buttons that can only fail.
     return (
-      '<div class="modal today-modal" role="dialog" aria-modal="true"' +
-      ' aria-labelledby="today-detail-title">' +
-      '<div class="today-modal-head">' +
-      '<h2 class="today-modal-title" id="today-detail-title" data-slot="detail-title"></h2>' +
-      '<button class="modal-close" type="button" data-action="close-detail"' +
-      ' aria-label="Close details">' + app.icon("close") + "</button>" +
+      '<article class="entry is-link" data-action="detail" data-index="' + index + '">' +
+      '<button type="button" class="entry-body" data-action="detail" data-index="' + index + '"' +
+      ' aria-haspopup="dialog">' +
+      '<span class="entry-lead">' + escape(title) + "</span>" +
+      "</button>" +
+      '<div class="entry-foot">' +
+      '<div class="entry-meta">' + metaHTML(item) + "</div>" +
+      '<div class="entry-actions">' +
+      convertButton(index, "pdf", "list") +
+      convertButton(index, "png", "list") +
+      openButton(index) +
       "</div>" +
-      '<p class="today-modal-meta" data-slot="detail-meta"></p>' +
-      '<div class="today-modal-actions">' +
-      '<button class="btn today-modal-open" type="button" data-action="open-notice">' +
-      "Open notice page</button>" +
       "</div>" +
-      '<div class="today-modal-actions today-modal-convert" data-slot="detail-convert">' +
-      detailConvertButton("pdf") +
-      detailConvertButton("png") +
-      "</div>" +
-      "</div>"
+      "</article>"
     );
   }
 
-  function ensureDOM() {
-    var view = document.getElementById("view-today");
-    if (!view) {
-      return null;
-    }
-    if (refs && refs.view === view) {
-      return refs;
-    }
+  var TEMPLATE =
+    '<div class="screen" data-role="screen">' +
+    app.topbarHTML() +
+    '<div class="runhead">' +
+    '<div class="runhead-main">' +
+    '<h2 class="runhead-title" data-i18n="today.title">' + escape(t("today.title")) + "</h2>" +
+    '<span class="runhead-count num" data-slot="count">\u2014</span>' +
+    '<span class="runhead-unit" data-slot="unit"></span>' +
+    "</div>" +
+    '<span class="runhead-time num" data-slot="updated"></span>' +
+    "</div>" +
+    '<div class="stats" data-slot="stats">' +
+    statHTML("history", "stat.history") +
+    statHTML("keywords", "stat.keywords") +
+    statHTML("related", "stat.related") +
+    statHTML("alarms", "stat.alarms") +
+    "</div>" +
+    '<div class="controls-band">' +
+    '<div class="segmented" role="group" data-i18n-aria="aria.dateRange"' +
+    ' aria-label="' + escape(t("aria.dateRange")) + '">' +
+    rangeButton("today", true) +
+    rangeButton("7d", false) +
+    rangeButton("all", false) +
+    "</div>" +
+    '<label class="search">' +
+    app.icon("search", "icon-sm") +
+    '<input type="search" data-role="search" data-i18n-ph="today.searchPh"' +
+    ' data-i18n-aria="today.searchPh" aria-label="' + escape(t("today.searchPh")) + '"' +
+    ' placeholder="' + escape(t("today.searchPh")) + '"' +
+    ' autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" />' +
+    "</label>" +
+    "</div>" +
+    '<div data-slot="loading">' +
+    '<p class="label state-label" role="status" data-i18n="common.loading">' +
+    escape(t("common.loading")) +
+    "</p>" +
+    '<div class="sk-block" aria-hidden="true"><span class="sk w60"></span><span class="sk w40"></span></div>' +
+    '<div class="sk-block" aria-hidden="true"><span class="sk w80"></span><span class="sk w40"></span></div>' +
+    '<div class="sk-block" aria-hidden="true"><span class="sk w60"></span><span class="sk w40"></span></div>' +
+    "</div>" +
+    '<div class="inline-error" data-slot="error" role="alert" hidden>' +
+    app.icon("alert") +
+    '<div class="msg">' +
+    '<span data-slot="error-msg"></span>' +
+    '<span class="sub" data-slot="error-sub" hidden></span>' +
+    "</div>" +
+    '<button type="button" class="btn-ghost btn-sm" data-action="retry"' +
+    ' data-i18n="common.retry">' + escape(t("common.retry")) + "</button>" +
+    "</div>" +
+    '<div class="empty-block" data-slot="empty" hidden>' +
+    '<p class="empty-title" data-slot="empty-title"></p>' +
+    "</div>" +
+    '<div class="list" data-slot="list" hidden></div>' +
+    '<div class="list-foot" data-slot="more" hidden>' +
+    '<button type="button" class="btn-wide" data-action="load-more"' +
+    ' data-i18n="today.loadMore">' + escape(t("today.loadMore")) + "</button>" +
+    "</div>" +
+    '<div class="scrim" data-slot="scrim" aria-hidden="true" hidden></div>' +
+    '<div class="sheet" data-slot="detail" role="dialog" aria-modal="true"' +
+    ' aria-labelledby="today-detail-title" hidden>' +
+    '<div class="sheet-grab" aria-hidden="true"></div>' +
+    '<div class="sheet-head">' +
+    '<div>' +
+    '<h2 class="sheet-title" id="today-detail-title" data-slot="detail-title"></h2>' +
+    '<p class="sheet-kicker" data-slot="detail-kicker"></p>' +
+    "</div>" +
+    '<button type="button" class="icon-btn" data-action="close-detail"' +
+    ' data-i18n-aria="aria.close" aria-label="' + escape(t("aria.close")) + '">' +
+    app.icon("close") +
+    "</button>" +
+    "</div>" +
+    '<div class="sheet-actions">' +
+    '<button type="button" class="btn is-grow" data-action="open-notice"' +
+    ' data-i18n="today.open">' + escape(t("today.open")) + "</button>" +
+    convertButton(-1, "pdf", "detail") +
+    convertButton(-1, "png", "detail") +
+    "</div>" +
+    "</div>" +
+    "</div>";
 
-    var loading = slot(view, "loading");
-    var empty = slot(view, "empty");
-    var error = slot(view, "error");
+  function rangeButton(range, active) {
+    var key = "today.range." + range;
+    return (
+      '<button type="button" data-action="range" data-range="' + range + '"' +
+      (active ? ' class="is-active" aria-pressed="true"' : ' aria-pressed="false"') +
+      ' data-i18n="' + key + '">' + escape(t(key)) + "</button>"
+    );
+  }
 
-    var toolbar = element("div", "today-toolbar");
-    toolbar.innerHTML = toolbarHTML();
-
-    var list = element("div", "today-list");
-    list.setAttribute("data-slot", "list");
-
-    var moreWrap = element("div", "today-more-wrap");
-    moreWrap.hidden = true;
-    moreWrap.innerHTML =
-      '<button class="btn-ghost today-more" type="button" data-action="load-more">Load more</button>';
-
-    // Built before the placeholders so the static states keep their order in
-    // the document while the list grows above them.
-    view.insertBefore(toolbar, loading);
-    view.insertBefore(list, loading);
-    view.insertBefore(moreWrap, loading);
-
-    // The sheet lives inside the section on purpose: #view-today[hidden] hides
-    // its subtree, so switching tabs cannot leave a stale dialog on screen.
-    var detail = element("div", "modal-backdrop");
-    detail.hidden = true;
-    detail.setAttribute("data-slot", "detail");
-    detail.innerHTML = detailHTML();
-    view.appendChild(detail);
+  function build(section) {
+    section.innerHTML = TEMPLATE;
 
     var statNodes = {};
-    Array.prototype.forEach.call(toolbar.querySelectorAll("[data-stat]"), function (node) {
+    Array.prototype.forEach.call(section.querySelectorAll("[data-stat]"), function (node) {
       statNodes[node.getAttribute("data-stat")] = node;
     });
 
-    refs = {
-      view: view,
-      toolbar: toolbar,
-      headLabel: toolbar.querySelector('[data-slot="head-label"]'),
-      headCount: toolbar.querySelector('[data-slot="head-count"]'),
-      headTime: toolbar.querySelector('[data-slot="head-time"]'),
+    return {
+      view: section,
+      screen: section.querySelector('[data-role="screen"]'),
+      count: section.querySelector('[data-slot="count"]'),
+      unit: section.querySelector('[data-slot="unit"]'),
+      updated: section.querySelector('[data-slot="updated"]'),
       stats: statNodes,
-      search: toolbar.querySelector('[data-slot="search"]'),
-      rangeChips: toolbar.querySelectorAll("[data-action='range']"),
-      list: list,
-      moreWrap: moreWrap,
-      more: moreWrap.querySelector("[data-action='load-more']"),
-      loading: loading,
-      empty: empty,
-      error: error,
-      detail: detail,
-      detailTitle: detail.querySelector('[data-slot="detail-title"]'),
-      detailMeta: detail.querySelector('[data-slot="detail-meta"]'),
-      detailOpen: detail.querySelector("[data-action='open-notice']"),
-      detailClose: detail.querySelector("[data-action='close-detail']"),
-      detailConvert: detail.querySelector('[data-slot="detail-convert"]'),
+      segmented: section.querySelector(".segmented"),
+      rangeButtons: section.querySelectorAll("[data-action='range']"),
+      search: section.querySelector('[data-role="search"]'),
+      loading: section.querySelector('[data-slot="loading"]'),
+      error: section.querySelector('[data-slot="error"]'),
+      errorMsg: section.querySelector('[data-slot="error-msg"]'),
+      errorSub: section.querySelector('[data-slot="error-sub"]'),
+      empty: section.querySelector('[data-slot="empty"]'),
+      emptyTitle: section.querySelector('[data-slot="empty-title"]'),
+      list: section.querySelector('[data-slot="list"]'),
+      more: section.querySelector('[data-slot="more"]'),
+      moreButton: section.querySelector("[data-action='load-more']"),
+      scrim: section.querySelector('[data-slot="scrim"]'),
+      detail: section.querySelector('[data-slot="detail"]'),
+      detailTitle: section.querySelector('[data-slot="detail-title"]'),
+      detailKicker: section.querySelector('[data-slot="detail-kicker"]'),
+      detailClose: section.querySelector("[data-action='close-detail']"),
     };
+  }
 
+  function ensureDOM() {
+    var section = document.getElementById("view-today");
+    if (!section) {
+      return null;
+    }
+    if (refs && refs.view === section) {
+      return refs;
+    }
+
+    refs = build(section);
     refs.search.addEventListener("input", app.debounce(applySearch, SEARCH_DEBOUNCE_MS));
-    view.addEventListener("click", onClick);
+    refs.screen.addEventListener("click", onClick);
+    refs.scrim.addEventListener("click", closeDetail);
+    app.bindRefresh(refs.screen, refresh);
+
     if (!escapeWired) {
       document.addEventListener("keydown", onKeydown);
       escapeWired = true;
     }
 
     syncSearchValue();
-    syncRangeChips();
+    syncRangeButtons();
+    renderRunhead();
     renderStats();
-
     return refs;
   }
 
   /* Rendering ------------------------------------------------------------ */
 
-  function cardHTML(item, index) {
-    var title = item.title || "(no title)";
-    var meta = metaHTML(item);
-    // A tender code is a fact about the notice, so it is marked with a drawn
-    // glyph plus its own label rather than a coloured emoji.
-    var tender = item.hasTenderCode
-      ? '<span class="today-tag" title="Has tender code">' +
-        app.icon("tender") + "<span>Tender</span></span>"
-      : "";
-    // Conversion and opening need a notice URL. The server re-checks ownership
-    // and the host allow-list, so a card without an https URL simply offers no
-    // action instead of a button that can only fail.
-    var actions = item.url
-      ? '<div class="today-card-actions">' +
-        cardConvertButton(index, "pdf") +
-        cardConvertButton(index, "png") +
-        '<button class="today-open" type="button" data-action="open-link"' +
-        ' data-index="' + index + '" aria-label="Open notice page">' +
-        app.icon("external") + "<span>Open</span></button>" +
-        "</div>"
-      : "";
-
-    // The article carries the detail action as well so a tap on the card's own
-    // padding still opens the sheet; the inner button is what supplies the
-    // keyboard/AT entry point, and the footer actions sit outside it, so a
-    // convert or open tap never opens the sheet by accident.
-    return (
-      '<article class="card today-card" data-action="detail" data-index="' + index + '">' +
-      '<div class="today-card-row">' +
-      '<button class="today-card-body" type="button" data-action="detail"' +
-      ' data-index="' + index + '" aria-haspopup="dialog">' +
-      '<span class="today-card-head">' +
-      '<span class="card-title today-card-title">' + escape(title) + "</span>" +
-      tender +
-      "</span>" +
-      (meta ? '<span class="card-meta today-card-meta">' + meta + "</span>" : "") +
-      "</button>" +
-      "</div>" +
-      actions +
-      "</article>"
-    );
-  }
-
   function renderList() {
     if (!refs) {
       return;
     }
-
     var html = "";
     for (var i = 0; i < state.items.length; i++) {
-      html += cardHTML(state.items[i], i);
+      html += entryHTML(state.items[i], i);
     }
     refs.list.innerHTML = html;
-    renderHead();
-    // A re-render (new page, new search) drops the disabled attribute, so the
-    // in-flight conversions have to be re-applied to the fresh buttons.
-    syncConvertButtons();
+    syncActionButtons();
   }
 
-  function renderStates() {
+  function renderRunhead() {
     if (!refs) {
       return;
     }
-
-    var firstLoad = state.loading && state.items.length === 0;
-    var failed = !state.loading && state.failed && state.items.length === 0;
-    var empty = !state.loading && !state.failed && state.loaded && state.items.length === 0;
-
-    refs.loading.hidden = !firstLoad;
-    refs.error.hidden = !failed;
-    refs.empty.hidden = !empty;
-
-    if (failed) {
-      renderError();
-    }
-    if (empty) {
-      renderEmpty();
-    }
-  }
-
-  function renderError() {
-    var message = state.errorMessage || "Couldn't load notices.";
-    refs.error.innerHTML =
-      "<span>" + escape(message) + "</span>" +
-      '<button class="btn-ghost today-retry" type="button" data-action="retry">Retry</button>';
-  }
-
-  function renderEmpty() {
-    var message;
-    if (state.q) {
-      message = 'No notices match "' + escape(state.q) + '".';
-    } else {
-      message = RANGE_EMPTY_TEXT[state.range] || RANGE_EMPTY_TEXT.today;
-    }
-    refs.empty.innerHTML = message;
-  }
-
-  function renderMore() {
-    if (!refs) {
-      return;
-    }
-
-    var hasMore = state.nextOffset !== null;
-    refs.moreWrap.hidden = !hasMore;
-    refs.more.disabled = state.loading;
-    refs.more.setAttribute("aria-busy", state.loading ? "true" : "false");
-    refs.more.textContent = state.loading ? "Loading…" : "Load more";
+    var shown = state.items.length;
+    var count = state.total > shown ? state.total : shown;
+    // Before the first page lands there is no count to show; an em dash keeps
+    // the head from claiming "0 notices" while the request is still running.
+    var placeholder = (state.loading || state.failed) && shown === 0;
+    refs.count.textContent = placeholder ? "\u2014" : num(count);
+    refs.unit.textContent = placeholder ? "" : plural("unit.notices", count);
+    refs.updated.textContent = state.updatedAt
+      ? t("today.updated", { time: time(state.updatedAt) })
+      : "";
   }
 
   function renderStats() {
@@ -517,65 +528,85 @@
     }
     // Counts are server integers, not user text, so textContent is used here:
     // it cannot be parsed as markup no matter what the API returns.
-    refs.stats.history.textContent = formatCount(stats.history);
-    refs.stats.keywords.textContent = formatCount(stats.keywords);
-    refs.stats.related.textContent = formatCount(stats.related);
-    refs.stats.alarms.textContent = formatCount(stats.alarms);
+    refs.stats.history.textContent = stats.history === null ? "\u2014" : num(stats.history);
+    refs.stats.keywords.textContent = stats.keywords === null ? "\u2014" : num(stats.keywords);
+    refs.stats.related.textContent = stats.related === null ? "\u2014" : num(stats.related);
+    refs.stats.alarms.textContent = stats.alarms === null ? "\u2014" : num(stats.alarms);
+  }
+
+  function renderStates() {
+    if (!refs) {
+      return;
+    }
+
+    var firstLoad = state.loading && state.items.length === 0;
+    var empty = !state.loading && !state.failed && state.loaded && state.items.length === 0;
+
+    refs.loading.hidden = !firstLoad;
+    refs.empty.hidden = !empty;
+    refs.list.hidden = state.items.length === 0;
+    refs.error.hidden = !state.failed;
+
+    if (state.failed) {
+      renderError();
+    }
+    if (empty) {
+      renderEmpty();
+    }
+  }
+
+  function renderError() {
+    var rateLimited = state.errorStatus === 429;
+    refs.errorMsg.textContent = rateLimited ? t("app.rateLimited") : t("today.loadFailed");
+
+    // A failed refresh keeps the readable rows and says how old they are; a
+    // first-load failure has nothing to name.
+    var sub =
+      state.items.length > 0 && state.updatedAt
+        ? t("lib.stillShowing", { time: time(state.updatedAt) })
+        : "";
+    refs.errorSub.textContent = sub;
+    refs.errorSub.hidden = !sub;
+  }
+
+  function renderEmpty() {
+    var key = state.q
+      ? "today.emptyMatch"
+      : RANGE_EMPTY_KEYS[state.range] || "today.empty";
+    refs.emptyTitle.textContent = state.q ? t(key, { q: state.q }) : t(key);
+  }
+
+  function renderMore() {
+    if (!refs) {
+      return;
+    }
+
+    var hasMore = state.nextOffset !== null && state.items.length > 0;
+    refs.more.hidden = !hasMore;
+    refs.moreButton.disabled = state.loading;
+    refs.moreButton.setAttribute("aria-busy", state.loading ? "true" : "false");
+    refs.moreButton.textContent = state.loading ? t("common.loading") : t("today.loadMore");
   }
 
   function renderAll() {
+    renderRunhead();
     renderStats();
     renderList();
     renderStates();
     renderMore();
   }
 
-  function showLoadingOnly() {
+  function showSkeleton() {
     if (!refs) {
       return;
     }
-    refs.loading.hidden = false;
-    refs.empty.hidden = true;
-    refs.error.hidden = true;
-    refs.moreWrap.hidden = true;
-  }
-
-  function syncRangeChips() {
-    if (!refs) {
-      return;
-    }
-    Array.prototype.forEach.call(refs.rangeChips, function (chip) {
-      var active = chip.getAttribute("data-range") === state.range;
-      chip.classList.toggle("is-active", active);
-      chip.setAttribute("aria-pressed", active ? "true" : "false");
-    });
-    renderHead();
-  }
-
-  /* The head is the one strip whose text changes on a range switch; the count
-     fades rather than the page reflowing, so the list below never jumps. */
-  function renderHead() {
-    if (!refs) {
-      return;
-    }
-
-    if (refs.headLabel) {
-      refs.headLabel.textContent = RANGE_LABELS[state.range] || state.range;
-    }
-    if (refs.headCount) {
-      var shown = state.items.length;
-      var total = state.total > shown ? state.total : shown;
-      refs.headCount.textContent = state.loading
-        ? "Loading\u2026"
-        : total === 0
-          ? "No notices"
-          : total === shown
-            ? shown + (shown === 1 ? " notice" : " notices")
-            : shown + " of " + total + " notices";
-    }
-    if (refs.headTime) {
-      refs.headTime.textContent = state.updatedAt || "";
-    }
+    state.loading = true;
+    state.failed = false;
+    state.loaded = false;
+    renderRunhead();
+    renderStats();
+    renderStates();
+    renderMore();
   }
 
   function syncSearchValue() {
@@ -584,16 +615,27 @@
     }
   }
 
+  function syncRangeButtons() {
+    if (!refs) {
+      return;
+    }
+    Array.prototype.forEach.call(refs.rangeButtons, function (button) {
+      var active = button.getAttribute("data-range") === state.range;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+  }
+
   /* Statistics ----------------------------------------------------------- */
 
   function loadStatistics() {
-    if (!refs || stats.loaded || stats.loading || !window.MagnetAPI) {
+    if (!refs || stats.loaded || stats.loading || !global.MagnetAPI) {
       return;
     }
 
     stats.loading = true;
 
-    window.MagnetAPI.statistics()
+    global.MagnetAPI.statistics()
       .then(function (payload) {
         stats.loading = false;
         stats.loaded = true;
@@ -629,22 +671,19 @@
     if (!append) {
       state.items = [];
       state.seen = Object.create(null);
+      markUnseen(incoming);
     }
     mergeItems(incoming);
 
     state.loaded = true;
     state.failed = false;
-    state.errorMessage = "";
+    state.errorStatus = 0;
 
     // The head reports the server's total so a partial page still tells the
     // truth about how much is there; the clock tells the reader how stale the
     // column is.
-    var total = payload && typeof payload.total === "number" ? payload.total : state.items.length;
-    state.total = total;
-    var now = new Date();
-    state.updatedAt =
-      "updated " + (now.getHours() < 10 ? "0" : "") + now.getHours() + ":" +
-      (now.getMinutes() < 10 ? "0" : "") + now.getMinutes();
+    state.total = payload && typeof payload.total === "number" ? payload.total : state.items.length;
+    state.updatedAt = new Date().toISOString();
 
     var next = payload ? payload.nextOffset : null;
     // Only accept a cursor that actually moves forward, and never offer a
@@ -654,21 +693,19 @@
     } else {
       state.nextOffset = null;
     }
-  }
 
-  function errorText(err) {
-    var detail = err && err.message ? String(err.message) : "";
-    return detail ? "Couldn't load notices: " + detail : "Couldn't load notices.";
+    if (!append) {
+      rememberSeen();
+    }
   }
 
   function fetchPage(append) {
     if (!refs) {
       return Promise.resolve();
     }
-    if (!app.state || !app.state.initData || !window.MagnetAPI) {
+    if (!app.state || !app.state.initData || !global.MagnetAPI) {
       // init() has not run yet; the router mounts this view again once it has,
       // and that mount is the one allowed to hit the network.
-      showLoadingOnly();
       return Promise.resolve();
     }
 
@@ -677,10 +714,11 @@
 
     state.loading = true;
     state.failed = false;
+    state.errorStatus = 0;
     renderStates();
     renderMore();
 
-    return window.MagnetAPI.notices({
+    return global.MagnetAPI.notices({
       range: state.range,
       q: state.q,
       offset: offset,
@@ -705,13 +743,13 @@
           // Keep the rows already on screen and let the user retry the page
           // that failed; a toast is enough for an incremental load.
           renderMore();
-          app.toast("Couldn't load more notices.", "error");
+          app.toast(t("today.loadMoreFailed"), "error");
           return;
         }
 
-        state.loaded = false;
         state.failed = true;
-        state.errorMessage = errorText(err);
+        state.errorStatus = err && err.status ? err.status : 0;
+        renderRunhead();
         renderStates();
         renderMore();
       });
@@ -722,20 +760,32 @@
       return Promise.resolve();
     }
 
-    // Clear first: a spinner over the previous filter's rows would claim those
-    // rows belong to the range or query that is loading now.
+    // Clear first: rows from the previous filter would claim to belong to the
+    // range or query that is loading now.
     state.items = [];
     state.seen = Object.create(null);
     state.nextOffset = null;
+    state.total = 0;
     state.loaded = false;
     state.failed = false;
-    state.errorMessage = "";
+    state.errorStatus = 0;
 
     closeDetail();
     renderList();
     renderStates();
     renderMore();
+    renderRunhead();
 
+    return fetchPage(false);
+  }
+
+  // Refresh keeps the rows: on failure the list stays readable behind the
+  // inline error, which is why it does not call reload().
+  function refresh() {
+    if (!refs || state.loading) {
+      return Promise.resolve();
+    }
+    closeDetail();
     return fetchPage(false);
   }
 
@@ -765,11 +815,22 @@
       return;
     }
     state.range = range;
-    syncRangeChips();
+    syncRangeButtons();
     reload();
   }
 
   /* Detail sheet --------------------------------------------------------- */
+
+  function detailMeta(item) {
+    var parts = [dateTime(item.updatedAt)];
+    if (item.code) {
+      parts.push(item.code);
+    }
+    if (item.hasTenderCode) {
+      parts.push(t("today.tagTender"));
+    }
+    return parts.filter(Boolean).join(" \u00b7 ");
+  }
 
   function openDetail(index) {
     var item = state.items[index];
@@ -778,17 +839,14 @@
     }
 
     state.detailIndex = index;
+    state.lastFocus = document.activeElement;
 
-    var meta = metaHTML(item);
-    refs.detailTitle.innerHTML = escape(item.title || "(no title)");
-    refs.detailMeta.innerHTML = meta;
-    refs.detailMeta.hidden = !meta;
-    refs.detailOpen.disabled = !item.url;
-    if (refs.detailConvert) {
-      refs.detailConvert.hidden = !item.url;
-    }
+    refs.detailTitle.textContent = item.title || t("today.noTitle");
+    refs.detailKicker.textContent = detailMeta(item);
+    syncActionButtons();
+
+    refs.scrim.hidden = false;
     refs.detail.hidden = false;
-    syncConvertButtons();
 
     if (typeof refs.detailClose.focus === "function") {
       refs.detailClose.focus();
@@ -796,11 +854,23 @@
   }
 
   function closeDetail() {
-    if (!refs) {
+    if (!refs || refs.detail.hidden) {
       return;
     }
+    var returnTo = state.lastFocus;
+
     state.detailIndex = -1;
+    state.lastFocus = null;
     refs.detail.hidden = true;
+    refs.scrim.hidden = true;
+
+    if (returnTo && typeof returnTo.focus === "function") {
+      try {
+        returnTo.focus({ preventScroll: true });
+      } catch (err) {
+        returnTo.focus();
+      }
+    }
   }
 
   function openItemLink(index) {
@@ -829,49 +899,36 @@
     return Boolean(url) && Boolean(converting[conversionKey(url, format)]);
   }
 
-  function cardConvertButton(index, format) {
-    var meta = CONVERT_FORMATS[format];
-    return (
-      '<button class="today-convert" type="button" data-action="convert"' +
-      ' data-format="' + format + '" data-index="' + index + '"' +
-      ' aria-label="Send this notice as ' + meta.label + '">' +
-      app.icon(meta.icon) + "<span>" + meta.label + "</span></button>"
-    );
-  }
-
-  function detailConvertButton(format) {
-    var meta = CONVERT_FORMATS[format];
-    return (
-      '<button class="btn-ghost" type="button" data-action="convert"' +
-      ' data-format="' + format + '" data-scope="detail"' +
-      ' aria-label="Send this notice as ' + meta.label + '">' +
-      app.icon(meta.icon) + "<span>" + meta.label + "</span></button>"
-    );
-  }
-
   /*
-   * Applies the in-flight set to every rendered convert button. Both the list
+   * Applies the in-flight set to every rendered action button. Both the list
    * and the sheet are covered: a card may be re-rendered by pagination or a
    * search while its conversion is still running, and the sheet converts the
    * notice it is showing.
    */
-  function syncConvertButtons() {
+  function syncActionButtons() {
     if (!refs) {
       return;
     }
 
-    var buttons = refs.view.querySelectorAll('button[data-action="convert"]');
+    var buttons = refs.view.querySelectorAll(
+      'button[data-action="convert"], button[data-action="open-link"], button[data-action="open-notice"]'
+    );
     for (var i = 0; i < buttons.length; i++) {
       var button = buttons[i];
-      var format = button.getAttribute("data-format");
-      var item;
-      if (button.getAttribute("data-scope") === "detail") {
-        item = state.items[state.detailIndex];
-      } else {
-        item = state.items[parseInt(button.getAttribute("data-index"), 10)];
-      }
+      // The sheet's buttons act on the notice the sheet is showing, never on a
+      // list index that a re-render may have moved.
+      var inSheet =
+        button.getAttribute("data-scope") === "detail" ||
+        button.getAttribute("data-action") === "open-notice";
+      var item = inSheet
+        ? state.items[state.detailIndex]
+        : state.items[parseInt(button.getAttribute("data-index"), 10)];
 
-      button.disabled = !item || !item.url || isConverting(item.url, format);
+      var blocked = !item || !item.url;
+      if (!blocked && button.getAttribute("data-action") === "convert") {
+        blocked = isConverting(item.url, button.getAttribute("data-format"));
+      }
+      button.disabled = blocked;
     }
   }
 
@@ -879,13 +936,12 @@
   // for. Returns the node so the pending prompt can be retired early.
   function timedToast(message, kind, ttl) {
     var container = document.getElementById("toasts") || document.body;
-    var el = document.createElement("div");
-    el.className = "toast is-" + kind;
+    var el = element("div", "toast is-" + kind);
     el.setAttribute("role", "status");
     el.textContent = message;
     container.appendChild(el);
 
-    window.setTimeout(function () {
+    global.setTimeout(function () {
       if (el.parentNode) {
         el.parentNode.removeChild(el);
       }
@@ -903,19 +959,12 @@
   function conversionErrorText(err) {
     var status = err && err.status;
     if (status === 429) {
-      return "Too many requests, try again in a minute";
+      return t("app.rateLimited");
     }
     if (status === 403) {
-      return "This notice is not available for conversion";
+      return t("today.convertUnavailable");
     }
-    if (status === 502) {
-      return "Conversion failed, try again later";
-    }
-    if (!status) {
-      // fetch rejected before any HTTP status existed.
-      return "Network error, try again";
-    }
-    return "Conversion failed, try again later";
+    return t("today.convertFailed");
   }
 
   /*
@@ -926,7 +975,7 @@
    */
   function startConversion(index, format) {
     var item = state.items[index];
-    if (!item || !item.url || !CONVERT_FORMATS[format] || !window.MagnetAPI) {
+    if (!item || !item.url || !CONVERT_FORMATS[format] || !global.MagnetAPI) {
       return;
     }
 
@@ -937,13 +986,13 @@
 
     var meta = CONVERT_FORMATS[format];
     converting[key] = true;
-    syncConvertButtons();
+    syncActionButtons();
 
-    var pending = timedToast("Converting " + meta.label + "\u2026", "info", CONVERT_PENDING_TOAST_MS);
+    var pending = timedToast(t("today.converting"), "info", CONVERT_PENDING_TOAST_MS);
 
     var request;
     try {
-      request = window.MagnetAPI.convert(item.url, format);
+      request = global.MagnetAPI.convert(item.url, format);
     } catch (err) {
       finishConversion(key, pending);
       app.toast(conversionErrorText(err), "error");
@@ -953,7 +1002,7 @@
     request.then(
       function () {
         finishConversion(key, pending);
-        timedToast(meta.label + " sent to chat \u2713", "success", CONVERT_DONE_TOAST_MS);
+        timedToast(meta.label + " " + t("today.sent"), "success", CONVERT_DONE_TOAST_MS);
       },
       function (err) {
         finishConversion(key, pending);
@@ -964,7 +1013,7 @@
 
   function finishConversion(key, pendingToast) {
     delete converting[key];
-    syncConvertButtons();
+    syncActionButtons();
     retireToast(pendingToast);
   }
 
@@ -989,13 +1038,7 @@
     }
 
     var action = closest(event.target, "data-action");
-
     if (!action) {
-      // A click on the backdrop closes the sheet; a click inside the panel
-      // matches no action and stops here instead of closing anything.
-      if (!refs.detail.hidden && event.target === refs.detail) {
-        closeDetail();
-      }
       return;
     }
 
@@ -1050,6 +1093,58 @@
     closeDetail();
   }
 
+  /* Language ------------------------------------------------------------- */
+
+  function syncRowText() {
+    var rows = refs.list.querySelectorAll("article.entry");
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      var index = parseInt(row.getAttribute("data-index"), 10);
+      var item = state.items[index];
+      if (!item) {
+        continue;
+      }
+
+      var lead = row.querySelector(".entry-lead");
+      if (lead) {
+        lead.textContent = item.title || t("today.noTitle");
+      }
+      setText(row, '[data-meta="time"]', dateTime(item.updatedAt));
+      setText(row, '[data-meta="code"]', item.code);
+      setText(row, '[data-meta="tag-label"]', item.hasTenderCode ? t("today.tagTender") : "");
+    }
+  }
+
+  function syncDetailText() {
+    var item = state.items[state.detailIndex];
+    if (!item) {
+      return;
+    }
+    refs.detailTitle.textContent = item.title || t("today.noTitle");
+    refs.detailKicker.textContent = detailMeta(item);
+  }
+
+  function setText(root, selector, value) {
+    var node = root.querySelector(selector);
+    if (node) {
+      node.textContent = value;
+    }
+  }
+
+  // Rewrites only the text this view owns; the shell has already applied the
+  // static data-i18n nodes, and nothing here rebuilds the list.
+  function onLang() {
+    if (!refs) {
+      return;
+    }
+    renderRunhead();
+    renderStats();
+    renderStates();
+    renderMore();
+    syncRowText();
+    syncDetailText();
+  }
+
   /* View lifecycle ------------------------------------------------------- */
 
   function needsReload() {
@@ -1059,7 +1154,7 @@
     // core.js clears the flag just before calling mount(), so this normally
     // reads false; it still covers an explicit invalidate that lands between
     // two renders (and a future core that stops clearing the flag first).
-    return typeof app.state.isStale === "function" && app.state.isStale("today");
+    return typeof app.state.isStale === "function" && app.state.isStale(VIEW);
   }
 
   /**
@@ -1073,7 +1168,7 @@
     }
 
     syncSearchValue();
-    syncRangeChips();
+    syncRangeButtons();
 
     // Returning to the tab with a sheet open should show the list, not a stale
     // dialog over a fresh render.
@@ -1082,10 +1177,15 @@
     if (!app.state || !app.state.initData) {
       // registerView() mounts once before core.init() has authenticated; that
       // call may only draw the skeleton.
-      showLoadingOnly();
+      showSkeleton();
       return;
     }
 
+    // A write elsewhere (a new keyword changes the counters) marks the view
+    // stale; the strip must refetch even when the notice list does not.
+    if (needsReload()) {
+      stats.loaded = false;
+    }
     loadStatistics();
 
     if (needsReload()) {
@@ -1096,5 +1196,5 @@
     renderAll();
   }
 
-  app.registerView("today", { mount: mount });
-})();
+  app.registerView(VIEW, { mount: mount, onLang: onLang });
+})(window);

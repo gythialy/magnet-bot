@@ -1,0 +1,20 @@
+# Build context hygiene: source only.
+#
+# The production image is built from this tree, and the debug compose file
+# mounts .env and bot.db from the host instead of baking them in. Keeping both
+# out of the build context is what makes that promise true: a secret or a live
+# database must never end up in a layer, even a throwaway one.
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+bot.db
+bot.db-*
+bot.log
+bot.log.*
+bin/
+.impeccable/
+.idea/
+.DS_Store
+*.log

@@ -47,16 +47,22 @@ type keywordBatchResponse struct {
 	Skipped []string `json:"skipped"`
 }
 
-// keywordRenameRequest is the body of PATCH /api/keywords/{id}.
+// keywordRenameRequest is the body of PATCH /api/keywords/{id}. Both fields are
+// optional individually, but a body with neither is rejected: a PATCH must
+// change something.
 type keywordRenameRequest struct {
-	Keyword string `json:"keyword"`
+	Keyword  string `json:"keyword"`
+	Archived *bool  `json:"archived"`
 }
 
 // keywordRenameResponse echoes the stored keyword so the client can render the
-// trimmed value it did not have to compute itself.
+// trimmed value it did not have to compute itself. ArchivedAt is the row's
+// archive timestamp after the patch, explicitly null while active so the client
+// can reset without deleting a key.
 type keywordRenameResponse struct {
-	ID      int32  `json:"id"`
-	Keyword string `json:"keyword"`
+	ID         int32   `json:"id"`
+	Keyword    string  `json:"keyword"`
+	ArchivedAt *string `json:"archivedAt"`
 }
 
 // writeAPI owns the write endpoints and the one rate limiter shared by them.
@@ -143,9 +149,9 @@ func (a *writeAPI) handleUpdateAlarm(w http.ResponseWriter, r *http.Request) {
 	a.update(w, r, "alarms")
 }
 
-// update serves both rename endpoints. Ownership is expressed by the (user, id)
-// predicate in the DAL statement, so an id that does not belong to the caller is
-// simply not found, whichever URL it was sent to.
+// update serves both rename and archive endpoints. Ownership is expressed by
+// the (user, id) predicate in the DAL statements, so an id that does not belong
+// to the caller is simply not found, whichever URL it was sent to.
 func (a *writeAPI) update(w http.ResponseWriter, r *http.Request, endpoint string) {
 	user, ok := a.authorize(w, r)
 	if !ok {
@@ -163,25 +169,56 @@ func (a *writeAPI) update(w http.ResponseWriter, r *http.Request, endpoint strin
 	}
 
 	keyword := strings.TrimSpace(payload.Keyword)
+	// Neither field means there is nothing to change. A blank name alone is
+	// rejected below exactly as before; an archive-only body is legitimate.
+	if keyword == "" && payload.Archived == nil {
+		WriteError(w, http.StatusBadRequest, "bad_request")
+		return
+	}
 	// A blank name or one past the documented length is a client error, not a
 	// silent truncation: the user would otherwise not see what was stored.
-	if keyword == "" || utf8.RuneCountInString(keyword) > maxKeywordRunes {
+	if keyword != "" && utf8.RuneCountInString(keyword) > maxKeywordRunes {
 		WriteError(w, http.StatusBadRequest, "bad_request")
 		return
 	}
 
-	updated, err := dal.Keyword.UpdateOwned(user.ID, id, keyword)
-	if err != nil {
-		slog.Error("mini app write failed", "endpoint", endpoint+".update", "error", err)
-		WriteError(w, http.StatusInternalServerError, "internal_error")
-		return
+	if keyword != "" {
+		updated, err := dal.Keyword.UpdateOwned(user.ID, id, keyword)
+		if err != nil {
+			slog.Error("mini app write failed", "endpoint", endpoint+".update", "error", err)
+			WriteError(w, http.StatusInternalServerError, "internal_error")
+			return
+		}
+		if !updated {
+			WriteError(w, http.StatusNotFound, "not_found")
+			return
+		}
 	}
-	if !updated {
+
+	if payload.Archived != nil {
+		updated, err := dal.Keyword.SetArchivedOwned(user.ID, id, *payload.Archived)
+		if err != nil {
+			slog.Error("mini app write failed", "endpoint", endpoint+".archive", "error", err)
+			WriteError(w, http.StatusInternalServerError, "internal_error")
+			return
+		}
+		if !updated {
+			WriteError(w, http.StatusNotFound, "not_found")
+			return
+		}
+	}
+
+	row, found := dal.Keyword.GetOwned(user.ID, id)
+	if !found {
 		WriteError(w, http.StatusNotFound, "not_found")
 		return
 	}
 
-	WriteJSON(w, http.StatusOK, keywordRenameResponse{ID: id, Keyword: keyword})
+	WriteJSON(w, http.StatusOK, keywordRenameResponse{
+		ID:         id,
+		Keyword:    row.Keyword,
+		ArchivedAt: archivedAtString(row.ArchivedAt),
+	})
 }
 
 // handleDeleteKeyword serves DELETE /api/keywords/{id}.

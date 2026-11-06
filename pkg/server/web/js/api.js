@@ -21,6 +21,10 @@
     alarms: "/api/alarms",
     alarmRecords: "/api/alarm-records",
     convert: "/api/convert",
+    me: "/api/me",
+    adminUsers: "/api/admin/users",
+    adminSettings: "/api/admin/settings",
+    adminStatus: "/api/admin/status",
   };
 
   function core() {
@@ -67,6 +71,10 @@
     return ENDPOINTS[collection] + "/" + encodeURIComponent(String(id));
   }
 
+  function adminUserPath(userId, suffix) {
+    return ENDPOINTS.adminUsers + "/" + encodeURIComponent(String(userId)) + (suffix || "");
+  }
+
   global.MagnetAPI = {
     /* Read ---------------------------------------------------------------- */
 
@@ -80,19 +88,27 @@
       return get("notices", params);
     },
 
-    /** Project keywords. */
-    keywords: function () {
-      return get("keywords");
+    /**
+     * Project keywords. {includeArchived: 1} also returns archived rows; the
+     * response says how many are archived so the toggle can show the count.
+     */
+    keywords: function (params) {
+      return get("keywords", params);
     },
 
-    /** Alarm keywords. */
-    alarms: function () {
-      return get("alarms");
+    /** Alarm keywords; same includeArchived contract as keywords(). */
+    alarms: function (params) {
+      return get("alarms", params);
     },
 
     /** Alarm records: {q, offset, limit}. */
     alarmRecords: function (params) {
       return get("alarmRecords", params);
+    },
+
+    /** The caller's identity, role and access mode. */
+    me: function () {
+      return get("me");
     },
 
     /* Write --------------------------------------------------------------- */
@@ -105,9 +121,9 @@
       return send("POST", ENDPOINTS.keywords, { keywords: String(keywords) });
     },
 
-    /** Rename one project keyword. Resolves {id, keyword}. */
-    renameKeyword: function (id, keyword) {
-      return send("PATCH", itemPath("keywords", id), { keyword: String(keyword) });
+    /** Rename or archive one project keyword. Resolves {id, keyword, archivedAt}. */
+    updateKeyword: function (id, changes) {
+      return send("PATCH", itemPath("keywords", id), changes);
     },
 
     /** Remove one project keyword. Resolves null (204). */
@@ -120,14 +136,63 @@
       return send("POST", ENDPOINTS.alarms, { keywords: String(keywords) });
     },
 
-    /** Rename one alarm keyword. Resolves {id, keyword}. */
-    renameAlarm: function (id, keyword) {
-      return send("PATCH", itemPath("alarms", id), { keyword: String(keyword) });
+    /** Rename or archive one alarm keyword. Resolves {id, keyword, archivedAt}. */
+    updateAlarm: function (id, changes) {
+      return send("PATCH", itemPath("alarms", id), changes);
     },
 
     /** Remove one alarm keyword. Resolves null (204). */
     deleteAlarm: function (id) {
       return send("DELETE", itemPath("alarms", id));
+    },
+
+    /* Administration ------------------------------------------------------ */
+
+    /**
+     * One page of accounts: {q, offset, limit, sort}. sort=recent orders by
+     * last activity, which is what the member picker shows; the default keeps
+     * the console's stable id order.
+     */
+    adminUsers: function (params) {
+      return get("adminUsers", params);
+    },
+
+    /** Add or update a batch of accounts. */
+    adminAddUsers: function (body) {
+      return send("POST", ENDPOINTS.adminUsers, body);
+    },
+
+    /** Change one account's remark, role or enabled flag. */
+    adminUpdateUser: function (userId, body) {
+      return send("PATCH", adminUserPath(userId), body);
+    },
+
+    /** Remove one account's access row. */
+    adminDeleteUser: function (userId) {
+      return send("DELETE", adminUserPath(userId));
+    },
+
+    /**
+     * An administrator's read-only view of another account's words:
+     * {userId, keywordCounts, items, archivedCount}.
+     */
+    adminUserKeywords: function (userId, params) {
+      return core().request(adminUserPath(userId, "/keywords") + toQuery(params));
+    },
+
+    /** The deployment access mode. */
+    adminSettings: function () {
+      return get("adminSettings");
+    },
+
+    /** Switch the deployment between restricted and open access. */
+    adminSetAccessMode: function (mode) {
+      return send("PATCH", ENDPOINTS.adminSettings, { accessMode: String(mode) });
+    },
+
+    /** Version, build, counts, webhook state and recently denied accounts. */
+    adminStatus: function () {
+      return get("adminStatus");
     },
 
     /* Conversion ---------------------------------------------------------- */
