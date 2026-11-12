@@ -45,7 +45,7 @@ type Config struct {
 	PDFCallback http.HandlerFunc
 	// Static serves the Mini App assets below /app/.
 	Static http.Handler
-	// API serves the Mini App JSON endpoints below /api/.
+	// API serves the Mini App JSON endpoints below /api/v1/.
 	API http.Handler
 	// Logger is optional. When nil request logging is skipped entirely, so
 	// tests and embedders do not have to construct a logger first.

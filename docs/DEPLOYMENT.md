@@ -236,7 +236,7 @@ journalctl -u magnet-bot -f
 ```text
 Telegram 服务器 / Telegram 客户端
         │  POST https://bot.example.com/telegram/webhook
-        │  GET  https://bot.example.com/app/、/api/*
+        │  GET  https://bot.example.com/app/、/api/v1/*
         ▼
 Cloudflare 边缘（公共 TLS 终止，443）
         │  cloudflared 隧道（本端主动外连，不开放入站端口）
@@ -256,7 +256,7 @@ bot 内的路由与来源：
 | --- | --- | --- |
 | `POST /telegram/webhook` | Telegram 推送；先校验 secret header，不匹配直接 403 | Cloudflare → Caddy → bot |
 | `GET /healthz` | 健康检查，始终注册，返回 `ok` | Cloudflare → Caddy → bot |
-| `GET /app/`、`/api/*` | Mini App 页面与 API；由 `MINI_APP_ENABLED` 控制，P2 起提供 | Cloudflare → Caddy → bot |
+| `GET /app/`、`/api/v1/*` | Mini App 页面与 API；由 `MINI_APP_ENABLED` 控制，P2 起提供 | Cloudflare → Caddy → bot |
 | `POST /pdf/{id}` | Gotenberg 转换回执 | 内网直连，不经 Caddy / Cloudflare |
 
 要点：
@@ -279,7 +279,7 @@ bot 内的路由与来源：
 | `PUBLIC_BASE_URL` | 启用公网时 ✅ | - | 对外入口，**必须 https 且自带 scheme**，如 `https://bot.example.com`；结尾 `/` 会被自动去掉。**留空 = 保持轮询模式**：不注册 webhook、没有公网入口，本地仍监听 `WEBHOOK_SERVER_PORT` 供 Gotenberg 回调与 `/healthz` 使用 |
 | `TELEGRAM_WEBHOOK_SECRET` | 启用公网时 ✅ | - | 1–256 个 `[A-Za-z0-9_-]` 字符；Telegram 每次推送带 `X-Telegram-Bot-Api-Secret-Token`，不匹配直接 403 |
 | `TELEGRAM_WEBHOOK_ENABLED` | - | `true` | 设为 `false` 时，即使配了 `PUBLIC_BASE_URL` 也继续用 `getUpdates` 轮询 |
-| `MINI_APP_ENABLED` | - | `true` | 控制是否注册 `/app/`、`/api/`；设为 `false` 时这两个前缀返回 404，旧文本命令保持可用 |
+| `MINI_APP_ENABLED` | - | `true` | 控制是否注册 `/app/`、`/api/v1/`；设为 `false` 时这两个前缀返回 404，旧文本命令保持可用 |
 | `WEBHOOK_SERVER_PORT` | 启用公网时 ✅ | `0` | bot HTTP 监听端口（如 `8080`），**公网模式下必须非 0**；它同时是 Gotenberg 回调端口，不要再开第二个 |
 
 派生路径（固定，不需要在反代里逐个配置）：
@@ -288,7 +288,7 @@ bot 内的路由与来源：
 {PUBLIC_BASE_URL}/telegram/webhook    Telegram 推送
 {PUBLIC_BASE_URL}/healthz             健康检查
 {PUBLIC_BASE_URL}/app/                Mini App 页面（P2 起）
-{PUBLIC_BASE_URL}/api/                Mini App API（P2 起）
+{PUBLIC_BASE_URL}/api/v1/                Mini App API（P2 起）
 ```
 
 > Telegram 侧限制：webhook URL 必须是 HTTPS，且端口只能是 **443 / 80 / 88 / 8443**。
@@ -322,14 +322,14 @@ bot.example.com {
 ```
 
 - **路径不需要在 Caddy 里单独配置**：`reverse_proxy` 会原样透传 URI，`/telegram/webhook`、
-  `/healthz`、`/app/`、`/api/` 都由 bot 自己的 mux 注册，Caddy 只负责 TLS 与转发；
+  `/healthz`、`/app/`、`/api/v1/` 都由 bot 自己的 mux 注册，Caddy 只负责 TLS 与转发；
   只有当某个子路径要交给别的服务时，才需要 `handle` 按路径拆分。
 - `magnet-bot:8080` 依赖同一 Compose 网络里的服务名解析；bot 与 Caddy 不在同一个
   compose 项目时，要显式接到同一个外部网络。
 - 证书：公网侧由 Cloudflare 边缘提供，Caddy 与 cloudflared 之间用内部证书即可，所以 8.4 里
   要 `noTLSVerify: true`。若坚持让 Caddy 自己申请 Let's Encrypt 证书，必须保证 ACME 校验能
   到达 Caddy（HTTP-01 要在隧道里额外暴露 80 端口，或用 DNS-01），否则签发会一直失败。
-- **不要在 Caddy / Cloudflare 给 `/app/`、`/api/*`、`/pdf/*` 叠缓存规则**：`/app/` 文档仍是
+- **不要在 Caddy / Cloudflare 给 `/app/`、`/api/v1/*`、`/pdf/*` 叠缓存规则**：`/app/` 文档仍是
   `Cache-Control: no-cache` + `ETag`（每次回源校验，未变则 304）；它引用的 css/js URL 带内容
   哈希（`?v=<hash>`），这些资源用 `public, max-age=31536000, immutable` 缓存一年——文件内容
   一变哈希就变、URL 就变。在边缘再用规则覆盖文档的 `no-cache` 只会让升级后客户端停在旧包上。
@@ -502,7 +502,7 @@ BASE=https://bot.example.com
 curl -s -o /dev/null -w 'app %{http_code}\n'   "$BASE/app/"                        # 期望 200
 curl -s "$BASE/app/" | grep -c 'js/telegram-web-app.js'                            # 期望 1
 curl -s -o /dev/null -w 'sdk %{http_code}\n'   "$BASE/app/js/telegram-web-app.js"  # 期望 200
-curl -s -o /dev/null -w 'api %{http_code}\n'   "$BASE/api/statistics"             # 期望 401
+curl -s -o /dev/null -w 'api %{http_code}\n'   "$BASE/api/v1/statistics"             # 期望 401
 curl -s "$BASE/healthz"                                                            # 期望 ok
 ```
 
@@ -575,7 +575,7 @@ curl -s "$BASE/healthz"                                                         
 | 入口 | 实现 | 未授权时的表现 |
 | --- | --- | --- |
 | Telegram 更新 | 全局中间件 `accessMiddleware`（包住所有 handler，含默认 handler） | 私聊消息回 `Access denied. This bot is private. Ask the owner for access.`，同一账号 10 分钟最多一次；按钮回调答复 `Access denied. This bot is private.` |
-| Mini App `/api/*` | `requireAllowed`（在 initData 鉴权之后） | HTTP 403 `{"error":{"code":"forbidden"}}` |
+| Mini App `/api/v1/*` | `requireAllowed`（在 initData 鉴权之后） | HTTP 403 `{"error":{"code":"forbidden"}}` |
 | 后台推送 / 附件补发 | `InfoProcessor`（定时抓取与 `/retry`）、`AttachmentRetrier` | 静默跳过该账号，不报错 |
 
 细节：
@@ -609,8 +609,8 @@ Mini App 的第四个页签是 **Settings**。聊天里的入口是 `/settings`�
 - **Status**：版本、各表计数（用户/管理员/关键词/历史/告警）、webhook 状态；
 - **Recent denied**：最近被拒的账号（内存中最多 50 条，重启清空），可一键 **Allow**。
 
-页签默认隐藏，`/api/me` 确认管理员身份后才出现；普通用户即使手输 `#/settings` 也只会看到
-`Admins only` 的空状态，不会发出任何 `/api/admin/*` 请求。
+页签默认隐藏，`/api/v1/me` 确认管理员身份后才出现；普通用户即使手输 `#/settings` 也只会看到
+`Admins only` 的空状态，不会发出任何 `/api/v1/admin/*` 请求。
 
 **删除只撤销访问**：`users` 行没了，但该账号的 `keywords`、`histories`、`alarms`、
 `pending_attachments` 全部保留，重新加回即恢复原数据。
@@ -619,19 +619,19 @@ Mini App 的第四个页签是 **Settings**。聊天里的入口是 `/settings`�
 
 ### 9.5 管理接口
 
-所有接口都要 `X-Telegram-Init-Data`，调用者必须被授权；`/api/admin/*` 还要求是**启用中的
+所有接口都要 `X-Telegram-Init-Data`，调用者必须被授权；`/api/v1/admin/*` 还要求是**启用中的
 管理员**。
 
 | 方法 | 路径 | 作用 |
 | --- | --- | --- |
-| GET | `/api/me` | 当前身份：`userId`、`role`、`accessMode`、`remark` |
-| GET | `/api/admin/users?q=&offset=&limit=` | 名单（搜索 + 分页） |
-| POST | `/api/admin/users` | 批量添加/更新：`{"userIds":"10001,10002","role":"user","remark":""}` |
-| PATCH | `/api/admin/users/{id}` | `{"remark":...,"role":"user"}` 或 `"role":"admin"`、`"enabled":true` |
-| DELETE | `/api/admin/users/{id}` | 撤销访问，返回 204 |
-| GET | `/api/admin/settings` | 读 `access_mode` |
-| PATCH | `/api/admin/settings` | `{"accessMode":"off"}` 或 `{"accessMode":"restricted"}` |
-| GET | `/api/admin/status` | 版本、计数、webhook 状态、最近被拒账号 |
+| GET | `/api/v1/me` | 当前身份：`userId`、`role`、`accessMode`、`remark` |
+| GET | `/api/v1/admin/users?q=&offset=&limit=` | 名单（搜索 + 分页） |
+| POST | `/api/v1/admin/users` | 批量添加/更新：`{"userIds":"10001,10002","role":"user","remark":""}` |
+| PATCH | `/api/v1/admin/users/{id}` | `{"remark":...,"role":"user"}` 或 `"role":"admin"`、`"enabled":true` |
+| DELETE | `/api/v1/admin/users/{id}` | 撤销访问，返回 204 |
+| GET | `/api/v1/admin/settings` | 读 `access_mode` |
+| PATCH | `/api/v1/admin/settings` | `{"accessMode":"off"}` 或 `{"accessMode":"restricted"}` |
+| GET | `/api/v1/admin/status` | 版本、计数、webhook 状态、最近被拒账号 |
 
 错误约定：
 
@@ -660,7 +660,7 @@ Mini App 的第四个页签是 **Settings**。聊天里的入口是 `/settings`�
 1. 在 bot 里发 `/me` 拿到自己的 user id，填进 `MANAGER_ID`（或让现有管理员在 Settings 页添加）；
 2. 重启后日志出现 `access control is restricted`，管理员发 `/settings` 能收到「Open settings」按钮；
 3. 用未授权账号私聊 bot：收到一次 `Access denied...`，10 分钟内重复发不会重复提示；
-4. 该账号打开 Mini App：`/api/me` 返回 403 `forbidden`，整页显示
+4. 该账号打开 Mini App：`/api/v1/me` 返回 403 `forbidden`，整页显示
    `Access revoked. Ask the administrator.`；
 5. 停用某账号后：bot 与 App 在下一次请求即拒绝，其关键词/历史仍留在计数里；
 6. 把模式切到 `off`：陌生人立刻恢复正常使用；
@@ -689,7 +689,7 @@ sqlite3 data/bot.db "UPDATE settings SET value='off' WHERE key='access_mode';"
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
 | 私聊 bot 只回 `Access denied...` | 账号不在启用名单（`restricted`） | Settings 页添加并启用，确认 `enabled=true` |
-| App 提示 `Access revoked. Ask the administrator.`，接口 403 `forbidden` | 同上，被 `/api/*` 准入拦下 | 同上 |
+| App 提示 `Access revoked. Ask the administrator.`，接口 403 `forbidden` | 同上，被 `/api/v1/*` 准入拦下 | 同上 |
 | 管理员发 `/settings` 收到 `Admins only.` | 该账号不是**启用中的管理员** | 检查 `users` 里 `role=1` 且 `enabled=1` |
 | 409 `cannot change your own access` | 操作对象是自己 | 换另一个管理员操作 |
 | 409 `cannot remove the last administrator` | 只剩一个启用中的管理员 | 先把另一个账号设为管理员 |
@@ -823,7 +823,7 @@ docker run ... ghcr.io/gythialy/magnet-bot:<上一个版本>
 
 `GET /healthz` 始终注册，返回 `200` 与纯文本 `ok`（无鉴权），可以直接用作 HTTP
 healthcheck；`/healthz` 上的非 GET 返回 405。未启用的能力（例如 Mini App 的 `/app/`、
-`/api/`，P2 之前）不注册路由，访问得到 404。
+`/api/v1/`，P2 之前）不注册路由，访问得到 404。
 
 ---
 
@@ -868,7 +868,7 @@ docker build -t magnet-bot:local .
 | `PUBLIC_BASE_URL` | `https://bot.example.com` | 必须是 https、且端口只能是 443/80/88/8443 |
 | `TELEGRAM_WEBHOOK_ENABLED` | `true` | 关闭即回落轮询 |
 | `TELEGRAM_WEBHOOK_SECRET` | `^[A-Za-z0-9_-]{1,256}$` | 改这个值后要重启，让 `SetWebhook` 带上新值 |
-| `MINI_APP_ENABLED` | `true` | 关闭后 `/app/`、`/api/` 不注册（404） |
+| `MINI_APP_ENABLED` | `true` | 关闭后 `/app/`、`/api/v1/` 不注册（404） |
 | `WEBHOOK_SERVER_PORT` | 例如 `8080` | **必填**；Caddy 转发目标、Gotenberg 回调都用它 |
 | `WEBHOOK_SERVER_URL` | 例如 `http://magnet-bot` | Gotenberg 视角下能解析到的 bot 地址 |
 | `PDF_SERVER_URL` | 例如 `http://gotenberg:3000` | Gotenberg 地址 |
@@ -904,9 +904,9 @@ bot.example.com {
 }
 ```
 
-- 不需要按路径拆分：`/telegram/webhook`、`/healthz`、`/app/`、`/api/`、`/pdf/` 都由 bot 的 mux
+- 不需要按路径拆分：`/telegram/webhook`、`/healthz`、`/app/`、`/api/v1/`、`/pdf/` 都由 bot 的 mux
   注册，Caddy 只做 TLS 与转发。
-- 同域还要跑别的服务时，用 `handle /api/* { ... }` 之类把子路径分出去，其余仍回落到 bot。
+- 同域还要跑别的服务时，用 `handle /api/v1/* { ... }` 之类把子路径分出去，其余仍回落到 bot。
 
 ### 15.4 上线后验证（复制即用）
 
@@ -925,7 +925,7 @@ curl -s "https://api.telegram.org/bot$TOKEN/getWebhookInfo" \
 # url 应为 https://bot.example.com/telegram/webhook，last_error_message 为 null
 
 # 3) 访问控制是否生效
-curl -s -o /dev/null -w '%{http_code}\n' "$BASE/api/statistics"   # 401
+curl -s -o /dev/null -w '%{http_code}\n' "$BASE/api/v1/statistics"   # 401
 
 # 4) BotFather 域名是否绑定（最终以真实客户端为准）
 #    在 Telegram 里点菜单 "Open app"：应直接进 Today，而不是 "Open this app from the bot."

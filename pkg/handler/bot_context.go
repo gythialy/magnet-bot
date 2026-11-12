@@ -120,6 +120,7 @@ func NewBotContext() (*BotContext, error) {
 		&model.PendingAttachment{},
 		&model.User{},
 		&model.Setting{},
+		&model.NoticeContent{},
 	); err != nil {
 		return nil, err
 	}
@@ -149,6 +150,15 @@ func NewBotContext() (*BotContext, error) {
 		ctxLogger.Error().Stack().Err(err).Msg("prune keyword matches")
 	} else if rows > 0 {
 		ctxLogger.Debug().Int64("rows", rows).Msg("pruned keyword match records")
+	}
+
+	// Cached notice bodies follow their history rows: a body whose notice was
+	// cleaned can no longer be read (the endpoint requires ownership), so it is
+	// dead weight in the database.
+	if rows, err := dal.PruneNoticeContents(time.Now()); err != nil {
+		ctxLogger.Error().Stack().Err(err).Msg("prune notice contents")
+	} else if rows > 0 {
+		ctxLogger.Debug().Int64("rows", rows).Msg("pruned cached notice bodies")
 	}
 
 	client, err := NewGotenbergClient(cfg.PDF.PDFServiceURL, cfg.PDF.WebhookURL(), cfg.PDF.WebhookToken)

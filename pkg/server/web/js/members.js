@@ -1135,10 +1135,16 @@
     });
 
     els.search.addEventListener("keydown", function (event) {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        commitSearch();
+      if (event.key !== "Enter") {
+        return;
       }
+      event.preventDefault();
+      // An IME uses Enter to confirm a candidate; committing here would send a
+      // half-composed query.
+      if (event.isComposing || event.keyCode === 229) {
+        return;
+      }
+      commitSearch();
     });
 
     els.screen.addEventListener("scroll", function () {
@@ -1209,7 +1215,7 @@
       return;
     }
     if (state.gate === "checking" || !state.me) {
-      // A second mount while /api/me is still in flight must not fetch again.
+      // A second mount while /api/v1/me is still in flight must not fetch again.
       if (!state.mePromise) {
         startCheck(false);
       }

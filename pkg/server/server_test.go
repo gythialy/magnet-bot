@@ -62,7 +62,7 @@ func TestUnregisteredHandlersReturn404(t *testing.T) {
 		{"static root", http.MethodGet, "/app"},
 		{"static asset", http.MethodGet, "/app/"},
 		{"static nested asset", http.MethodGet, "/app/index.html"},
-		{"api", http.MethodGet, "/api/items"},
+		{"api", http.MethodGet, "/api/v1/items"},
 	}
 
 	for _, tc := range cases {
@@ -117,7 +117,7 @@ func TestInjectedHandlersAreReached(t *testing.T) {
 		{"pdf callback", http.MethodPost, "/pdf/abc123", &pdfCalls},
 		{"static root asset", http.MethodGet, "/app/", &staticCalls},
 		{"static nested asset", http.MethodGet, "/app/index.html", &staticCalls},
-		{"api", http.MethodGet, "/api/items", &apiCalls},
+		{"api", http.MethodGet, "/api/v1/items", &apiCalls},
 	}
 
 	for _, tc := range cases {
@@ -143,8 +143,8 @@ func TestInjectedHandlersAreReached(t *testing.T) {
 	if got, _ := staticPath.Load().(string); got != "/app/index.html" {
 		t.Fatalf("static handler path = %q, want %q", got, "/app/index.html")
 	}
-	if got, _ := apiPath.Load().(string); got != "/api/items" {
-		t.Fatalf("api handler path = %q, want %q", got, "/api/items")
+	if got, _ := apiPath.Load().(string); got != "/api/v1/items" {
+		t.Fatalf("api handler path = %q, want %q", got, "/api/v1/items")
 	}
 }
 
@@ -176,12 +176,12 @@ func TestRequestLoggingRecordsStatusWithoutSecrets(t *testing.T) {
 		w.WriteHeader(http.StatusTeapot)
 	}), logger)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/items?token=super-secret", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/items?token=super-secret", nil)
 	req.Header.Set("Authorization", "Bearer super-secret")
 	handler.ServeHTTP(httptest.NewRecorder(), req)
 
 	line := buf.String()
-	for _, want := range []string{"method", "path", "status", "duration", "/api/items", "418"} {
+	for _, want := range []string{"method", "path", "status", "duration", "/api/v1/items", "418"} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("log line %q is missing %q", line, want)
 		}

@@ -1161,6 +1161,10 @@ button {
   inset: 0;
   z-index: 70;
   background: rgba(0, 0, 0, 0.42);
+  /* A backdrop is not a scroll container by default, so a scroll gesture on it
+     would reach the page behind; making it one lets contain stop that. */
+  overflow: hidden;
+  overscroll-behavior: contain;
 }
 
 .sheet {
@@ -1171,6 +1175,9 @@ button {
   z-index: 71;
   max-height: 86vh;
   overflow-y: auto;
+  /* Stops a gesture that reaches the sheet's scroll boundary from scrolling the
+     page behind it. */
+  overscroll-behavior: contain;
   padding: 6px 0 calc(14px + env(safe-area-inset-bottom));
   background: var(--surface);
   border-radius: var(--r-sheet) var(--r-sheet) 0 0;

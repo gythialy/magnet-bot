@@ -61,8 +61,152 @@
   overflow-wrap: anywhere;
 }
 
+/* The head keeps the reload and close buttons on one line beside the title,
+   which may wrap. */
+#view-today .sheet-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
 #view-today .sheet-actions {
   align-items: center;
+}
+
+/* The full text lives inside the sheet, so it scrolls with the sheet and never
+   gets its own scroll container (nested scrolling on a phone is a trap). */
+#view-today .notice-body {
+  padding: 0 16px;
+}
+
+#view-today .notice-body .inline-error {
+  margin: 12px 0;
+}
+
+#view-today .notice-text {
+  padding: 12px 0 4px;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+#view-today .notice-text p,
+#view-today .notice-text div,
+#view-today .notice-text section,
+#view-today .notice-text article {
+  margin: 0 0 0.7em;
+}
+
+#view-today .notice-text h1,
+#view-today .notice-text h2,
+#view-today .notice-text h3,
+#view-today .notice-text h4,
+#view-today .notice-text h5,
+#view-today .notice-text h6 {
+  margin: 1.1em 0 0.5em;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+#view-today .notice-text h1:first-child,
+#view-today .notice-text h2:first-child,
+#view-today .notice-text h3:first-child {
+  margin-top: 0;
+}
+
+#view-today .notice-text ul,
+#view-today .notice-text ol {
+  margin: 0 0 0.7em;
+  padding-left: 1.25em;
+}
+
+#view-today .notice-text li {
+  margin: 0.2em 0;
+}
+
+#view-today .notice-text blockquote {
+  margin: 0 0 0.7em;
+  padding-left: 0.8em;
+  border-left: 2px solid var(--rule-strong);
+  color: var(--muted-strong);
+}
+
+#view-today .notice-text pre {
+  margin: 0 0 0.7em;
+  padding: 10px 12px;
+  overflow-x: auto;
+  background: var(--surface-2);
+  border-radius: var(--r-ctrl);
+  font-size: 12px;
+}
+
+#view-today .notice-text code {
+  font-size: 12px;
+}
+
+/* Tables are the reason this view needs a scroll container of its own: a notice
+   table is commonly wider than a phone. Only the table scrolls, never the page. */
+#view-today .notice-text table {
+  width: 100%;
+  margin: 0 0 0.9em;
+  border-collapse: collapse;
+  font-size: 12px;
+  line-height: 1.5;
+  display: block;
+  overflow-x: auto;
+}
+
+/* The table is the horizontal scroller, so it is focusable for the keyboard. */
+#view-today .notice-text table:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+#view-today .notice-text th,
+#view-today .notice-text td {
+  padding: 6px 8px;
+  border: 1px solid var(--rule);
+  text-align: left;
+  vertical-align: top;
+}
+
+#view-today .notice-text th {
+  font-weight: 600;
+  background: var(--surface-2);
+}
+
+#view-today .notice-text caption {
+  padding: 0 0 6px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: left;
+}
+
+/* Images arrive from the notice host: cap them to the column so one screenshot
+   cannot push the whole body into horizontal scroll. */
+#view-today .notice-text img {
+  max-width: 100%;
+  height: auto;
+  margin: 0.2em 0;
+  border-radius: var(--r-ctrl);
+}
+
+#view-today .notice-text a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* The stale note closes the body: it explains why the text above may lag the
+   original page, so it must be read after it. */
+#view-today .notice-stale {
+  padding: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
 }
 
 /* Narrow phones: the actions shrink so every one of the three stays beside the

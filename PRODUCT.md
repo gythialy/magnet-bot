@@ -62,7 +62,7 @@ database, no accounts" shape without becoming a different product.
 - The bot has two delivery modes. With a public HTTPS origin it registers a
   Telegram webhook and serves webhook, Mini App, API and Gotenberg callback from
   one listener. Without one it falls back to long polling: the listener still
-  serves `/healthz`, the Gotenberg callback, and `/app/`/`/api/` when the Mini App
+  serves `/healthz`, the Gotenberg callback, and `/app/`/`/api/v1/` when the Mini App
   is enabled, but nothing is publicly reachable.
 - Deployment is small and self-hosted: one container image (distroless,
   amd64/arm64), a writable volume for `bot.db` and `bot.log`, and a Gotenberg 8
@@ -142,7 +142,7 @@ database, no accounts" shape without becoming a different product.
   1 m → 5 m → 15 m → 30 m → 1 h → 2 h (6 attempts over roughly four hours), a
   24 h TTL, a claim lease longer than the conversion timeout, and a 3 s gap
   between uploads.
-- `POST /api/convert` and `/convertpdf`/`/convertimg` share one service: check the
+- `POST /api/v1/convert` and `/convertpdf`/`/convertimg` share one service: check the
   notice host allow-list, derive a file name from the page title, post a
   "Converting…" placeholder in the chat, submit to Gotenberg, and swap the
   placeholder for the file when the callback arrives.
@@ -176,7 +176,8 @@ of the shell.
 
 - **Today** — the four statistics counters as a stat strip, title/tender-code
   search, range chips (Today / 7 days / All), a paged notice list, and a detail
-  sheet with "open notice page" plus PDF/PNG conversion. Conversion starts in the
+  sheet with the notice's full text (sanitized, cached, with a force-refresh
+  action), "open notice page" plus PDF/PNG conversion. Conversion starts in the
   app but the file arrives in the chat.
 - **Keywords** — the account's project keywords with their notice counters,
   client-side filtering over the loaded list, batch add (comma-separated, at most
@@ -185,7 +186,7 @@ of the shell.
 - **Records** — paged alarm records with server-side search by credit name, and a
   detail sheet rendered from data already loaded (dates, credit fields, page
   links) plus "Open in chat" through a Telegram deep link.
-- **Settings** — administrator only; the tab is hidden until `/api/me` confirms
+- **Settings** — administrator only; the tab is hidden until `/api/v1/me` confirms
   the role, and a revoked admin sees a revocation notice instead. Four cards:
   access mode (opening access to everyone is confirmed first, switching back to
   restricted is immediate), people (search, batch add by id, edit
@@ -229,7 +230,7 @@ of the shell.
 - `/me` echoes the caller's Telegram chat payload; `/debug` sends a fixed deep
   link. Both are developer utilities, not user features.
 - One unified HTTP listener serves `/healthz` (always), the Telegram webhook
-  (webhook mode only), the Gotenberg callback, `/app/` and `/api/` when enabled.
+  (webhook mode only), the Gotenberg callback, `/app/` and `/api/v1/` when enabled.
 - Startup: validate configuration, open/migrate SQLite, bootstrap access control,
   normalise legacy scheme-less history URLs, prune keyword-match rows older than
   30 days. A failed bootstrap is fatal on purpose.
@@ -361,7 +362,7 @@ as JSON — the historical debug fallback, not a user-facing behaviour.
 
 ## Appendix B — HTTP surface
 
-All `/api/*` calls require a valid `X-Telegram-Init-Data` header; `/api/admin/*`
+All `/api/*` calls require a valid `X-Telegram-Init-Data` header; `/api/v1/admin/*`
 additionally requires an enabled administrator. Errors use
 `{"error":{"code":"..."}}` with `unauthorized`, `forbidden`,
 `forbidden_admin`, `not_found`, `bad_request`, `too_many_requests`,
@@ -375,20 +376,21 @@ administrator, environment-managed row).
 | `POST /telegram/webhook` | Telegram updates (webhook mode only, secret header) |
 | `POST /pdf/{id}` | Gotenberg result callback (optional `?token=`) |
 | `GET /app/` (and `/app` → 301) | Embedded Mini App shell and assets |
-| `GET /api/statistics` | Four counters plus bot username |
-| `GET /api/notices?range=today\|7d\|all&q=&offset=&limit=` | Paged notice history (`range` defaults to `today`) |
-| `GET /api/keywords` | Project keywords, leaderboard order |
-| `GET /api/alarms` | Alarm keywords, id order |
-| `GET /api/alarm-records?q=&offset=&limit=` | Paged alarm records with detail fields and deep link |
-| `POST /api/convert` | Start a conversion (`url`, `format` = `pdf`/`png`); 202 |
-| `GET /api/me` | Caller identity, role, access mode, remark |
-| `GET /api/admin/users?q=&offset=&limit=` | Paged people list |
-| `POST /api/admin/users` | Batch add/update people (`userIds`, `role`, `remark`) |
-| `PATCH /api/admin/users/{id}` | Edit remark, role, enabled |
-| `DELETE /api/admin/users/{id}` | Remove an account (guarded) |
-| `GET /api/admin/settings` | Current access mode |
-| `PATCH /api/admin/settings` | Switch access mode (`off`/`restricted`) |
-| `GET /api/admin/status` | Version, build, counts, webhook state, recent denials |
+| `GET /api/v1/statistics` | Four counters plus bot username |
+| `GET /api/v1/notices?range=today\|7d\|all&q=&offset=&limit=` | Paged notice history (`range` defaults to `today`) |
+| `GET /api/v1/notices/content?url=&refresh=` | Sanitized full text of one owned notice; served from cache unless `refresh=1` |
+| `GET /api/v1/keywords` | Project keywords, leaderboard order |
+| `GET /api/v1/alarms` | Alarm keywords, id order |
+| `GET /api/v1/alarm-records?q=&offset=&limit=` | Paged alarm records with detail fields and deep link |
+| `POST /api/v1/convert` | Start a conversion (`url`, `format` = `pdf`/`png`); 202 |
+| `GET /api/v1/me` | Caller identity, role, access mode, remark |
+| `GET /api/v1/admin/users?q=&offset=&limit=` | Paged people list |
+| `POST /api/v1/admin/users` | Batch add/update people (`userIds`, `role`, `remark`) |
+| `PATCH /api/v1/admin/users/{id}` | Edit remark, role, enabled |
+| `DELETE /api/v1/admin/users/{id}` | Remove an account (guarded) |
+| `GET /api/v1/admin/settings` | Current access mode |
+| `PATCH /api/v1/admin/settings` | Switch access mode (`off`/`restricted`) |
+| `GET /api/v1/admin/status` | Version, build, counts, webhook state, recent denials |
 
 ## Appendix C — Data model
 
@@ -396,6 +398,7 @@ administrator, environment-managed row).
 | --- | --- | --- |
 | `keywords` | `id` | Keyword text, owner, type (`PROJECT`/`ALARM`), delivered-notice counter, soft delete |
 | `histories` | `(user_id, url)` | Delivered notice: title, tender-code flag, delivery time |
+| `notice_contents` | `url` | Sanitized full text of a delivered notice, when it was fetched |
 | `alarms` | `(user_id, credit_code)` | Credit/punishment record: business id, credit fields, dates, handling, page links |
 | `keyword_notices` | `(keyword_id, url)` | Which notice a keyword actually delivered, the source of the counter |
 | `pending_attachments` | `(user_id, url)` | Attachment retry queue: attempts, next attempt, lease, last error |

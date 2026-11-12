@@ -18,12 +18,12 @@ import (
 )
 
 const (
-	apiMePath         = "/api/me"
-	adminUsersPath    = "/api/admin/users"
-	adminSettingsPath = "/api/admin/settings"
-	adminStatusPath   = "/api/admin/status"
+	apiMePath         = apiBase + "/me"
+	adminUsersPath    = apiBase + "/admin/users"
+	adminSettingsPath = apiBase + "/admin/settings"
+	adminStatusPath   = apiBase + "/admin/status"
 
-	// maxAdminUserBatch caps one POST /api/admin/users batch. It bounds both the
+	// maxAdminUserBatch caps one POST /api/v1/admin/users batch. It bounds both the
 	// per-id work and the response size, and matches the keyword batch limit so
 	// one number describes every bulk endpoint.
 	maxAdminUserBatch = 50
@@ -79,7 +79,7 @@ type DeniedUser struct {
 	At       time.Time
 }
 
-// meResponse is the payload of GET /api/me. Name and Username are the Telegram
+// meResponse is the payload of GET /api/v1/me. Name and Username are the Telegram
 // identity persisted on the last interaction; empty on rows that predate it, in
 // which case the client falls back to the remark. Version and BuildTime are the
 // deployment facts every authenticated client may show in the About block.
@@ -116,14 +116,14 @@ type adminUserItem struct {
 	KeywordCounts adminKeywordCounts `json:"keywordCounts"`
 }
 
-// adminUsersResponse is the payload of GET /api/admin/users.
+// adminUsersResponse is the payload of GET /api/v1/admin/users.
 type adminUsersResponse struct {
 	Items      []adminUserItem `json:"items"`
 	Total      int64           `json:"total"`
 	NextOffset *int            `json:"nextOffset"`
 }
 
-// adminAddUsersRequest is the body of POST /api/admin/users.
+// adminAddUsersRequest is the body of POST /api/v1/admin/users.
 type adminAddUsersRequest struct {
 	UserIDs string `json:"userIds"`
 	Role    string `json:"role"`
@@ -138,7 +138,7 @@ type adminAddUsersResponse struct {
 	Ignored []string `json:"ignored"`
 }
 
-// adminUpdateUserRequest is the body of PATCH /api/admin/users/{id}. Every field
+// adminUpdateUserRequest is the body of PATCH /api/v1/admin/users/{id}. Every field
 // is a pointer so "absent" and "false"/"0" stay distinguishable.
 type adminUpdateUserRequest struct {
 	Remark  *string `json:"remark"`
@@ -155,12 +155,12 @@ type adminUserKeywordsResponse struct {
 	ArchivedCount int           `json:"archivedCount"`
 }
 
-// adminSettingsResponse is the payload of GET and PATCH /api/admin/settings.
+// adminSettingsResponse is the payload of GET and PATCH /api/v1/admin/settings.
 type adminSettingsResponse struct {
 	AccessMode string `json:"accessMode"`
 }
 
-// adminSettingsRequest is the body of PATCH /api/admin/settings.
+// adminSettingsRequest is the body of PATCH /api/v1/admin/settings.
 type adminSettingsRequest struct {
 	AccessMode string `json:"accessMode"`
 }
@@ -189,7 +189,7 @@ type adminDeniedUser struct {
 	At       string `json:"at"`
 }
 
-// adminStatusResponse is the payload of GET /api/admin/status.
+// adminStatusResponse is the payload of GET /api/v1/admin/status.
 type adminStatusResponse struct {
 	Version      string              `json:"version"`
 	BuildTime    string              `json:"buildTime"`
@@ -229,9 +229,9 @@ func newAdminAPI(status AdminStatusProvider, write *writeAPI) *adminAPI {
 
 // register adds the account and admin routes to mux.
 //
-// /api/me is only behind the access gate (it is how a rejected client learns
+// /api/v1/me is only behind the access gate (it is how a rejected client learns
 // why it is rejected, so it must stay reachable for allowed users); everything
-// under /api/admin/ additionally requires an enabled administrator.
+// under /api/v1/admin/ additionally requires an enabled administrator.
 func (a *adminAPI) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+apiMePath, a.handleMe)
 
@@ -271,7 +271,7 @@ func (a *adminAPI) authorize(w http.ResponseWriter, r *http.Request) (InitDataUs
 	return a.write.authorize(w, r)
 }
 
-// handleMe serves GET /api/me: who the caller is and which access mode the
+// handleMe serves GET /api/v1/me: who the caller is and which access mode the
 // deployment runs. It is deliberately reachable for every allowed account,
 // including one that is not an administrator.
 func (a *adminAPI) handleMe(w http.ResponseWriter, r *http.Request) {
@@ -303,7 +303,7 @@ func (a *adminAPI) handleMe(w http.ResponseWriter, r *http.Request) {
 
 		// Opening the Mini App is an interaction opportunity too: a user may
 		// never send the bot an update, so persist the signed identity here.
-		// Best-effort by design: a failed write must not fail /api/me.
+		// Best-effort by design: a failed write must not fail /api/v1/me.
 		name := strings.TrimSpace(user.FirstName + " " + user.LastName)
 		if row.Name != name || row.Username != user.Username {
 			if err := dal.User.Touch(user.ID, time.Now(), name, user.Username); err == nil {
@@ -323,7 +323,7 @@ func (a *adminAPI) handleMe(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, identity)
 }
 
-// handleListUsers serves GET /api/admin/users.
+// handleListUsers serves GET /api/v1/admin/users.
 func (a *adminAPI) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 
@@ -358,7 +358,7 @@ func (a *adminAPI) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleAddUsers serves POST /api/admin/users: a batch of ids is added when new
+// handleAddUsers serves POST /api/v1/admin/users: a batch of ids is added when new
 // and updated when already known.
 //
 // Entries that do not parse as a Telegram id are reported in "ignored" instead
@@ -438,7 +438,7 @@ func (a *adminAPI) handleAddUsers(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleUpdateUser serves PATCH /api/admin/users/{id}.
+// handleUpdateUser serves PATCH /api/v1/admin/users/{id}.
 func (a *adminAPI) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 	actor, ok := a.authorize(w, r)
 	if !ok {
@@ -481,7 +481,7 @@ func (a *adminAPI) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, adminUserItemOf(row, keywordCountsOf([]*model.User{row})[row.UserID]))
 }
 
-// handleDeleteUser serves DELETE /api/admin/users/{id}.
+// handleDeleteUser serves DELETE /api/v1/admin/users/{id}.
 func (a *adminAPI) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	actor, ok := a.authorize(w, r)
 	if !ok {
@@ -501,7 +501,7 @@ func (a *adminAPI) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleListUserKeywords serves GET /api/admin/users/{id}/keywords: the
+// handleListUserKeywords serves GET /api/v1/admin/users/{id}/keywords: the
 // administrator-only read-only view of another account's project or alarm
 // words. It never accepts a write verb and never takes a mutation path.
 func (a *adminAPI) handleListUserKeywords(w http.ResponseWriter, r *http.Request) {
@@ -558,7 +558,7 @@ func (a *adminAPI) handleListUserKeywords(w http.ResponseWriter, r *http.Request
 	})
 }
 
-// handleGetSettings serves GET /api/admin/settings.
+// handleGetSettings serves GET /api/v1/admin/settings.
 func (a *adminAPI) handleGetSettings(w http.ResponseWriter, _ *http.Request) {
 	mode, err := currentAccessMode()
 	if err != nil {
@@ -570,7 +570,7 @@ func (a *adminAPI) handleGetSettings(w http.ResponseWriter, _ *http.Request) {
 	WriteJSON(w, http.StatusOK, adminSettingsResponse{AccessMode: mode})
 }
 
-// handleUpdateSettings serves PATCH /api/admin/settings.
+// handleUpdateSettings serves PATCH /api/v1/admin/settings.
 func (a *adminAPI) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.authorize(w, r); !ok {
 		return
@@ -596,7 +596,7 @@ func (a *adminAPI) handleUpdateSettings(w http.ResponseWriter, r *http.Request) 
 	WriteJSON(w, http.StatusOK, adminSettingsResponse{AccessMode: mode})
 }
 
-// handleStatus serves GET /api/admin/status.
+// handleStatus serves GET /api/v1/admin/status.
 func (a *adminAPI) handleStatus(w http.ResponseWriter, r *http.Request) {
 	mode, err := currentAccessMode()
 	if err != nil {
@@ -655,7 +655,7 @@ func currentAccessMode() (string, error) {
 	if err != nil {
 		// A database that has not run the access-control migration has no
 		// settings table. Reporting the mode the bootstrap would write there keeps
-		// /api/me usable instead of answering 500 to every client of such a
+		// /api/v1/me usable instead of answering 500 to every client of such a
 		// deployment; a genuine read failure on a provisioned database still
 		// surfaces as an error.
 		if !accessControlProvisioned() {

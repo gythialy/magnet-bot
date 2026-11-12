@@ -88,6 +88,9 @@
     "today.convertFailed": "Conversion failed, try again later",
     "today.convertUnavailable": "This notice is not available for conversion",
     "today.details": "Notice details",
+    "today.contentLoading": "Loading full text…",
+    "today.contentFailed": "Couldn't load the full text.",
+    "today.contentStale": "Refresh failed; showing the last cached copy.",
 
     /* Statistics -------------------------------------------------------- */
     "stat.history": "History",
@@ -309,6 +312,7 @@
     "aria.sendPdf": "Send PDF",
     "aria.sendImage": "Send image",
     "aria.openNotice": "Open notice",
+    "aria.reloadContent": "Force refresh full text",
     "aria.language": "Language",
     "aria.appearance": "Appearance",
     "aria.members": "Members",

@@ -499,7 +499,7 @@
     var name = ROUTES.indexOf(requested) === -1 ? DEFAULT_ROUTE : requested;
 
     // Sub-pages are administrator surfaces; a non-admin typed hash must not
-    // even mount the section (the view also re-checks through /api/me).
+    // even mount the section (the view also re-checks through /api/v1/me).
     state.route = name;
 
     // replaceState rather than assigning location.hash: assigning would append
@@ -693,7 +693,7 @@
 
   /**
    * The authenticated caller, fetched once per session. Views that only need
-   * role/access mode share this instead of each issuing /api/me on mount;
+   * role/access mode share this instead of each issuing /api/v1/me on mount;
    * force=true refetches after a role change.
    */
   var mePromise = null;
@@ -703,9 +703,9 @@
       if (mePromise) {
         return mePromise;
       }
-      mePromise = request("/api/me");
+      mePromise = request("/api/v1/me");
     } else {
-      mePromise = request("/api/me");
+      mePromise = request("/api/v1/me");
     }
     mePromise.catch(function () {
       mePromise = null;
@@ -765,7 +765,7 @@
   }
 
   /**
-   * request("/api/notices", {method: "GET", body: {...}})
+   * request("/api/v1/notices", {method: "GET", body: {...}})
    *
    * Every call carries the raw initData header the server authenticates; the
    * body is JSON-encoded unless it is already a string. Non-2xx responses throw
