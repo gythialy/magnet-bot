@@ -128,7 +128,7 @@ func TestExtractNoticeBodyKeepsOnlyTheContentContainer(t *testing.T) {
 		t.Fatalf("ExtractNoticeBody() error = %v", err)
 	}
 
-	for _, want := range []string{"公告标题", "公告正文", "<table>", "<caption>明细</caption>"} {
+	for _, want := range []string{"公告标题", "公告正文", `<table tabindex="0">`, "<caption>明细</caption>"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("output is missing %q: %s", want, got)
 		}

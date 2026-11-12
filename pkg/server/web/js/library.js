@@ -757,6 +757,10 @@
     }
     if (key === "Enter" && dialog.field && dialog.field.tagName === "INPUT" && !dialog.pending) {
       event.preventDefault();
+      // An IME uses Enter to confirm a candidate, not to submit the field.
+      if (event.isComposing || event.keyCode === 229) {
+        return;
+      }
       confirmDialog();
     }
   }

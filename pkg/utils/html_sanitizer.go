@@ -236,6 +236,12 @@ func (r *noticeRenderer) element(n *html.Node) {
 func (r *noticeRenderer) attributes(n *html.Node, name string) string {
 	var b strings.Builder
 
+	// A wide table scrolls horizontally inside the app, and only a focusable
+	// scroll container is reachable from the keyboard.
+	if name == "table" {
+		b.WriteString(` tabindex="0"`)
+	}
+
 	for _, attr := range n.Attr {
 		key := strings.ToLower(attr.Key)
 

@@ -1271,8 +1271,48 @@
     }
   }
 
+  // Everything inside the sheet a keyboard can reach. Hidden nodes are filtered
+  // out afterwards: a hidden button matches the selector but cannot take focus.
+  var FOCUSABLE =
+    "a[href], button:not([disabled]), input:not([disabled]), " +
+    "select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
+
+  // The sheet covers the list but the page behind it is still focusable, so Tab
+  // has to cycle inside the sheet instead of walking into the scrim.
+  function trapFocus(event) {
+    var nodes = refs.detail.querySelectorAll(FOCUSABLE);
+    var visible = [];
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i].getClientRects().length > 0) {
+        visible.push(nodes[i]);
+      }
+    }
+    if (visible.length === 0) {
+      return;
+    }
+    var first = visible[0];
+    var last = visible[visible.length - 1];
+    var active = document.activeElement;
+    if (!refs.detail.contains(active)) {
+      event.preventDefault();
+      first.focus();
+      return;
+    }
+    if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
   function onKeydown(event) {
     var key = event.key || "";
+    if (key === "Tab" && refs && !refs.detail.hidden) {
+      trapFocus(event);
+      return;
+    }
     if (key !== "Escape" && key !== "Esc") {
       return;
     }

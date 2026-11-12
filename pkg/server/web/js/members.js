@@ -1135,10 +1135,16 @@
     });
 
     els.search.addEventListener("keydown", function (event) {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        commitSearch();
+      if (event.key !== "Enter") {
+        return;
       }
+      event.preventDefault();
+      // An IME uses Enter to confirm a candidate; committing here would send a
+      // half-composed query.
+      if (event.isComposing || event.keyCode === 229) {
+        return;
+      }
+      commitSearch();
     });
 
     els.screen.addEventListener("scroll", function () {

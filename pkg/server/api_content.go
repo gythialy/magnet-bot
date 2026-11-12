@@ -212,7 +212,6 @@ func (a *apiHandler) writeNoticeContent(w http.ResponseWriter, noticeURL, body s
 // noticeContentFailureReason maps a fetch error to a stable,
 // low-cardinality log label. The error itself is never logged.
 func noticeContentFailureReason(err error) string {
-	var statusErr noticeContentStatusError
 	switch {
 	case errors.Is(err, utils.ErrNoticeBodyMissing):
 		return "no_body"
@@ -220,12 +219,13 @@ func noticeContentFailureReason(err error) string {
 		return "too_large"
 	case errors.Is(err, context.DeadlineExceeded):
 		return "timeout"
-	case errors.As(err, &statusErr):
+	}
+
+	if statusErr, ok := errors.AsType[noticeContentStatusError](err); ok {
 		if statusErr.status == http.StatusNotFound {
 			return "not_found"
 		}
 		return "bad_status"
-	default:
-		return "error"
 	}
+	return "error"
 }
