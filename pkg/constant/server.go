@@ -28,6 +28,10 @@ const (
 	MiniAppEnabled         = "MINI_APP_ENABLED"
 	TelegramWebhookPath    = "/telegram/webhook"
 	MiniAppPath            = "/app/"
-	APIPath                = "/api/"
-	HealthPath             = "/healthz"
+	// APIPath carries the version segment: the Mini App's assets are cached
+	// forever, so a client can outlive the deployment that served it. A version
+	// in the path lets a breaking response change ship as /api/v2 while an old
+	// client fails against a 404 instead of misreading the new payload.
+	APIPath    = "/api/v1/"
+	HealthPath = "/healthz"
 )

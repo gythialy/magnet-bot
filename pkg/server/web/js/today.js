@@ -101,7 +101,20 @@
     errorStatus: 0,
     detailIndex: -1,
     lastFocus: null,
+    // Full-text state of the notice the sheet is showing. contentSeq guards
+    // the same race the list has: closing the sheet or opening another notice
+    // must not let a slow answer paint over the current one.
+    contentStatus: "idle", // idle | loading | ready | failed
+    contentHTML: "",
+    contentStale: false,
+    contentSeq: 0,
   };
+
+  // Bodies already fetched in this session, keyed by notice URL. The server
+  // caches too; this only spares the round trip when the same sheet is reopened,
+  // and it is dropped on reload so a changed range cannot show another query's
+  // body.
+  var contentCache = Object.create(null);
 
   // Bumped per request so a slow response for an old query can never overwrite
   // the list for the query the user is actually looking at.
@@ -407,10 +420,31 @@
     '<h2 class="sheet-title" id="today-detail-title" data-slot="detail-title"></h2>' +
     '<p class="sheet-kicker" data-slot="detail-kicker"></p>' +
     "</div>" +
+    '<div class="sheet-head-actions">' +
+    '<button type="button" class="icon-btn" data-action="reload-content"' +
+    ' data-i18n-aria="aria.reloadContent" aria-label="' + escape(t("aria.reloadContent")) + '">' +
+    app.icon("refresh", "icon-sm") +
+    "</button>" +
     '<button type="button" class="icon-btn" data-action="close-detail"' +
     ' data-i18n-aria="aria.close" aria-label="' + escape(t("aria.close")) + '">' +
     app.icon("close") +
     "</button>" +
+    "</div>" +
+    "</div>" +
+    '<div class="sheet-body notice-body" data-slot="detail-body">' +
+    '<p class="label state-label" data-slot="detail-loading" data-i18n="today.contentLoading" hidden>' +
+    escape(t("today.contentLoading")) +
+    "</p>" +
+    '<div class="inline-error" data-slot="detail-error" role="alert" hidden>' +
+    app.icon("alert") +
+    '<div class="msg"><span data-slot="detail-error-msg"></span></div>' +
+    '<button type="button" class="btn-ghost btn-sm" data-action="retry-content"' +
+    ' data-i18n="common.retry">' + escape(t("common.retry")) + "</button>" +
+    "</div>" +
+    '<div class="notice-text" data-slot="detail-text"></div>' +
+    '<p class="notice-stale" data-slot="detail-stale" data-i18n="today.contentStale" hidden>' +
+    escape(t("today.contentStale")) +
+    "</p>" +
     "</div>" +
     '<div class="sheet-actions">' +
     '<button type="button" class="btn is-grow" data-action="open-notice"' +
@@ -462,6 +496,12 @@
       detailTitle: section.querySelector('[data-slot="detail-title"]'),
       detailKicker: section.querySelector('[data-slot="detail-kicker"]'),
       detailClose: section.querySelector("[data-action='close-detail']"),
+      detailLoading: section.querySelector('[data-slot="detail-loading"]'),
+      detailError: section.querySelector('[data-slot="detail-error"]'),
+      detailErrorMsg: section.querySelector('[data-slot="detail-error-msg"]'),
+      detailText: section.querySelector('[data-slot="detail-text"]'),
+      detailStale: section.querySelector('[data-slot="detail-stale"]'),
+      detailReload: section.querySelector("[data-action='reload-content']"),
     };
   }
 
@@ -477,6 +517,7 @@
     refs = build(section);
     refs.search.addEventListener("input", app.debounce(applySearch, SEARCH_DEBOUNCE_MS));
     refs.screen.addEventListener("click", onClick);
+    refs.detailText.addEventListener("click", onBodyClick);
     refs.scrim.addEventListener("click", closeDetail);
     app.bindRefresh(refs.screen, refresh);
 
@@ -770,6 +811,9 @@
     state.failed = false;
     state.errorStatus = 0;
 
+    // A new query can return different rows for the same notice (a re-pushed
+    // body), so the session cache starts empty with the list.
+    contentCache = Object.create(null);
     closeDetail();
     renderList();
     renderStates();
@@ -851,6 +895,21 @@
     if (typeof refs.detailClose.focus === "function") {
       refs.detailClose.focus();
     }
+
+    // A notice without a URL has nothing to open, so the sheet stays a summary
+    // instead of offering actions that can only fail.
+    refs.detailReload.disabled = !item.url;
+    if (item.url) {
+      loadContent(item.url, false);
+    } else {
+      // No URL means no body: clear whatever the previous sheet was showing
+      // instead of leaving another notice's text under this title.
+      state.contentSeq++;
+      state.contentStatus = "idle";
+      state.contentHTML = "";
+      state.contentStale = false;
+      renderContent();
+    }
   }
 
   function closeDetail() {
@@ -861,6 +920,10 @@
 
     state.detailIndex = -1;
     state.lastFocus = null;
+    // Bumping the sequence orphans any in-flight answer: it must not paint a
+    // body over the closed or next sheet.
+    state.contentSeq++;
+    state.contentStatus = "idle";
     refs.detail.hidden = true;
     refs.scrim.hidden = true;
 
@@ -870,6 +933,105 @@
       } catch (err) {
         returnTo.focus();
       }
+    }
+  }
+
+  /* Full text ------------------------------------------------------------ */
+
+  /*
+   * Fetches one notice's body. force=true is the sheet's reload button: it asks
+   * the server to re-fetch the original page, and a failure keeps whatever text
+   * is already on screen (the server answers the stored copy marked stale in
+   * that case, so the reader sees the old body instead of an empty pane).
+   */
+  function loadContent(url, force) {
+    if (!refs) {
+      return Promise.resolve();
+    }
+    if (!force && contentCache[url]) {
+      state.contentStatus = "ready";
+      state.contentHTML = contentCache[url];
+      state.contentStale = false;
+      renderContent();
+      return Promise.resolve();
+    }
+    if (!global.MagnetAPI || typeof global.MagnetAPI.noticeContent !== "function") {
+      state.contentStatus = "failed";
+      renderContent();
+      return Promise.resolve();
+    }
+
+    var sequence = ++state.contentSeq;
+    state.contentStatus = "loading";
+    // A forced refresh keeps the copy it already has on screen, so a failure
+    // still leaves something readable; a first load starts from empty.
+    if (!force) {
+      state.contentHTML = "";
+    }
+    state.contentStale = false;
+    renderContent();
+
+    return global.MagnetAPI.noticeContent(url, force)
+      .then(function (payload) {
+        if (sequence !== state.contentSeq) {
+          return;
+        }
+        var html = payload && typeof payload.html === "string" ? payload.html : "";
+        if (!html) {
+          state.contentStatus = "failed";
+        } else {
+          state.contentStatus = "ready";
+          state.contentHTML = html;
+          state.contentStale = Boolean(payload && payload.stale);
+          contentCache[url] = html;
+        }
+        renderContent();
+      })
+      .catch(function (err) {
+        if (sequence !== state.contentSeq) {
+          return;
+        }
+        // A failed refresh keeps the body it was showing and says so; a first
+        // load has nothing, so it reports the failure instead.
+        if (state.contentHTML) {
+          state.contentStatus = "ready";
+          state.contentStale = true;
+        } else {
+          state.contentStatus = "failed";
+        }
+        if (err && err.status === 429) {
+          app.toast(t("app.rateLimited"), "error");
+        }
+        renderContent();
+      });
+  }
+
+  function renderContent() {
+    if (!refs) {
+      return;
+    }
+
+    var loading = state.contentStatus === "loading";
+    var failed = state.contentStatus === "failed";
+    var ready = state.contentStatus === "ready";
+    // A forced refresh keeps the readable copy on screen: only a first load has
+    // an empty pane, so the spinner must not hide text that is still valid.
+    var hasText = state.contentHTML !== "";
+
+    refs.detailLoading.hidden = !loading || hasText;
+    refs.detailError.hidden = !failed;
+    refs.detailText.hidden = !ready && !hasText;
+    refs.detailStale.hidden = !(hasText && state.contentStale);
+    refs.detailReload.disabled = loading;
+
+    if (failed) {
+      refs.detailErrorMsg.textContent = t("today.contentFailed");
+    }
+    // The body is produced by the server's whitelist sanitizer (scripts,
+    // handlers and styles removed, links resolved and restricted to http(s)),
+    // so it is the one place this view assigns markup instead of text.
+    if (hasText && refs.detailText.innerHTML !== state.contentHTML) {
+      refs.detailText.innerHTML = state.contentHTML;
     }
   }
 
@@ -1076,8 +1238,36 @@
       startConversion(noticeIndex, action.getAttribute("data-format"));
       return;
     }
+    if (name === "reload-content" || name === "retry-content") {
+      var current = state.items[state.detailIndex];
+      if (current && current.url) {
+        loadContent(current.url, name === "reload-content");
+      }
+      return;
+    }
     if (name === "close-detail") {
       closeDetail();
+      return;
+    }
+  }
+
+  /*
+   * Links inside a notice body stay in the app's hands: navigating the WebView
+   * away from the Mini App would leave the reader with no way back, and only
+   * https targets are opened (the sanitizer already dropped everything else).
+   */
+  function onBodyClick(event) {
+    var link = closest(event.target, "href");
+    if (!link) {
+      return;
+    }
+    // Any anchor is intercepted: letting the WebView follow one would leave the
+    // Mini App and there is no back affordance inside Telegram. The sanitizer
+    // already dropped non-http(s) targets, and only https is opened here.
+    event.preventDefault();
+    var href = link.getAttribute("href") || "";
+    if (/^https:\/\//i.test(href)) {
+      app.openLink(href);
     }
   }
 
@@ -1143,6 +1333,9 @@
     renderMore();
     syncRowText();
     syncDetailText();
+    // Only the programmatic copy needs rewriting here; the static labels are
+    // plain data-i18n nodes the shell has already updated.
+    renderContent();
   }
 
   /* View lifecycle ------------------------------------------------------- */
@@ -1159,7 +1352,7 @@
 
   /**
    * Mount is called on every route activation and must be cheap when nothing
-   * changed: re-render from memory, and only hit /api/notices when this view
+   * changed: re-render from memory, and only hit /api/v1/notices when this view
    * still owes a first page, the last attempt failed, or it was invalidated.
    */
   function mount() {

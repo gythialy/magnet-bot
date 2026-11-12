@@ -260,7 +260,7 @@ func TestServiceConfigURLs(t *testing.T) {
 			wantEnabled: true,
 			wantWebhook: "https://bot.example.com/telegram/webhook",
 			wantApp:     "https://bot.example.com/app/",
-			wantAPI:     "https://bot.example.com/api/",
+			wantAPI:     "https://bot.example.com/api/v1/",
 			wantHealth:  "https://bot.example.com/healthz",
 		},
 		{
@@ -269,7 +269,7 @@ func TestServiceConfigURLs(t *testing.T) {
 			wantEnabled: true,
 			wantWebhook: "https://bot.example.com/telegram/webhook",
 			wantApp:     "https://bot.example.com/app/",
-			wantAPI:     "https://bot.example.com/api/",
+			wantAPI:     "https://bot.example.com/api/v1/",
 			wantHealth:  "https://bot.example.com/healthz",
 		},
 		{
@@ -278,7 +278,7 @@ func TestServiceConfigURLs(t *testing.T) {
 			wantEnabled: true,
 			wantWebhook: "https://bot.example.com/telegram/webhook",
 			wantApp:     "https://bot.example.com/app/",
-			wantAPI:     "https://bot.example.com/api/",
+			wantAPI:     "https://bot.example.com/api/v1/",
 			wantHealth:  "https://bot.example.com/healthz",
 		},
 		{
@@ -287,7 +287,7 @@ func TestServiceConfigURLs(t *testing.T) {
 			wantEnabled: true,
 			wantWebhook: "https://bot.example.com:8443/telegram/webhook",
 			wantApp:     "https://bot.example.com:8443/app/",
-			wantAPI:     "https://bot.example.com:8443/api/",
+			wantAPI:     "https://bot.example.com:8443/api/v1/",
 			wantHealth:  "https://bot.example.com:8443/healthz",
 		},
 	}

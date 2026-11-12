@@ -14,17 +14,24 @@
 (function (global) {
   "use strict";
 
+  // Every path carries the version segment. The bundle is served with a
+  // forever-cache, so a client can outlive the deployment that served it: a
+  // breaking response change ships as /api/v2, and an old client fails against
+  // a 404 instead of misreading the new payload.
+  var API_BASE = "/api/v1";
+
   var ENDPOINTS = {
-    statistics: "/api/statistics",
-    notices: "/api/notices",
-    keywords: "/api/keywords",
-    alarms: "/api/alarms",
-    alarmRecords: "/api/alarm-records",
-    convert: "/api/convert",
-    me: "/api/me",
-    adminUsers: "/api/admin/users",
-    adminSettings: "/api/admin/settings",
-    adminStatus: "/api/admin/status",
+    statistics: API_BASE + "/statistics",
+    notices: API_BASE + "/notices",
+    noticeContent: API_BASE + "/notices/content",
+    keywords: API_BASE + "/keywords",
+    alarms: API_BASE + "/alarms",
+    alarmRecords: API_BASE + "/alarm-records",
+    convert: API_BASE + "/convert",
+    me: API_BASE + "/me",
+    adminUsers: API_BASE + "/admin/users",
+    adminSettings: API_BASE + "/admin/settings",
+    adminStatus: API_BASE + "/admin/status",
   };
 
   function core() {
@@ -86,6 +93,17 @@
     /** Notices for a date range: {range: "today"|"7d"|"all", q, offset, limit}. */
     notices: function (params) {
       return get("notices", params);
+    },
+
+    /**
+     * One notice's full text: {url, refresh}.
+     *
+     * Resolves {url, html, cached, stale, fetchedAt}. The server answers from its
+     * cache unless refresh is truthy, so opening the same sheet again costs one
+     * request; refresh forces a re-fetch of the original page.
+     */
+    noticeContent: function (url, refresh) {
+      return get("noticeContent", { url: String(url), refresh: refresh ? 1 : "" });
     },
 
     /**

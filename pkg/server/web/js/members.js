@@ -1209,7 +1209,7 @@
       return;
     }
     if (state.gate === "checking" || !state.me) {
-      // A second mount while /api/me is still in flight must not fetch again.
+      // A second mount while /api/v1/me is still in flight must not fetch again.
       if (!state.mePromise) {
         startCheck(false);
       }

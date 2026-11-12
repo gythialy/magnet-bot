@@ -384,7 +384,7 @@ func TestValidateInitDataEnforcesFreshness(t *testing.T) {
 // signedRequest builds a request carrying raw initData in the header the Mini
 // App uses.
 func signedRequest(raw string) *http.Request {
-	req := httptest.NewRequest(http.MethodGet, "/api/statistics", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/statistics", nil)
 	if raw != "" {
 		req.Header.Set("X-Telegram-Init-Data", raw)
 	}
@@ -534,7 +534,7 @@ func TestInitDataMiddlewareLogsWithoutCredential(t *testing.T) {
 	}
 
 	line := buf.String()
-	for _, want := range []string{"mini app init data rejected", "/api/statistics", "signature or payload invalid"} {
+	for _, want := range []string{"mini app init data rejected", "/api/v1/statistics", "signature or payload invalid"} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("log line %q is missing %q", line, want)
 		}

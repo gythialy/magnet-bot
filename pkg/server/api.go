@@ -10,26 +10,37 @@ import (
 	"github.com/gythialy/magnet/pkg/model"
 )
 
-// The Mini App API is mounted by pkg/server as a subtree: mux.Handle("/api/",
+// The Mini App API is mounted by pkg/server as a subtree: mux.Handle(apiMountPrefix,
 // cfg.API). net/http does not strip the mount point for a subtree handler — it
 // only rewrites the URL for its own canonical-path/redirect handling — so the
-// handler receives "/api/statistics", prefix included. The patterns below
+// handler receives "/api/v1/statistics", prefix included. The patterns below
 // therefore repeat the prefix instead of assuming a rewrite that never happens;
 // a caller that does strip it would have to change these constants and the
 // client together, which is exactly the contract this file documents.
+//
+// The version segment is part of every path on purpose. The Mini App ships as
+// cache-forever assets, so a client can outlive a deployment: an unversioned
+// endpoint would force every future response-shape change to stay backwards
+// compatible. With /v1 in the path a breaking change becomes /v2 plus a new
+// client, and an old client fails loudly against a 404 instead of silently
+// misreading a payload.
 const (
-	apiStatisticsPath   = "/api/statistics"
-	apiNoticesPath      = "/api/notices"
-	apiKeywordsPath     = "/api/keywords"
-	apiAlarmsPath       = "/api/alarms"
-	apiAlarmRecordsPath = "/api/alarm-records"
-	apiConvertPath      = "/api/convert"
+	apiVersion = "v1"
+	apiBase    = "/api/" + apiVersion
 
-	// apiMountPrefix catches every other /api/* request. Without it an unknown
-	// endpoint falls through to net/http's plain-text 404, which the Mini App
-	// cannot parse into its typed request error (js/core.js expects the JSON
-	// envelope on every non-2xx response).
-	apiMountPrefix = "/api/"
+	apiStatisticsPath    = apiBase + "/statistics"
+	apiNoticesPath       = apiBase + "/notices"
+	apiNoticeContentPath = apiBase + "/notices/content"
+	apiKeywordsPath      = apiBase + "/keywords"
+	apiAlarmsPath        = apiBase + "/alarms"
+	apiAlarmRecordsPath  = apiBase + "/alarm-records"
+	apiConvertPath       = apiBase + "/convert"
+
+	// apiMountPrefix catches every other /api/v1/* request. Without it an
+	// unknown endpoint falls through to net/http's plain-text 404, which the
+	// Mini App cannot parse into its typed request error (js/core.js expects the
+	// JSON envelope on every non-2xx response).
+	apiMountPrefix = apiBase + "/"
 
 	// convertRateLimit and convertRateWindow bound how many conversions one
 	// user may start per minute. Each request renders a whole page in a shared
@@ -80,18 +91,35 @@ type apiHandler struct {
 	// configured as "@name" still produces a valid deep link.
 	botUsername string
 
-	// now is the clock behind the relative notice ranges. It is a seam for
-	// tests: pinning it makes "today" and "7d" deterministic instead of
-	// depending on when the suite runs.
+	// allowedHost is the notice host a URL must match before it may be fetched
+	// or converted. Empty rejects every notice URL: this value ends up as the
+	// address of a server-side request, so it never fails open.
+	allowedHost string
+
+	// noticeBaseURL resolves relative links inside a cached body. It is the
+	// scheme-qualified form of allowedHost.
+	noticeBaseURL string
+
+	// fetchNoticeContent retrieves and sanitizes one notice page. It is a field
+	// so tests can stand in for the notice site without network access.
+	fetchNoticeContent noticeContentFetcher
+
+	// contentLimiter bounds outbound notice fetches per user. A nil limiter
+	// skips the check; that is only acceptable for tests.
+	contentLimiter ConversionLimiter
+
+	// now is the clock behind the relative notice ranges and the cache
+	// timestamps. It is a seam for tests: pinning it makes "today" and "7d"
+	// deterministic instead of depending on when the suite runs.
 	now func() time.Time
 }
 
 // NewAPI builds the Mini App API: the read endpoints, the keyword/alarm writes,
-// the optional conversion route, /api/me and the administrator surface.
+// the optional conversion route, /api/v1/me and the administrator surface.
 //
 // Every route sits behind two gates: initData proves who the caller is, and
 // requireAllowed decides whether the access policy serves them. The admin routes
-// add requireAdmin on top. Mount the result at "/api/" — it expects the full,
+// add requireAdmin on top. Mount the result at "/api/v1/" — it expects the full,
 // unstripped request path.
 func NewAPI(cfg APIConfig) http.Handler {
 	return newAPI(cfg, time.Now)
@@ -100,13 +128,27 @@ func NewAPI(cfg APIConfig) http.Handler {
 // newAPI is NewAPI with an injectable clock. Production always passes time.Now;
 // tests pass a fixed instant so range boundaries do not move under them.
 func newAPI(cfg APIConfig, now func() time.Time) http.Handler {
+	return newAPIWithNoticeSeams(cfg, now, fetchNoticePage,
+		NewLimiter(noticeContentRateLimit, noticeContentRateWindow))
+}
+
+// newAPIWithNoticeSeams is the construction seam for the notice-content
+// endpoint: the page fetcher and the fetch limiter are replaceable so tests can
+// prove the fetch/refuse branches without touching the network.
+func newAPIWithNoticeSeams(cfg APIConfig, now func() time.Time,
+	fetcher noticeContentFetcher, limiter ConversionLimiter,
+) http.Handler {
 	if now == nil {
 		now = time.Now
 	}
 
 	api := &apiHandler{
-		botUsername: normalizeBotUsername(cfg.BotUsername),
-		now:         now,
+		botUsername:        normalizeBotUsername(cfg.BotUsername),
+		allowedHost:        strings.TrimSpace(cfg.AllowedHost),
+		noticeBaseURL:      noticeBaseURL(cfg.AllowedHost),
+		fetchNoticeContent: fetcher,
+		contentLimiter:     limiter,
+		now:                now,
 	}
 
 	mux := http.NewServeMux()
@@ -114,6 +156,9 @@ func newAPI(cfg APIConfig, now func() time.Time) http.Handler {
 	// the mux, so handlers never have to re-check the verb.
 	mux.HandleFunc("GET "+apiStatisticsPath, api.handleStatistics)
 	mux.HandleFunc("GET "+apiNoticesPath, api.handleNotices)
+	// ServeMux prefers the longer literal pattern, so the content route is
+	// chosen for /api/v1/notices/content regardless of registration order.
+	mux.HandleFunc("GET "+apiNoticeContentPath, api.handleNoticeContent)
 	mux.HandleFunc("GET "+apiKeywordsPath, api.handleKeywords)
 	mux.HandleFunc("GET "+apiAlarmsPath, api.handleAlarms)
 	mux.HandleFunc("GET "+apiAlarmRecordsPath, api.handleAlarmRecords)
@@ -210,4 +255,19 @@ func handleAPINotFound(w http.ResponseWriter, _ *http.Request) {
 // keeps links and the statistics payload in agreement.
 func normalizeBotUsername(username string) string {
 	return strings.TrimPrefix(strings.TrimSpace(username), "@")
+}
+
+// noticeBaseURL turns the configured notice host into the base a fetched or
+// cached body resolves its relative links against. SERVER_URL is documented as
+// a full URL, but a deployment that dropped the scheme must not be able to make
+// every relative link in a notice resolve to "".
+func noticeBaseURL(host string) string {
+	trimmed := strings.TrimSuffix(strings.TrimSpace(host), "/")
+	if trimmed == "" {
+		return ""
+	}
+	if strings.Contains(trimmed, "://") {
+		return trimmed
+	}
+	return "https://" + trimmed
 }

@@ -38,7 +38,8 @@ func setupAPITestDB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open test database: %v", err)
 	}
-	if err := db.AutoMigrate(&model.History{}, &model.Keyword{}, &model.Alarm{}); err != nil {
+	if err := db.AutoMigrate(&model.History{}, &model.Keyword{}, &model.Alarm{},
+		&model.NoticeContent{}); err != nil {
 		t.Fatalf("migrate test database: %v", err)
 	}
 
@@ -172,7 +173,7 @@ func TestAPIRejectsUnauthenticatedRequests(t *testing.T) {
 		apiAlarmRecordsPath,
 		apiKeywordsPath,
 		apiAlarmsPath,
-		"/api/no-such-endpoint",
+		"/api/v1/no-such-endpoint",
 	} {
 		t.Run(target, func(t *testing.T) {
 			rec := sendAPI(t, handler, target, "")
@@ -676,7 +677,7 @@ func TestAPIUnknownEndpoint(t *testing.T) {
 	handler := apiTestHandler(APIConfig{BotToken: testBotToken}, now)
 	raw := apiTestInitData(t, now, testUserID)
 
-	rec := sendAPI(t, handler, "/api/no-such-endpoint", raw)
+	rec := sendAPI(t, handler, "/api/v1/no-such-endpoint", raw)
 	const want = `{"error":{"code":"not_found"}}`
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
@@ -737,8 +738,8 @@ func TestAPIEndpointsAreUserScoped(t *testing.T) {
 }
 
 // TestAPIUnderProductionRouter documents and guards the prefix contract: the
-// unified router mounts the API with mux.Handle("/api/", cfg.API) and net/http
-// does not strip the mount point, so the handler must register the /api/...
+// unified router mounts the API with mux.Handle("/api/v1/", cfg.API) and net/http
+// does not strip the mount point, so the handler must register the /api/v1/...
 // patterns itself and receives the full path.
 func TestAPIUnderProductionRouter(t *testing.T) {
 	setupAPITestDB(t)
@@ -821,7 +822,7 @@ func TestAPIKeywordsIncludeArchived(t *testing.T) {
 	})
 }
 
-// TestAPIStatisticsExcludesArchivedKeywords pins the /api/statistics numbers:
+// TestAPIStatisticsExcludesArchivedKeywords pins the /api/v1/statistics numbers:
 // archived words contribute neither to the keyword counts nor to the summed
 // related notices.
 func TestAPIStatisticsExcludesArchivedKeywords(t *testing.T) {

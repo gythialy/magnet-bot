@@ -34,7 +34,7 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full deployment guide
 | `PUBLIC_BASE_URL` | public mode | empty | Public HTTPS origin, e.g. `https://bot.example.com` (scheme included, no trailing slash). **Empty = legacy polling mode**: no webhook registration and no public entry point |
 | `TELEGRAM_WEBHOOK_SECRET` | with webhook | - | 1–256 characters of `[A-Za-z0-9_-]`; Telegram echoes it in `X-Telegram-Bot-Api-Secret-Token` |
 | `TELEGRAM_WEBHOOK_ENABLED` | - | `true` | Set `false` to keep polling even when `PUBLIC_BASE_URL` is set |
-| `MINI_APP_ENABLED` | - | `true` | Set `false` to keep the legacy text commands instead of serving `/app/` and `/api/` |
+| `MINI_APP_ENABLED` | - | `true` | Set `false` to keep the legacy text commands instead of serving `/app/` and `/api/v1/` |
 
 > `TELEGRAM_WEBHOOK_ENABLED` and `MINI_APP_ENABLED` accept `1/true/on` and
 > `0/false/off`; an unrecognised value falls back to their default (`true`).

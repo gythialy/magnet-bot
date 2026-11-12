@@ -240,7 +240,7 @@ func effectiveInitDataTTL(ttl time.Duration) time.Duration {
 }
 
 // NewInitDataMiddleware returns middleware that authenticates every request
-// below /api/* and injects the resulting InitDataUser into the request
+// below /api/v1/* and injects the resulting InitDataUser into the request
 // context. The middleware holds no mutable state, so one instance can wrap the
 // whole API subtree safely.
 //

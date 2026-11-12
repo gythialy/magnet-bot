@@ -317,7 +317,7 @@ func (c *CommandsHandler) ConvertURLToIMGHandler(ctx context.Context, b *bot.Bot
 
 // convertURL starts one conversion for a chat command. The shared service owns
 // the placeholder message, the file name and the Gotenberg submission, so the
-// command and POST /api/convert behave identically.
+// command and POST /api/v1/convert behave identically.
 func (c *CommandsHandler) convertURL(ctx context.Context, b *bot.Bot, update *models.Update,
 	cmd string, kind model.FileType,
 ) {

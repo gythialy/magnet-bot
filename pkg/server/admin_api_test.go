@@ -94,7 +94,7 @@ func adminTestRaw(t *testing.T, now time.Time, userID int64) string {
 }
 
 // adminTestRawIdentity signs initData carrying a specific Telegram identity, so
-// /api/me can be exercised with the name/username it persists.
+// /api/v1/me can be exercised with the name/username it persists.
 func adminTestRawIdentity(t *testing.T, authenticatedAt time.Time, userID int64, first, last, username string) string {
 	t.Helper()
 
@@ -150,7 +150,7 @@ func TestAPIAccessGate(t *testing.T) {
 	rawAllowed := adminTestRaw(t, now, adminTestUserID)
 	rawStranger := adminTestRaw(t, now, adminTestStranger)
 
-	for _, target := range []string{apiStatisticsPath, apiMePath, "/api/unknown-endpoint"} {
+	for _, target := range []string{apiStatisticsPath, apiMePath, "/api/v1/unknown-endpoint"} {
 		t.Run("stranger "+target, func(t *testing.T) {
 			assertWriteEnvelope(t, sendAPI(t, handler, target, rawStranger), http.StatusForbidden, "forbidden")
 		})
@@ -197,7 +197,7 @@ func TestAPIAccessGate(t *testing.T) {
 }
 
 // TestAPIMeUnprovisionedDatabase covers a database that predates the
-// access-control migration: /api/me must report the mode the bootstrap would
+// access-control migration: /api/v1/me must report the mode the bootstrap would
 // write (off) instead of failing for every client.
 func TestAPIMeUnprovisionedDatabase(t *testing.T) {
 	// Deliberately the helper that migrates the content tables only.
@@ -930,7 +930,7 @@ func TestAPIAdminListUsersCountsAndRecentSort(t *testing.T) {
 	})
 }
 
-// TestAPIAdminMeExposesTelegramIdentity covers the identity fields of /api/me:
+// TestAPIAdminMeExposesTelegramIdentity covers the identity fields of /api/v1/me:
 // the stored name/username are returned for a known account and stay empty for
 // an account without a row.
 func TestAPIAdminMeExposesTelegramIdentity(t *testing.T) {
@@ -957,7 +957,7 @@ func TestAPIAdminMeExposesTelegramIdentity(t *testing.T) {
 }
 
 // TestAPIAdminMePersistsInitDataIdentity covers the Mini-App-only path: a
-// signed /api/me request fills an empty identity on the caller's row and
+// signed /api/v1/me request fills an empty identity on the caller's row and
 // refreshes last_seen without any bot update. A second request with a changed
 // name keeps both the identity and last_seen current.
 func TestAPIAdminMePersistsInitDataIdentity(t *testing.T) {

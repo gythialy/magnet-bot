@@ -130,7 +130,7 @@ func seedOwnedNotice(t *testing.T) {
 func sendConvert(t *testing.T, handler http.Handler, body string, authenticated bool) *httptest.ResponseRecorder {
 	t.Helper()
 
-	req := httptest.NewRequest(http.MethodPost, "/api/convert", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/convert", strings.NewReader(body))
 	if authenticated {
 		req = req.WithContext(withInitDataUser(req.Context(), InitDataUser{ID: testUserID}))
 	}

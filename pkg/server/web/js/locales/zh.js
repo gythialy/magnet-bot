@@ -87,6 +87,9 @@
     "today.convertFailed": "转换失败，请稍后重试",
     "today.convertUnavailable": "这条公告无法转换",
     "today.details": "公告详情",
+    "today.contentLoading": "正在加载全文…",
+    "today.contentFailed": "全文加载失败。",
+    "today.contentStale": "刷新失败，正在显示上次缓存的内容。",
 
     /* Statistics -------------------------------------------------------- */
     "stat.history": "历史",
@@ -308,6 +311,7 @@
     "aria.sendPdf": "发送 PDF",
     "aria.sendImage": "发送图片",
     "aria.openNotice": "打开公告",
+    "aria.reloadContent": "强制刷新全文",
     "aria.language": "语言",
     "aria.appearance": "外观",
     "aria.members": "成员",

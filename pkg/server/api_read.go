@@ -42,7 +42,7 @@ const alarmStartPrefix = "alarm_"
 // concerns.
 var errInvalidPaging = errors.New("invalid pagination parameter")
 
-// statisticsResponse is the payload of GET /api/statistics. Field names are
+// statisticsResponse is the payload of GET /api/v1/statistics. Field names are
 // part of the contract with pkg/server/web/js (api.js and the Today view), so
 // they are lowerCamelCase exactly as documented there.
 type statisticsResponse struct {
@@ -53,7 +53,7 @@ type statisticsResponse struct {
 	BotUsername    string `json:"botUsername"`
 }
 
-// noticesResponse is the payload of GET /api/notices.
+// noticesResponse is the payload of GET /api/v1/notices.
 type noticesResponse struct {
 	Items      []noticeItem `json:"items"`
 	Total      int64        `json:"total"`

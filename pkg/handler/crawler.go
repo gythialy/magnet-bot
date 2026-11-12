@@ -54,7 +54,7 @@ func NewCrawler(ctx *BotContext) *Crawler {
 
 // baseURL is the site root the API paths are relative to.
 func (c *Crawler) baseURL() string {
-	return "https://" + c.ctx.Config.MessageServerUrl
+	return c.ctx.baseURL()
 }
 
 // absoluteURL turns a notice path returned by the API into a clickable
@@ -102,6 +102,7 @@ func (c *Crawler) Projects() []*Project {
 				ShortTitle:      v.Title,
 				Title:           v.Title,
 				Content:         content,
+				RawContent:      v.Content,
 				Pageurl:         c.absoluteURL(v.Pageurl),
 				HasComplexTable: complexTable,
 			})

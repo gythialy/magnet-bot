@@ -18,7 +18,11 @@ const (
 	pdfCallbackURL = "/pdf/{id}"
 	appRootPath    = "/app"
 	appPrefix      = "/app/"
-	apiPrefix      = "/api/"
+	// apiPrefix mounts the Mini App API subtree. The version segment is part of
+	// the mount, not a per-handler detail: an unversioned /api/ path would keep
+	// every old client talking to a new server, and a breaking response change
+	// would have to stay compatible forever.
+	apiPrefix = "/api/v1/"
 
 	healthBody = "ok"
 )

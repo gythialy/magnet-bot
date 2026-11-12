@@ -342,6 +342,7 @@ func (r *InfoProcessor) processProjects(pd ProcessData) {
 	}
 	r.pushPipeline.Run(handles)
 	r.recordKeywordMatches(delivered)
+	r.warmDeliveredContent(delivered)
 
 	// The pre-filter lock was held from shouldSkipProcessing through the
 	// pipeline run; release every claimed URL now so a failed project (whose

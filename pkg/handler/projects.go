@@ -38,6 +38,14 @@ type Project struct {
 	// message body; the pipeline attaches the original page as a PDF instead.
 	HasComplexTable bool `json:"-"`
 
+	// RawContent is the notice body exactly as the crawl API returned it, kept
+	// for the Mini App's full-text view. Content above is that same markup
+	// rewritten for Telegram, which is lossy (tables flattened, unsupported
+	// tags unwrapped), so the app cannot reuse it. It never leaves this
+	// package: the app reads the sanitized cache instead, because the raw HTML
+	// is not safe to insert into a document.
+	RawContent string `json:"-"`
+
 	// keywordIDs lists the keywords that matched this notice. The pipeline
 	// records each (keyword, notice) pair once, so a keyword's counter is the
 	// number of distinct related notices instead of the number of times the same
