@@ -244,6 +244,8 @@ button {
   height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
+  /* Keeps a focused control from landing under the sticky page head. */
+  scroll-padding-top: 46px;
   padding-bottom: calc(18px + env(safe-area-inset-bottom));
 }
 
@@ -302,43 +304,22 @@ button {
   border-radius: 6px;
 }
 
-/* Top bar ---------------------------------------------------------------- */
+/* Top bar (sub-pages only) ------------------------------------------------ */
 
+/* Tab roots have no bar of their own: the client's title bar already names the
+   app, and a second "magnet" row cost the first screen 61px. Sub-pages keep
+   this bar because it is their only way back. */
 .topbar {
   position: sticky;
   top: 0;
   z-index: 20;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 16px;
-  padding-top: calc(10px + env(safe-area-inset-top));
+  gap: 2px;
+  padding: 2px 8px;
+  padding-top: calc(2px + env(safe-area-inset-top));
   background: var(--bg);
   border-bottom: 1px solid var(--rule);
-}
-
-.brand {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 15px;
-  font-weight: 650;
-  letter-spacing: -0.02em;
-}
-
-.brand-mark {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--accent);
-  transform: translateY(-1px);
-}
-
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .icon-btn {
@@ -378,12 +359,6 @@ button {
   cursor: default;
 }
 
-.topbar.is-sub {
-  gap: 2px;
-  padding-left: 8px;
-  padding-right: 8px;
-}
-
 .topbar-title {
   flex: 1 1 auto;
   font-size: 15px;
@@ -404,111 +379,93 @@ button {
   flex: 0 0 auto;
 }
 
-/* Running head / page head ---------------------------------------------- */
+/* Page head (tab roots) --------------------------------------------------- */
 
-.runhead {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 18px 16px 12px;
+/* One sticky row: what the page holds, how much of it, and whatever belongs on
+   the right. Together with the meta line below it replaces the brand bar
+   (61px), the running head (52px) and the four-cell stat strip (61px). */
+.page-head {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: 0 16px;
+  padding-top: env(safe-area-inset-top);
+  background: var(--bg);
+  border-bottom: 1px solid var(--rule);
 }
 
-.runhead-main {
+.page-head-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
-  min-width: 0;
+  min-height: 44px;
 }
 
-.runhead-title {
+.page-title {
   font-size: 17px;
   font-weight: 650;
   line-height: 1.3;
   letter-spacing: var(--track-display);
 }
 
-.runhead-count {
+.page-count {
   font-size: 17px;
   font-weight: 650;
   color: var(--accent);
+  font-variant-numeric: tabular-nums;
 }
 
-.runhead-unit {
+.page-unit {
   font-size: 13px;
   color: var(--muted);
 }
 
-.runhead-time {
+.page-head-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
   flex: 0 0 auto;
+}
+
+.page-time {
   font-size: 11px;
   color: var(--muted);
   letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
-.view-head {
-  padding: 18px 16px 10px;
-}
-
-.view-title {
-  font-size: 17px;
-  font-weight: 650;
-  line-height: 1.3;
-  letter-spacing: var(--track-display);
-}
-
-.view-sub {
-  margin-top: 2px;
-  font-size: 12px;
+/* The line under the head: counters, a total, one sentence. It scrolls away
+   with the content; only the head above it stays. */
+.page-meta {
+  padding: 7px 16px 0;
+  font-size: 13px;
   color: var(--muted);
   line-height: var(--lh-meta);
 }
 
-.view-head-row {
+/* The four counters as one wrapped line instead of four stacked cells. */
+.stat-line {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 5px;
 }
 
-/* Stat strip ------------------------------------------------------------- */
-
-.stats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  border-top: 1px solid var(--rule);
-  border-bottom: 1px solid var(--rule);
+.stat-line .stat-v {
+  color: var(--ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
-.stat {
-  padding: 10px 8px 11px;
-  text-align: left;
+.stat-line .stat-sep {
+  color: var(--faint);
 }
-
-.stat + .stat {
-  border-left: 1px solid var(--rule);
-}
-
-.stat-v {
-  display: block;
-  font-size: 17px;
-  font-weight: 650;
-  line-height: 1.2;
-  letter-spacing: -0.01em;
-}
-
-.stat-k {
-  display: block;
-  margin-top: 3px;
-  line-height: 1.2;
-}
-
-/* Controls --------------------------------------------------------------- */
 
 .controls-band {
-  padding: 14px 16px 12px;
+  padding: 8px 16px 10px;
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .toolbar {
@@ -843,6 +800,15 @@ button {
   color: var(--muted);
 }
 
+/* The one qualifier a group may carry, under its rows: a promise or a set of
+   counters that would otherwise need their own row. */
+.group-note {
+  padding: 8px 16px 12px;
+  font-size: 12px;
+  line-height: var(--lh-meta);
+  color: var(--muted);
+}
+
 .field-label {
   display: block;
   font-size: 15px;
@@ -961,48 +927,6 @@ button {
   opacity: 1;
 }
 
-.status-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--rule);
-  font-size: 13px;
-}
-
-.status-val {
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  overflow-wrap: anywhere;
-}
-
-.link-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--rule);
-  color: var(--accent);
-  font-size: 14px;
-  font-weight: 550;
-  text-decoration: none;
-  background: transparent;
-  border-left: 0;
-  border-right: 0;
-  border-top: 0;
-  width: 100%;
-  text-align: left;
-  cursor: pointer;
-}
-
-.link-row .icon {
-  width: 14px;
-  height: 14px;
-  color: var(--muted);
-}
-
 /* Lists and entries ------------------------------------------------------ */
 
 .list {
@@ -1097,7 +1021,7 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 16px 8px;
+  padding: 8px 16px 6px;
   border-top: 1px solid var(--rule);
   font-size: 12px;
   color: var(--muted);
@@ -1476,7 +1400,8 @@ button {
 }
 
 .ro-bar .ro-id,
-.ro-bar .ro-role {
+.ro-bar .ro-role,
+.ro-bar .ro-seen {
   color: var(--muted-strong);
   font-variant-numeric: tabular-nums;
 }
@@ -1507,8 +1432,8 @@ button {
   align-items: center;
   gap: 5px;
   flex: 0 0 auto;
-  height: 32px;
-  padding: 0 9px 0 7px;
+  height: 40px;
+  padding: 0 11px 0 9px;
   border: 1px solid var(--rule);
   border-radius: 6px;
   background: transparent;

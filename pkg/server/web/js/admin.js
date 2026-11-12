@@ -221,6 +221,33 @@
     '<div data-slot="denied-list"></div>' +
     "</div>" +
     "</section>" +
+    // Service status — the deployment facts the root page used to carry. They
+    // belong next to the console that changes them, not under "About".
+    '<section class="group" data-group="service" hidden>' +
+    '<div class="group-head">' +
+    '<h3 class="group-title" data-i18n="set.service">' +
+    staticText("set.service") +
+    "</h3>" +
+    "</div>" +
+    '<div class="row">' +
+    '<div class="row-main">' +
+    '<span class="row-lead" data-i18n="about.version">' +
+    staticText("about.version") +
+    "</span>" +
+    "</div>" +
+    '<span class="row-value num" data-slot="service-version"></span>' +
+    "</div>" +
+    '<div class="row">' +
+    '<div class="row-main">' +
+    '<span class="row-lead" data-i18n="about.webhook">' +
+    staticText("about.webhook") +
+    "</span>" +
+    '<span class="row-meta" data-slot="service-webhook-error" hidden></span>' +
+    "</div>" +
+    '<span class="row-value" data-slot="service-webhook"></span>' +
+    "</div>" +
+    '<p class="group-note num" data-slot="service-counts"></p>' +
+    "</section>" +
     "</div>" +
     "</div>";
 
@@ -1211,6 +1238,46 @@
       });
   }
 
+  // Deployment facts: which build is running, how Telegram reaches the bot, and
+  // how much the store holds. Read-only; the console is where it is acted on.
+  function renderService() {
+    var status = state.status.data;
+    var ready = Boolean(status) && state.status.state !== "idle";
+
+    els.serviceGroup.hidden = !ready;
+    if (!ready) {
+      return;
+    }
+
+    var version = typeof status.version === "string" ? status.version.trim() : "";
+    var built = typeof status.buildTime === "string" ? status.buildTime.trim() : "";
+    var builtLabel = built ? date(built) : "";
+    els.serviceVersion.textContent = [version, builtLabel].filter(Boolean).join(" \u00b7 ") || "\u2014";
+
+    var webhook = status.webhook;
+    var url = webhook && typeof webhook.url === "string" ? webhook.url.trim() : "";
+    els.serviceWebhook.textContent = url || t("about.webhookOff");
+    var lastError = webhook && typeof webhook.lastError === "string" ? webhook.lastError.trim() : "";
+    els.serviceWebhookError.textContent = lastError
+      ? t("about.webhookLastError") + " " + lastError
+      : "";
+    els.serviceWebhookError.hidden = lastError === "";
+
+    var counts = status.counts || {};
+    var parts = [];
+    if (typeof counts.keywords === "number") {
+      parts.push(t("about.keywords") + " " + num(counts.keywords));
+    }
+    if (typeof counts.histories === "number") {
+      parts.push(t("about.history") + " " + num(counts.histories));
+    }
+    if (typeof counts.alarms === "number") {
+      parts.push(t("about.alarmRecords") + " " + num(counts.alarms));
+    }
+    els.serviceCounts.textContent = parts.join(" \u00b7 ");
+    els.serviceCounts.hidden = parts.length === 0;
+  }
+
   function renderStatusError() {
     els.statusError.innerHTML = "";
     if (isAdmin() && state.status.state === "error") {
@@ -1295,6 +1362,7 @@
       renderAccess();
       renderPeople();
       renderStatusError();
+      renderService();
       renderDenied();
     }
 
@@ -1341,6 +1409,11 @@
       deniedCount: section.querySelector('[data-slot="denied-count"]'),
       deniedBlock: section.querySelector('[data-slot="denied-block"]'),
       deniedList: section.querySelector('[data-slot="denied-list"]'),
+      serviceGroup: section.querySelector('[data-group="service"]'),
+      serviceVersion: section.querySelector('[data-slot="service-version"]'),
+      serviceWebhook: section.querySelector('[data-slot="service-webhook"]'),
+      serviceWebhookError: section.querySelector('[data-slot="service-webhook-error"]'),
+      serviceCounts: section.querySelector('[data-slot="service-counts"]'),
       add: section.querySelector('[data-role="add"]'),
     };
   }

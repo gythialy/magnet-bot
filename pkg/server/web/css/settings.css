@@ -1,10 +1,10 @@
 /*
  * Settings root and the administrator console.
  *
- * base.css owns the palette, the shared primitives (.group, .row, .status-row,
- * .link-row, .access-card, .sheet, .choice, .switch) and the app chrome. This
- * file adds only the layout these two screens need: no inline styles and no
- * colours outside the tokens.
+ * base.css owns the palette, the shared primitives (.group, .group-note, .row,
+ * .access-card, .sheet, .choice, .switch) and the app chrome. This file adds
+ * only the layout these two screens need: no inline styles and no colours
+ * outside the tokens.
  */
 
 /* Identity ---------------------------------------------------------------- */
@@ -24,17 +24,6 @@
 #view-settings .row-lead > span + span,
 #view-admin .row-lead > span + span {
   margin-left: 4px;
-}
-
-/* Some shared classes declare a display value, which would beat the user
-   agent's [hidden] rule. These are the ones the two screens toggle. */
-.status-row[hidden],
-.link-row[hidden],
-.count-chip[hidden],
-.loading-block[hidden],
-.admin-gate[hidden],
-.access-hint[hidden] {
-  display: none;
 }
 
 .loading-block {

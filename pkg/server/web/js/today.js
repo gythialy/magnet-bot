@@ -1,13 +1,13 @@
 /*
  * today.js — the Today view.
  *
- * Owns #view-today: the running head, the statistics strip, the range/search
- * band, the notice list, the "Load more" pager and the notice detail sheet.
+ * Owns #view-today: the page head, the stat line, the range/search band, the
+ * notice list, the "Load more" pager and the notice detail sheet.
  *
- * The structure is the settled v4 vocabulary from css/base.css: topbar ->
- * runhead -> stats -> controls-band -> entry list. This file builds every node
- * on the first mount and reuses them afterwards; index.html only carries the
- * skeleton it replaces.
+ * The structure is the settled v4 vocabulary from css/base.css: page head ->
+ * stat line -> controls-band -> entry list. This file builds every node on the
+ * first mount and reuses them afterwards; index.html only carries the skeleton
+ * it replaces.
  *
  * Behaviour notes that are easy to get wrong later:
  *   - core.js calls mount() once when this script registers (before init() has
@@ -276,12 +276,14 @@
 
   /* Template ------------------------------------------------------------- */
 
+  // One counter inside the stat line: label first because the line reads as a
+  // sentence, value in ink so the numbers still win.
   function statHTML(key, labelKey) {
     return (
-      '<div class="stat">' +
+      '<span class="stat-item">' +
+      '<span class="stat-k" data-i18n="' + labelKey + '">' + escape(t(labelKey)) + "</span> " +
       '<span class="stat-v num" data-stat="' + key + '">\u2014</span>' +
-      '<span class="label stat-k" data-i18n="' + labelKey + '">' + escape(t(labelKey)) + "</span>" +
-      "</div>"
+      "</span>"
     );
   }
 
@@ -356,19 +358,17 @@
 
   var TEMPLATE =
     '<div class="screen" data-role="screen">' +
-    app.topbarHTML() +
-    '<div class="runhead">' +
-    '<div class="runhead-main">' +
-    '<h2 class="runhead-title" data-i18n="today.title">' + escape(t("today.title")) + "</h2>" +
-    '<span class="runhead-count num" data-slot="count">\u2014</span>' +
-    '<span class="runhead-unit" data-slot="unit"></span>' +
-    "</div>" +
-    '<span class="runhead-time num" data-slot="updated"></span>' +
-    "</div>" +
-    '<div class="stats" data-slot="stats">' +
+    app.pageHeadHTML({
+      titleKey: "today.title",
+      right: '<span class="page-time num" data-slot="updated"></span>',
+    }) +
+    '<div class="page-meta stat-line" data-slot="stats">' +
     statHTML("history", "stat.history") +
+    '<span class="stat-sep" aria-hidden="true">\u00b7</span>' +
     statHTML("keywords", "stat.keywords") +
+    '<span class="stat-sep" aria-hidden="true">\u00b7</span>' +
     statHTML("related", "stat.related") +
+    '<span class="stat-sep" aria-hidden="true">\u00b7</span>' +
     statHTML("alarms", "stat.alarms") +
     "</div>" +
     '<div class="controls-band">' +
@@ -475,8 +475,8 @@
     return {
       view: section,
       screen: section.querySelector('[data-role="screen"]'),
-      count: section.querySelector('[data-slot="count"]'),
-      unit: section.querySelector('[data-slot="unit"]'),
+      count: section.querySelector('[data-slot="head-count"]'),
+      unit: section.querySelector('[data-slot="head-unit"]'),
       updated: section.querySelector('[data-slot="updated"]'),
       stats: statNodes,
       segmented: section.querySelector(".segmented"),
@@ -519,7 +519,6 @@
     refs.screen.addEventListener("click", onClick);
     refs.detailText.addEventListener("click", onBodyClick);
     refs.scrim.addEventListener("click", closeDetail);
-    app.bindRefresh(refs.screen, refresh);
 
     if (!escapeWired) {
       document.addEventListener("keydown", onKeydown);
@@ -528,7 +527,7 @@
 
     syncSearchValue();
     syncRangeButtons();
-    renderRunhead();
+    renderHead();
     renderStats();
     return refs;
   }
@@ -547,7 +546,7 @@
     syncActionButtons();
   }
 
-  function renderRunhead() {
+  function renderHead() {
     if (!refs) {
       return;
     }
@@ -630,7 +629,7 @@
   }
 
   function renderAll() {
-    renderRunhead();
+    renderHead();
     renderStats();
     renderList();
     renderStates();
@@ -644,7 +643,7 @@
     state.loading = true;
     state.failed = false;
     state.loaded = false;
-    renderRunhead();
+    renderHead();
     renderStats();
     renderStates();
     renderMore();
@@ -790,7 +789,7 @@
 
         state.failed = true;
         state.errorStatus = err && err.status ? err.status : 0;
-        renderRunhead();
+        renderHead();
         renderStates();
         renderMore();
       });
@@ -818,18 +817,20 @@
     renderList();
     renderStates();
     renderMore();
-    renderRunhead();
+    renderHead();
 
     return fetchPage(false);
   }
 
-  // Refresh keeps the rows: on failure the list stays readable behind the
-  // inline error, which is why it does not call reload().
+  // The page refreshes itself when the client brings it back to the foreground.
+  // It keeps the rows and the open sheet: on failure the list stays readable
+  // behind the inline error, which is why this does not call reload().
   function refresh() {
-    if (!refs || state.loading) {
+    if (!refs || state.loading || !app.nearTop(refs.screen)) {
       return Promise.resolve();
     }
-    closeDetail();
+    stats.loaded = false;
+    loadStatistics();
     return fetchPage(false);
   }
 
@@ -1367,7 +1368,7 @@
     if (!refs) {
       return;
     }
-    renderRunhead();
+    renderHead();
     renderStats();
     renderStates();
     renderMore();
@@ -1429,5 +1430,5 @@
     renderAll();
   }
 
-  app.registerView(VIEW, { mount: mount, onLang: onLang });
+  app.registerView(VIEW, { mount: mount, onLang: onLang, onResume: refresh });
 })(window);

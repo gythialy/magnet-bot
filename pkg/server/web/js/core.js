@@ -346,17 +346,29 @@
 
   /* Shared markup -------------------------------------------------------- */
 
-  /** The root-page top bar: brand and refresh. */
-  function topbarHTML() {
+  /**
+   * The tab-root page head: one sticky row carrying the page title, the count
+   * that belongs with it and whatever the view puts on the right (a freshness
+   * time, one action). Tab roots get no brand bar — the client's title bar
+   * already names the app — and no refresh button: the page refreshes itself
+   * when the client brings it back to the foreground (see refreshOnResume).
+   */
+  function pageHeadHTML(options) {
+    var opts = options || {};
+    var right = opts.right || "";
     return (
-      '<header class="topbar">' +
-      '<div class="brand"><span class="brand-mark"></span>magnet</div>' +
-      '<div class="topbar-actions">' +
-      '<button type="button" class="icon-btn" data-role="refresh" aria-label="' +
-      escapeHTML(t("aria.refresh")) +
-      '" data-i18n-aria="aria.refresh">' +
-      icon("refresh") +
-      "</button>" +
+      '<header class="page-head">' +
+      '<div class="page-head-row">' +
+      '<h2 class="page-title" data-i18n="' +
+      escapeHTML(opts.titleKey) +
+      '">' +
+      escapeHTML(t(opts.titleKey)) +
+      "</h2>" +
+      '<span class="page-count num" data-slot="head-count"></span>' +
+      '<span class="page-unit" data-slot="head-unit"></span>' +
+      '<div class="page-head-right">' +
+      right +
+      "</div>" +
       "</div>" +
       "</header>"
     );
@@ -365,7 +377,7 @@
   /** A sub-page top bar: back, title, spacer keeps the title centred. */
   function subTopbarHTML(titleKey) {
     return (
-      '<header class="topbar is-sub">' +
+      '<header class="topbar">' +
       '<button type="button" class="icon-btn is-back" data-role="back" aria-label="' +
       escapeHTML(t("aria.back")) +
       '" data-i18n-aria="aria.back">' +
@@ -381,16 +393,6 @@
     );
   }
 
-  /** Binds the refresh button inside one rendered section. */
-  function bindRefresh(section, onRefresh) {
-    var button = section.querySelector('[data-role="refresh"]');
-    if (button) {
-      button.addEventListener("click", function () {
-        onRefresh();
-      });
-    }
-  }
-
   /** Binds the back button inside a sub-page section. */
   function bindBack(section, onBack) {
     var button = section.querySelector('[data-role="back"]');
@@ -399,6 +401,85 @@
         onBack();
       });
     }
+  }
+
+  /* Freshness ------------------------------------------------------------ */
+
+  // A client that keeps the webview alive puts the page in the background and
+  // brings it back later. Anything shorter than this is not a return visit: it
+  // is the keyboard, a permission prompt or a theme change, and refetching on
+  // those would spend a request the reader did not ask for.
+  var RESUME_REFRESH_MS = 15000;
+
+  // A sheet or a half-typed field owns the screen; a background refetch must
+  // not close it or move the caret out from under the user.
+  function interactionInProgress() {
+    if (document.querySelector('[role="dialog"]:not([hidden])')) {
+      return true;
+    }
+    var el = document.activeElement;
+    if (!el) {
+      return false;
+    }
+    var tag = el.tagName;
+    return (
+      tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable === true
+    );
+  }
+
+  /**
+   * Ask the current view to bring itself up to date in place. Views opt in with
+   * onResume and must keep what is already on screen; a view that would have to
+   * rebuild from a skeleton simply does not define it.
+   */
+  function refreshOnResume() {
+    if (interactionInProgress()) {
+      return;
+    }
+    var view = views.get(state.route);
+    if (!view || typeof view.onResume !== "function") {
+      return;
+    }
+    try {
+      var result = view.onResume();
+      if (result && typeof result.then === "function") {
+        result.then(null, reportViewError);
+      }
+    } catch (err) {
+      reportViewError(err);
+    }
+  }
+
+  // A resume refresh may rewrite only what the reader is already looking at:
+  // rewriting a list the reader has scrolled into moves their place under them.
+  function nearTop(screen, slackPx) {
+    if (!screen) {
+      return true;
+    }
+    return screen.scrollTop <= (typeof slackPx === "number" ? slackPx : 40);
+  }
+
+  function bindResume() {
+    var hiddenAt = 0;
+
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now();
+        return;
+      }
+      var away = hiddenAt === 0 ? 0 : Date.now() - hiddenAt;
+      hiddenAt = 0;
+      if (away >= RESUME_REFRESH_MS) {
+        refreshOnResume();
+      }
+    });
+
+    // A bfcache restore can be hours old and fires no visibilitychange.
+    global.addEventListener("pageshow", function (event) {
+      if (event && event.persisted) {
+        refreshOnResume();
+      }
+    });
   }
 
   /* Gate ----------------------------------------------------------------- */
@@ -453,6 +534,17 @@
     }
   }
 
+  // A view's template string is built when its script loads, which happens
+  // before init() resolves the device language. Re-applying the dictionary to
+  // the section once it is built is what keeps a zh device from mounting an
+  // English page the first time a tab is opened.
+  function applyI18n(section) {
+    var layer = i18n();
+    if (layer && typeof layer.apply === "function") {
+      layer.apply(section);
+    }
+  }
+
   function mountView(name) {
     var view = views.get(name);
     if (!view || typeof view.mount !== "function") {
@@ -468,6 +560,7 @@
     var generation = generationOf(name);
     try {
       var result = view.mount();
+      applyI18n(byId("view-" + name));
       if (result && typeof result.then === "function") {
         result.then(
           function () {
@@ -884,6 +977,7 @@
     }
 
     bindRouting();
+    bindResume();
 
     if (!global.location.hash) {
       try {
@@ -914,9 +1008,9 @@
     me: me,
     identity: identity,
     registerView: registerView,
-    topbarHTML: topbarHTML,
+    pageHeadHTML: pageHeadHTML,
+    nearTop: nearTop,
     subTopbarHTML: subTopbarHTML,
-    bindRefresh: bindRefresh,
     bindBack: bindBack,
     setAppearance: setAppearance,
     appearance: resolvedAppearance,

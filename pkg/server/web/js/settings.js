@@ -26,9 +26,6 @@
   var state = {
     me: null,
     meState: "idle",
-    status: null,
-    statusState: "idle",
-    statusError: null,
     stats: null,
     loaded: false,
   };
@@ -40,19 +37,6 @@
 
   function t(key, vars) {
     return i18n ? i18n.t(key, vars) : key;
-  }
-
-  function num(value) {
-    return i18n ? i18n.num(value) : String(value);
-  }
-
-  function dateTime(value) {
-    if (!i18n) {
-      return String(value || "");
-    }
-    var day = i18n.date(value);
-    var clock = typeof i18n.time === "function" ? i18n.time(value) : "";
-    return [day, clock].filter(Boolean).join(" ");
   }
 
   function esc(value) {
@@ -71,9 +55,6 @@
   }
 
   function accessMode() {
-    if (state.status && state.status.accessMode) {
-      return String(state.status.accessMode);
-    }
     return state.me && state.me.accessMode ? String(state.me.accessMode) : "";
   }
 
@@ -89,25 +70,14 @@
 
   var TEMPLATE =
     '<div class="screen" data-role="screen">' +
-    core.topbarHTML() +
-    '<div class="view-head">' +
-    '<h2 class="view-title" data-i18n="nav.settings">' +
-    staticText("nav.settings") +
-    "</h2>" +
-    '<p class="view-sub" data-i18n="set.sub">' +
-    staticText("set.sub") +
-    "</p>" +
-    "</div>" +
+    core.pageHeadHTML({ titleKey: "nav.settings" }) +
     '<div data-slot="error"></div>' +
-    // Your account — identity comes from Telegram and is read only here.
+    // Account — who you are, and whether this account may use the bot.
     '<section class="group" data-group="account">' +
     '<div class="group-head">' +
     '<h3 class="group-title" data-i18n="set.account">' +
     staticText("set.account") +
     "</h3>" +
-    '<span class="aside-note" data-i18n="set.accountNote">' +
-    staticText("set.accountNote") +
-    "</span>" +
     "</div>" +
     '<div class="row">' +
     '<div class="row-main">' +
@@ -115,15 +85,8 @@
     '<span data-slot="ident-name"></span>' +
     '<span class="row-id num" data-slot="ident-id"></span>' +
     '<span class="name-note" data-slot="ident-unnamed" hidden></span>' +
-    '<span class="name-note" data-slot="ident-you" data-i18n="set.you"> ' +
-    staticText("set.you") +
     "</span>" +
-    "</span>" +
-    '<span class="row-meta">' +
-    '<span data-slot="ident-role"></span>' +
-    '<span class="sep" data-slot="ident-sep" hidden>·</span>' +
-    '<span data-slot="ident-remark"></span>' +
-    "</span>" +
+    '<span class="row-meta" data-slot="ident-role"></span>' +
     "</div>" +
     "</div>" +
     '<div class="row">' +
@@ -131,9 +94,22 @@
     '<span class="row-lead" data-i18n="set.accessState">' +
     staticText("set.accessState") +
     "</span>" +
-    '<span class="row-meta" data-slot="access-state"></span>' +
     "</div>" +
+    '<span class="row-value" data-slot="access-state"></span>' +
     "</div>" +
+    // The console is a capability of this account, so its entry sits here and
+    // is absent for every other role.
+    '<button type="button" class="row is-link" data-role="admin" hidden>' +
+    '<span class="row-main">' +
+    '<span class="row-lead" data-i18n="set.manage">' +
+    staticText("set.manage") +
+    "</span>" +
+    '<span class="row-meta" data-i18n="set.manageSub">' +
+    staticText("set.manageSub") +
+    "</span>" +
+    "</span>" +
+    core.icon("chevron") +
+    "</button>" +
     "</section>" +
     // This device — device-local preferences; language lives only here.
     '<section class="group" data-group="device">' +
@@ -141,21 +117,22 @@
     '<h3 class="group-title" data-i18n="set.device">' +
     staticText("set.device") +
     "</h3>" +
-    '<span class="aside-note" data-i18n="set.deviceNote">' +
-    staticText("set.deviceNote") +
-    "</span>" +
     "</div>" +
     '<button type="button" class="row is-link" data-role="language">' +
+    '<span class="row-main">' +
     '<span class="row-lead" data-i18n="set.language">' +
     staticText("set.language") +
+    "</span>" +
     "</span>" +
     '<span class="row-value"><span data-slot="language-value"></span>' +
     core.icon("chevron") +
     "</span>" +
     "</button>" +
     '<button type="button" class="row is-link" data-role="appearance">' +
+    '<span class="row-main">' +
     '<span class="row-lead" data-i18n="set.appearance">' +
     staticText("set.appearance") +
+    "</span>" +
     "</span>" +
     '<span class="row-value"><span data-slot="appearance-value"></span>' +
     core.icon("chevron") +
@@ -174,67 +151,35 @@
     esc(t("aria.reduceMotion")) +
     '" /><span class="switch-track"></span></label>' +
     "</div>" +
+    '<p class="group-note" data-i18n="set.deviceNote">' +
+    staticText("set.deviceNote") +
+    "</p>" +
     "</section>" +
-    // About — fixed content, always before the administrator block.
+    // About — which build this is and how to reach the bot; deployment detail
+    // lives in the administrator console, not here.
     '<section class="group" data-group="about">' +
     '<div class="group-head">' +
     '<h3 class="group-title" data-i18n="set.about">' +
     staticText("set.about") +
     "</h3>" +
-    '<span class="aside-note num" data-slot="version" hidden></span>' +
     "</div>" +
-    '<div data-slot="about-error"></div>' +
-    '<div class="status-row" data-row="build" hidden>' +
-    '<span class="label" data-i18n="about.build">' +
-    staticText("about.build") +
+    '<div class="row">' +
+    '<div class="row-main">' +
+    '<span class="row-lead" data-i18n="about.version">' +
+    staticText("about.version") +
     "</span>" +
-    '<span class="status-val num" data-slot="about-build"></span>' +
     "</div>" +
-    '<div class="status-row" data-row="mode">' +
-    '<span class="label" data-i18n="about.mode">' +
-    staticText("about.mode") +
-    "</span>" +
-    '<span class="status-val" data-slot="about-mode"></span>' +
+    '<span class="row-value num" data-slot="about-version"></span>' +
     "</div>" +
-    '<div class="status-row" data-row="webhook" hidden>' +
-    '<span class="label" data-i18n="about.webhook">' +
-    staticText("about.webhook") +
-    "</span>" +
-    '<span class="status-val" data-slot="about-webhook"></span>' +
-    "</div>" +
-    '<div class="status-row" data-row="users" hidden>' +
-    '<span class="label" data-i18n="about.users">' +
-    staticText("about.users") +
-    "</span>" +
-    '<span class="status-val num" data-slot="about-users"></span>' +
-    "</div>" +
-    '<button type="button" class="link-row" data-role="help" hidden>' +
-    "<span data-i18n=\"about.help\">" +
+    '<button type="button" class="row is-link" data-role="help" hidden>' +
+    '<span class="row-main">' +
+    '<span class="row-lead" data-i18n="about.help">' +
     staticText("about.help") +
     "</span>" +
+    "</span>" +
+    '<span class="row-value">' +
     core.icon("external") +
-    "</button>" +
-    "</section>" +
-    // Administration — the only block that can grow, so it comes last.
-    '<section class="group" data-group="admin" hidden>' +
-    '<div class="group-head">' +
-    '<h3 class="group-title" data-i18n="set.manageGroup">' +
-    staticText("set.manageGroup") +
-    "</h3>" +
-    '<span class="aside-note" data-i18n="set.adminOnly">' +
-    staticText("set.adminOnly") +
     "</span>" +
-    "</div>" +
-    '<button type="button" class="row is-link" data-role="admin">' +
-    '<span class="row-main">' +
-    '<span class="row-lead" data-i18n="set.manage">' +
-    staticText("set.manage") +
-    "</span>" +
-    '<span class="row-meta" data-i18n="set.manageSub">' +
-    staticText("set.manageSub") +
-    "</span>" +
-    "</span>" +
-    core.icon("chevron") +
     "</button>" +
     "</section>" +
     "</div>";
@@ -278,10 +223,7 @@
       els.identId.textContent = "";
       els.identId.hidden = true;
       els.identUnnamed.hidden = true;
-      els.identYou.hidden = true;
       els.identRole.textContent = "";
-      els.identSep.hidden = true;
-      els.identRemark.textContent = "";
       return;
     }
 
@@ -291,13 +233,9 @@
     els.identId.textContent = ident.unnamed ? "" : "· " + ident.idLabel;
     els.identUnnamed.hidden = !ident.unnamed;
     els.identUnnamed.textContent = ident.unnamed ? t("identity.unnamed") : "";
-    els.identYou.hidden = false;
+    // The lead already carries the remark when there is one (the shared
+    // identity rule), so the meta line holds the role and nothing else.
     els.identRole.textContent = t(me.role === "admin" ? "role.admin" : "role.user");
-
-    var remark = String(me.remark || "").trim();
-    els.identRemark.textContent = remark;
-    els.identRemark.hidden = remark === "";
-    els.identSep.hidden = remark === "";
   }
 
   function renderAccess() {
@@ -326,52 +264,12 @@
   }
 
   function renderAbout() {
-    var admin = isAdmin();
-    var status = state.status;
     var me = state.me || {};
-
-    // Build facts are public to every role (About lives on the root page); the
-    // deployment facts behind webhook/users stay administrator-only.
-    var version = me.version || (admin && status && status.version ? status.version : "");
-    els.version.hidden = !version;
-    els.version.textContent = version;
-
-    els.rows.build.hidden = false;
-    els.rows.webhook.hidden = !admin;
-    els.rows.users.hidden = !admin;
-
-    var buildAt = me.buildTime || (admin && status && status.buildTime ? status.buildTime : "");
-    var build = buildAt ? dateTime(buildAt) : "";
-    if (!build && buildAt) {
-      // The server sends "unknown time" for an unstamped build; the formatter
-      // cannot parse it, so show the raw value instead of an empty row.
-      build = String(buildAt);
-    }
-    els.aboutBuild.textContent = build || "—";
-    els.aboutMode.textContent = accessMode()
-      ? restricted()
-        ? t("set.accessStateRestricted")
-        : t("set.accessStateOpen")
-      : "—";
-
-    if (admin) {
-      var webhook = status && status.webhook;
-      els.aboutWebhook.textContent = webhook ? String(webhook.url || "") : t("about.webhookOff");
-      els.aboutUsers.textContent = admin && status && status.counts ? num(status.counts.users) : "—";
-    } else {
-      els.aboutWebhook.textContent = "";
-      els.aboutUsers.textContent = "";
-    }
+    var version = typeof me.version === "string" ? me.version.trim() : "";
+    els.aboutVersion.textContent = version || "\u2014";
 
     var username = state.stats && state.stats.botUsername ? String(state.stats.botUsername) : "";
     els.help.hidden = username === "";
-
-    els.aboutError.innerHTML = "";
-    if (admin && state.statusState === "error") {
-      inlineError(els.aboutError, "about.loadFailed", function () {
-        return loadStatus().then(renderAll);
-      });
-    }
   }
 
   function renderError() {
@@ -383,8 +281,8 @@
     }
   }
 
-  function renderAdminGroup() {
-    els.adminGroup.hidden = !isAdmin();
+  function renderAdminEntry() {
+    els.adminRow.hidden = !isAdmin();
   }
 
   function renderAll() {
@@ -396,7 +294,7 @@
     renderDevice();
     renderAbout();
     renderError();
-    renderAdminGroup();
+    renderAdminEntry();
     sheetLabels();
   }
 
@@ -587,28 +485,6 @@
 
   /* Data ----------------------------------------------------------------- */
 
-  function loadStatus() {
-    if (!isAdmin()) {
-      state.status = null;
-      state.statusState = "idle";
-      return Promise.resolve();
-    }
-
-    state.statusState = "loading";
-    return api()
-      .adminStatus()
-      .then(function (payload) {
-        state.status = payload && typeof payload === "object" ? payload : null;
-        state.statusState = "ready";
-        state.statusError = null;
-      })
-      .catch(function (err) {
-        // Keep the last snapshot; a failed refresh must not blank the page.
-        state.statusState = "error";
-        state.statusError = err;
-      });
-  }
-
   function load(force) {
     var meTask = core
       .me(Boolean(force))
@@ -634,9 +510,8 @@
     return Promise.all([meTask, statsTask])
       .then(function () {
         state.loaded = true;
-        return loadStatus();
-      })
-      .then(renderAll);
+        renderAll();
+      });
   }
 
   function reload() {
@@ -653,32 +528,18 @@
       identName: section.querySelector('[data-slot="ident-name"]'),
       identId: section.querySelector('[data-slot="ident-id"]'),
       identUnnamed: section.querySelector('[data-slot="ident-unnamed"]'),
-      identYou: section.querySelector('[data-slot="ident-you"]'),
       identRole: section.querySelector('[data-slot="ident-role"]'),
-      identSep: section.querySelector('[data-slot="ident-sep"]'),
-      identRemark: section.querySelector('[data-slot="ident-remark"]'),
       accessState: section.querySelector('[data-slot="access-state"]'),
       languageValue: section.querySelector('[data-slot="language-value"]'),
       appearanceValue: section.querySelector('[data-slot="appearance-value"]'),
       reduceMotion: section.querySelector('[data-role="reduce-motion"]'),
-      version: section.querySelector('[data-slot="version"]'),
-      aboutError: section.querySelector('[data-slot="about-error"]'),
-      aboutBuild: section.querySelector('[data-slot="about-build"]'),
-      aboutMode: section.querySelector('[data-slot="about-mode"]'),
-      aboutWebhook: section.querySelector('[data-slot="about-webhook"]'),
-      aboutUsers: section.querySelector('[data-slot="about-users"]'),
+      aboutVersion: section.querySelector('[data-slot="about-version"]'),
       help: section.querySelector('[data-role="help"]'),
-      adminGroup: section.querySelector('[data-group="admin"]'),
-      rows: {
-        build: section.querySelector('[data-row="build"]'),
-        webhook: section.querySelector('[data-row="webhook"]'),
-        users: section.querySelector('[data-row="users"]'),
-      },
+      adminRow: section.querySelector('[data-role="admin"]'),
     };
   }
 
   function bind() {
-    core.bindRefresh(els.screen, reload);
 
     els.screen.querySelector('[data-role="language"]').addEventListener("click", openLanguageSheet);
     els.screen.querySelector('[data-role="appearance"]').addEventListener("click", openAppearanceSheet);
@@ -722,5 +583,5 @@
     return Promise.resolve();
   }
 
-  core.registerView(VIEW, { mount: mount, onLang: onLang });
+  core.registerView(VIEW, { mount: mount, onLang: onLang, onResume: reload });
 })(window);

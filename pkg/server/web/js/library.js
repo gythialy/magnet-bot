@@ -145,24 +145,17 @@
 
   var TEMPLATE =
     '<div class="screen" data-role="screen">' +
-    core.topbarHTML() +
+    core.pageHeadHTML({
+      titleKey: "lib.title",
+      right:
+        '<button type="button" class="head-action" data-role="members" hidden>' +
+        core.icon("users", "icon-sm") +
+        '<span data-i18n="lib.members">' +
+        esc(t("lib.members")) +
+        "</span>" +
+        "</button>",
+    }) +
     '<div data-slot="robar" hidden></div>' +
-    '<div class="view-head">' +
-    '<div class="view-head-row">' +
-    "<div>" +
-    '<h2 class="view-title" data-i18n="lib.title">' +
-    esc(t("lib.title")) +
-    "</h2>" +
-    '<p class="view-sub" data-slot="sub"></p>' +
-    "</div>" +
-    '<button type="button" class="head-action" data-role="members" hidden>' +
-    core.icon("users", "icon-sm") +
-    '<span data-i18n="lib.members">' +
-    esc(t("lib.members")) +
-    "</span>" +
-    "</button>" +
-    "</div>" +
-    "</div>" +
     '<div class="controls-band">' +
     '<div class="segmented" role="group" data-slot="segmented" data-i18n-aria="aria.wordType" aria-label="' +
     esc(t("aria.wordType")) +
@@ -351,13 +344,19 @@
     return null;
   }
 
-  function activeTotal() {
-    if (state.stats) {
-      var keywords = Number(state.stats.keywords) || 0;
-      var alarms = Number(state.stats.alarmKeywords) || 0;
-      return keywords + alarms;
+  // The head counts what the segment is showing, not both lists at once: the
+  // rows below it are one type, and a number that disagrees with them reads as
+  // a bug.
+  function countOf(row) {
+    if (!row) {
+      return null;
     }
-    return null;
+    var value = state.type === "alarms" ? row.alarmKeywords : row.keywords;
+    return typeof value === "number" && isFinite(value) ? value : null;
+  }
+
+  function activeTotal() {
+    return countOf(state.stats);
   }
 
   function viewingCount() {
@@ -365,41 +364,27 @@
     if (!viewing || !viewing.keywordCounts) {
       return null;
     }
-    var project = Number(viewing.keywordCounts.project) || 0;
-    var alarm = Number(viewing.keywordCounts.alarm) || 0;
-    return project + alarm;
+    var counts = viewing.keywordCounts;
+    var value = state.type === "alarms" ? counts.alarm : counts.project;
+    return typeof value === "number" && isFinite(value) ? value : null;
   }
 
   /* Render --------------------------------------------------------------- */
 
+  // The head carries one number: how many words of the current type the account
+  // owns. Reading someone else's library names that person in the banner above;
+  // the head keeps counting their words instead of repeating the name.
   function renderSub() {
     if (state.viewing) {
-      var count = viewingCount();
-      var lastSeen = state.viewing.lastSeen ? i18n.monthDay(state.viewing.lastSeen) : "—";
-      els.sub.textContent = t("lib.roSub", {
-        name: core.identity(state.viewing).name,
-        date: lastSeen,
-        count: count === null ? "—" : num(count) + " " + plural("unit.keywords", count),
-      });
+      var viewingTotal = viewingCount();
+      els.headCount.textContent = viewingTotal === null ? "—" : num(viewingTotal);
+      els.headUnit.textContent = viewingTotal === null ? "" : plural(meta().unit, viewingTotal);
       return;
     }
 
     var total = activeTotal();
-    els.sub.textContent = "";
-    if (total === null) {
-      var placeholder = document.createElement("span");
-      placeholder.className = "sk sk-inline";
-      placeholder.setAttribute("aria-hidden", "true");
-      els.sub.appendChild(placeholder);
-      return;
-    }
-    var value = document.createElement("span");
-    value.className = "num";
-    value.textContent = num(total);
-    els.sub.appendChild(value);
-    els.sub.appendChild(
-      document.createTextNode(" " + t(state.type === "alarms" ? "lib.subAlarms" : "lib.sub"))
-    );
+    els.headCount.textContent = total === null ? "" : num(total);
+    els.headUnit.textContent = total === null ? "" : plural(meta().unit, total);
   }
 
   function renderBanner() {
@@ -426,6 +411,13 @@
       "</span>" +
       ' <span class="ro-role">' +
       esc(roleLabel(user)) +
+      "</span>" +
+      ' <span class="ro-seen">' +
+      esc(
+        t("lib.roSeen", {
+          date: user.lastSeen ? i18n.monthDay(user.lastSeen) : "—",
+        })
+      ) +
       "</span>" +
       " <span>" +
       esc(t("lib.roReadonly")) +
@@ -1005,12 +997,16 @@
     };
   }
 
-  function load() {
+  // silent: a resume refresh keeps the rows on screen instead of flashing the
+  // skeleton over a list the user may already be reading.
+  function load(silent) {
     if (state.viewing) {
-      return loadAdmin();
+      return loadAdmin(silent);
     }
-    state.status = "loading";
-    renderAll();
+    if (!silent) {
+      state.status = "loading";
+      renderAll();
+    }
 
     return api()
       [meta().api]({ includeArchived: 1 })
@@ -1026,19 +1022,25 @@
         loadStats();
       })
       .catch(function () {
-        state.status = "error";
-        state.failedAt = new Date().toISOString();
+        // A silent refresh leaves the last good list alone; only a first load
+        // has nothing to fall back on.
+        if (!silent || state.items.length === 0) {
+          state.status = "error";
+          state.failedAt = new Date().toISOString();
+        }
         renderAll();
       });
   }
 
-  function loadAdmin() {
+  function loadAdmin(silent) {
     var viewing = state.viewing;
     if (!viewing) {
-      return load();
+      return load(silent);
     }
-    state.status = "loading";
-    renderAll();
+    if (!silent) {
+      state.status = "loading";
+      renderAll();
+    }
 
     return api()
       .adminUserKeywords(viewing.userId, {
@@ -1061,8 +1063,10 @@
         loadStats();
       })
       .catch(function (err) {
-        state.status = "error";
-        state.failedAt = new Date().toISOString();
+        if (!silent || state.items.length === 0) {
+          state.status = "error";
+          state.failedAt = new Date().toISOString();
+        }
         renderAll();
         if (err && err.status === 404) {
           core.toast(t("app.error"), "error");
@@ -1105,7 +1109,8 @@
     els = {
       screen: section.querySelector('[data-role="screen"]'),
       robar: section.querySelector('[data-slot="robar"]'),
-      sub: section.querySelector('[data-slot="sub"]'),
+      headCount: section.querySelector('[data-slot="head-count"]'),
+      headUnit: section.querySelector('[data-slot="head-unit"]'),
       members: section.querySelector('[data-role="members"]'),
       segmented: section.querySelector('[data-slot="segmented"]'),
       search: section.querySelector('[data-role="search"]'),
@@ -1125,10 +1130,6 @@
   }
 
   function bind() {
-    core.bindRefresh(els.screen, function () {
-      load();
-    });
-
     els.segmented.addEventListener("click", function (event) {
       var button = event.target.closest("button[data-type]");
       if (!button || button.getAttribute("data-type") === state.type) {
@@ -1276,5 +1277,9 @@
     return Promise.resolve();
   }
 
-  core.registerView(VIEW, { mount: mount, onLang: onLang });
+  function resume() {
+    return load(true);
+  }
+
+  core.registerView(VIEW, { mount: mount, onLang: onLang, onResume: resume });
 })(window);
