@@ -174,11 +174,14 @@ token (HMAC-SHA256, one-hour TTL, 60 s future-skew tolerance), and no cookie,
 session or password exists. Opened outside Telegram, the app shows a gate instead
 of the shell.
 
-- **Today** — the four statistics counters as a stat strip, title/tender-code
-  search, range chips (Today / 7 days / All), a paged notice list, and a detail
-  sheet with the notice's full text (sanitized, cached, with a force-refresh
-  action), "open notice page" plus PDF/PNG conversion. Conversion starts in the
-  app but the file arrives in the chat.
+- **Today** — the four statistics counters as a single line under the page head,
+  title/tender-code search, range chips (Today / 7 days / All), a paged notice
+  list, and a detail sheet with the notice's full text (sanitized, cached, with a
+  force-refresh action), "open notice page" plus PDF/PNG conversion. Conversion
+  starts in the app but the file arrives in the chat.
+- Each tab has one sticky page head (title, count, freshness) and no refresh
+  button: every view fetches on mount, and a return to the foreground after a
+  short absence refetches the open view in place.
 - **Keywords** — the account's project keywords with their notice counters,
   client-side filtering over the loaded list, batch add (comma-separated, at most
   50 per request, 128 runes each), rename and delete in one reusable dialog.
@@ -186,13 +189,17 @@ of the shell.
 - **Records** — paged alarm records with server-side search by credit name, and a
   detail sheet rendered from data already loaded (dates, credit fields, page
   links) plus "Open in chat" through a Telegram deep link.
-- **Settings** — administrator only; the tab is hidden until `/api/v1/me` confirms
-  the role, and a revoked admin sees a revocation notice instead. Four cards:
-  access mode (opening access to everyone is confirmed first, switching back to
-  restricted is immediate), people (search, batch add by id, edit
-  remark/role/enabled, delete), deployment status (version, build, counts,
-  webhook state), and recently denied accounts with a one-tap allow, plus the
-  guards that prevent locking the operator out.
+- **Settings** — the same root for every role, three short groups: the account
+  (identity plus the access state the caller is subject to), this device
+  (language, appearance, reduced motion — device-local only), and about (the
+  running version plus the help deep link). Deployment facts are deliberately not
+  on this root. Administrators get a fourth group that opens the console.
+- **Administrator console** (a sub-page of Settings, hidden from everyone else;
+  a revoked admin sees a revocation notice) — access mode (opening access to
+  everyone is confirmed first, switching back to restricted is immediate), people
+  (search, batch add by id, edit remark/role/enabled, delete), recently denied
+  accounts with a one-tap allow, and service status: version, build time, webhook
+  state and stored counts, plus the guards that prevent locking the operator out.
 - Paging is cursor-based (`offset`/`nextOffset`); the client never assumes a total
   it can trust. Default page size 20, hard cap 50.
 - Reads are scoped to the caller's own rows by construction; admin endpoints add

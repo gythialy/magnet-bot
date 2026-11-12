@@ -1,8 +1,8 @@
 /*
  * today.css — the Today view on the shared base vocabulary.
  *
- * base.css already owns the topbar, running head, statistics strip, controls
- * band, entry rows, sheet and state blocks. This file only adds the three
+ * base.css already owns the page head, stat line, controls band, entry rows,
+ * sheet and state blocks. This file only adds the three
  * things the Today column needs on top of them: a button-shaped entry body
  * (the lead line opens the detail sheet from the keyboard too), a meta line
  * that wraps its parts instead of clipping them, and the action sizing.
@@ -215,15 +215,6 @@
   .entry-actions .icon-btn {
     width: 34px;
     height: 34px;
-  }
-
-  .stat {
-    padding-left: 6px;
-    padding-right: 6px;
-  }
-
-  .stat-k {
-    letter-spacing: 0.05em;
   }
 }
 

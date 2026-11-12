@@ -73,6 +73,12 @@ typography:
     fontWeight: 600
     lineHeight: 1.2
     letterSpacing: "0.12em"
+  small:
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', 'Microsoft YaHei', Arial, sans-serif"
+    fontSize: "12px"
+    fontWeight: 400
+    lineHeight: 1.6
+    letterSpacing: "0"
   data:
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
     fontSize: "13px"
@@ -91,22 +97,23 @@ spacing:
   group: "26px"
   tabbar: "58px"
 components:
+  page-head:
+    backgroundColor: "{colors.ground}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.none}"
+    padding: "0 16px"
+    height: "45px"
+  page-meta:
+    backgroundColor: "{colors.ground}"
+    textColor: "{colors.ink-muted}"
+    rounded: "{rounded.none}"
+    padding: "7px 16px 0"
   topbar:
     backgroundColor: "{colors.ground}"
     textColor: "{colors.ink}"
     rounded: "{rounded.none}"
-    padding: "10px 16px"
-    height: "61px"
-  runhead:
-    backgroundColor: "{colors.ground}"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.none}"
-    padding: "18px 16px 12px"
-  stat:
-    backgroundColor: "{colors.ground}"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.none}"
-    padding: "10px 8px 11px"
+    padding: "2px 8px"
+    height: "45px"
   segmented:
     backgroundColor: "{colors.ground}"
     textColor: "{colors.ink-muted}"
@@ -158,8 +165,8 @@ components:
 **Creative North Star: "The Printed Column, bilingual"**
 
 The Mini App is read, not operated like a control panel. Its reading surface behaves
-like a printed column: a head line that says what you are looking at and how fresh it
-is, a packed strip of counters divided by rules, then entries separated by hairlines —
+like a printed column: a sticky head line that says what you are looking at and how
+fresh it is, a packed line of counters under it, then entries separated by hairlines —
 no cards, no tiles, no shadows in the flow. The operator opens it between meetings,
 glances down one vertical rhythm, and closes it.
 
@@ -250,6 +257,7 @@ No external fonts.
 | Body (copy, errors, empty notes) | 15 / 400 / 1.5 | 15 / 400 / 1.7 |
 | Meta (dates, ids, supporting lines) | 13 / 400 / 1.45 | 13 / 400 / 1.6 |
 | Label (field keys, stat labels) | 11 / 600 / 0.12em / uppercase | 12 / 600 / 0.04em / none |
+| Small print (group notes, sheet kickers, banners) | 12 / 400 / 1.45 | 12 / 400 / 1.6 |
 
 - Labels are one shared `.label` class driven by `--label-size`, `--label-ls`,
   `--label-transform`; a component never restyles a label for a script.
@@ -272,13 +280,24 @@ the tab bar is its own row, so a scrolling `.screen` always ends above the bar.
 - Tab roots: Today, Watchlist, Records, Settings. Sub-pages (`#/members`, `#/admin`)
   are full pages without a tab; the parent tab stays highlighted and their top bar is
   back + title + spacer.
-- Top bar: sticky, brand + refresh on tab roots; back + title on sub-pages. 16px side
-  gutters, `safe-area-inset-top` honoured.
-- Today: running head (title + count + unit + updated time), four-cell stat strip, range
-  segment + search, then entries. Watchlist: page head (+ Members for admins), word-type
-  segment + search + Add, list head with the archived toggle, then rows and — when the
-  toggle is on — the archived group. Settings: fixed-height groups, About before
-  Administration. Records: page head, search, rows.
+- Page head: one sticky row on every tab root — title, the count that belongs with it,
+  and the right edge for that page (freshness time, or one action). No brand bar: the
+  client's title bar already names the app. 16px side gutters, `safe-area-inset-top`
+  honoured.
+- Meta line: one optional non-sticky line under the head — counters, a total, one
+  sentence. It scrolls away; only the head above it stays.
+- Today: page head (title + count + unit + updated time), stat line, range segment +
+  search, then entries. Watchlist: page head (+ Members for admins), word-type segment +
+  search + Add, list head with the archived toggle, then rows and — when the toggle is
+  on — the archived group. Settings: page head, then three short groups — account (the
+  identity row plus one access-state value), this device (language, appearance, reduced
+  motion, and one footnote saying those are stored here), and about (the version and the
+  help entry). The administrator console is one more row at the end of the account group,
+  present only for that role — the role is what grants it, so it is not a group of its
+  own. Records: page head (+ updated time), record count, search, rows.
+- A tab root has no refresh control. Freshness is a property of the page, not a button:
+  every view fetches on mount, and a foreground return after 30s refetches the open view
+  in place — keeping its rows, its scroll position and any open sheet.
 - One rule per separation, edge to edge. Rows are square; controls are 6px; sheets are
   14px; marks are 2px.
 
@@ -302,18 +321,26 @@ column.
 
 ## Components
 
-### Top bar
-Sticky, ground background, one bottom rule. Root: brand (7px accent dot + wordmark) and
-a 40px refresh icon button. Sub-page: back chevron, title, 40px spacer to keep the title
-optically centred. A 44px touch target in a 40px box.
+### Page head
+Sticky, ground background, one bottom rule, 45px tall (44px row plus the rule;
+`safe-area-inset-top` adds on devices that need it). Title 17/650 on the left, then the
+count in accent 17/650 with its unit at 13 muted, then the right edge. The right edge
+holds one thing only: the freshness time (11 muted, `{time} updated`) on Today and
+Records, the Members action on the Watchlist, nothing on Settings. The head is the one
+element that stays while the column scrolls, so what the page is and how fresh it is
+never leave the screen.
 
-### Running head
-`title` 17/650, count in accent 17/650, unit 13 muted, updated time 11 muted on the
-right. The count and time are the only things that change on a refresh.
+### Meta line
+One line, 13px muted, 7px above and no rule, under the head. It carries what does not
+need to survive scrolling: the four counters on Today (labels in muted, values in ink,
+separated by a faint `·` and allowed to wrap onto a second line), the record total on
+Records, the one-sentence explanation on Settings. It is the only place a page may put
+four numbers; the four-cell stat strip it replaces cost 61px of first screen.
 
-### Stat strip (signature)
-Four cells in one row, edges packed, divided by hairlines, no background: 17/650 tabular
-value over a label. It replaces metric cards; it is never interactive.
+### Top bar (sub-pages only)
+Sticky, ground background, one bottom rule, 45px. Back chevron, title, 40px spacer to
+keep the title optically centred. A 44px touch target in a 40px box. Tab roots do not
+have one.
 
 ### Segmented control
 40px tall, 6px radius, 1px rule, 3px inner padding. The selected segment fills with
@@ -329,6 +356,16 @@ server-side where the dataset is paged (members, records, notices).
 - Row: identity or word on the left, a 13px meta line beneath, actions on the right, one
   rule below. Actions are 40px icon targets, muted at rest, ink on press; destructive
   turns red only on press.
+- Settings rows have exactly one shape: a 15/600 label on the left (with at most one 13px
+  explanation under it) and one thing on the right — a 13px muted value, a value plus a
+  chevron, or a switch. There is no second status row, no tracked-caps label column and
+  no accent-coloured link row: those three dialects were removed in the compact pass
+  because the same "label: value" relation was drawn four different ways on one screen.
+- A group may end with one `.group-note`: 12px muted, full width, no border — the one
+  qualifier that would otherwise need its own row ("these preferences live on this
+  phone"). Two notes on one page is the ceiling.
+- Deployment facts (build time, webhook state, stored counts) live in the administrator
+  console, not on the settings root; the root only carries the app version.
 - Entry (Today): 15/600 lead clamped to two lines, a 13px meta line (new dot, time,
   project code, tender tag) and three icon actions (PDF, PNG, open) on the same line.
 - Archived rows mute the lead and swap actions to restore + delete.
@@ -356,6 +393,22 @@ sheet is the only language switch in the app.
 Ink ground, ground text, 10px radius, one line, optional underline action. The archive
 toast is the canonical reversible toast: it names the word and offers Undo for five
 seconds.
+
+### Data freshness
+A tab root has no refresh control, because a control for "make this current" is a
+confession that the page does not keep itself current. The rules:
+
+- Every view fetches on mount. A view is mounted on first load, on tab activation and
+  when the router invalidates it after a write.
+- When the client brings the page back to the foreground after more than 15s away, the
+  open view refetches in place: rows stay, scroll stays, an open sheet stays, and a
+  failed refetch leaves the readable list behind its inline error. Shorter absences —
+  the keyboard, a permission prompt — do not trigger it, and it is skipped while a sheet
+  is open or a field has focus.
+- Only the top of a list is rewritten: once the reader has scrolled into it, their place
+  beats freshness, so a resume refresh leaves the rows and the cursor alone.
+- The head still says when the data is from (`{time} updated`); that timestamp is
+  information, not a button.
 
 ### States
 - **Loading**: skeleton blocks at the final row height; one `role="status"` line names
@@ -399,6 +452,10 @@ a 22px 2px accent mark above it. Each tab owns one icon from the shared family.
 - **Do** keep long lists off the settings root; About keeps its position for every role.
 - **Do** make reversible actions undoable for five seconds, and name the object.
 - **Do** express script differences as variable overrides on `[lang]`.
+- **Do** keep the chrome above the first row to one 45px head plus at most one meta line;
+  every pixel there is a pixel of content the reader does not get.
+- **Do** give every settings row one value on the right; a label repeated as both the name
+  and the meta line is a bug, not a pattern.
 
 ### Don't:
 - **Don't** put cards in a reading flow, or wrap a list in a card that wraps another.
@@ -408,4 +465,6 @@ a 22px 2px accent mark above it. Each tab owns one icon from the shared family.
 - **Don't** duplicate the language switch in the top bar; settings → this device is the
   only entry.
 - **Don't** ship dashboard vocabulary: hero metrics, coloured stat tiles, sparklines.
+- **Don't** put a brand bar or a refresh button on a tab root; the client names the app
+  and the page keeps itself current.
 - **Don't** put a member list or a denied list back on the settings root.

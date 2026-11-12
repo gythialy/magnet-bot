@@ -7,7 +7,7 @@
  * browsing surface, not a setting, so they get their own tab and the detail
  * opens as a sheet built from data the page already has.
  *
- * The page is on the shared v4 shell vocabulary: topbar -> view-head ->
+ * The page is on the shared v4 shell vocabulary: page head -> meta line ->
  * controls band -> row list -> sheet. Records pages with the API's nextOffset
  * cursor; "Load more" disappears once the cursor is null. A monotonic request
  * token keeps a slow response from a superseded search from overwriting the
@@ -77,15 +77,11 @@
 
   var TEMPLATE =
     '<div class="screen" data-role="screen">' +
-    core.topbarHTML() +
-    '<div class="view-head">' +
-    '<div class="view-head-row">' +
-    "<div>" +
-    '<h2 class="view-title" data-i18n="records.title">' + esc(t("records.title")) + "</h2>" +
-    '<p class="view-sub" data-slot="sub"></p>' +
-    "</div>" +
-    "</div>" +
-    "</div>" +
+    core.pageHeadHTML({
+      titleKey: "records.title",
+      right: '<span class="page-time num" data-slot="updated"></span>',
+    }) +
+    '<p class="page-meta" data-slot="sub"></p>' +
     '<div class="controls-band">' +
     '<label class="search">' +
     core.icon("search", "icon-sm") +
@@ -237,11 +233,11 @@
     var shown = state.items.length;
     var total = state.total > shown ? state.total : shown;
     var placeholder = (state.status === "loading" || state.status === "error") && shown === 0;
-    var textValue = placeholder ? "\u2014" : num(total) + " " + plural("unit.records", total);
-    if (!placeholder && state.updatedAt) {
-      textValue += " \u00b7 " + t("today.updated", { time: time(state.updatedAt) });
-    }
-    els.sub.textContent = textValue;
+    els.sub.textContent = placeholder ? "\u2014" : num(total) + " " + plural("unit.records", total);
+    // Freshness rides in the head, so the meta line below it keeps one job.
+    els.updated.textContent = state.updatedAt
+      ? t("today.updated", { time: time(state.updatedAt) })
+      : "";
   }
 
   function renderStates() {
@@ -456,7 +452,10 @@
 
   /* Data ------------------------------------------------------------------ */
 
-  function loadRecords(reset) {
+  // silent: a resume refresh re-reads the first page without blanking the rows
+  // already on screen. It is never used for paged lists, because re-reading
+  // page one would drop the pages the reader loaded after it.
+  function loadRecords(reset, silent) {
     if (!reset && state.nextOffset === null) {
       return Promise.resolve();
     }
@@ -467,17 +466,19 @@
     // Bumping the token before the request means any response still in flight
     // belongs to a superseded query and is dropped when it lands.
     var token = (state.seq += 1);
-    state.status = "loading";
     state.errorStatus = 0;
-    if (reset) {
-      state.items = [];
-      state.total = 0;
-      state.nextOffset = null;
-      renderList();
+    if (!silent) {
+      state.status = "loading";
+      if (reset) {
+        state.items = [];
+        state.total = 0;
+        state.nextOffset = null;
+        renderList();
+      }
+      renderSub();
+      renderStates();
+      renderMore();
     }
-    renderSub();
-    renderStates();
-    renderMore();
 
     var offset = reset ? 0 : state.nextOffset;
 
@@ -502,8 +503,10 @@
         if (token !== state.seq) {
           return;
         }
-        state.status = "error";
         state.errorStatus = err && err.status ? err.status : 0;
+        if (!silent || state.items.length === 0) {
+          state.status = "error";
+        }
         renderStates();
         renderSub();
         renderMore();
@@ -555,6 +558,7 @@
       screen: section.querySelector('[data-role="screen"]'),
       search: section.querySelector('[data-role="search"]'),
       sub: section.querySelector('[data-slot="sub"]'),
+      updated: section.querySelector('[data-slot="updated"]'),
       loading: section.querySelector('[data-slot="loading"]'),
       error: section.querySelector('[data-slot="error"]'),
       errorMsg: section.querySelector('[data-slot="error-msg"]'),
@@ -581,10 +585,6 @@
       state.q = value;
       loadRecords(true);
     }, SEARCH_DEBOUNCE_MS);
-
-    core.bindRefresh(els.screen, function () {
-      loadRecords(true);
-    });
 
     els.search.addEventListener("input", runSearch);
     els.list.addEventListener("click", onListClick);
@@ -679,5 +679,14 @@
     render();
   }
 
-  core.registerView(VIEW, { mount: mount, onLang: onLang });
+  // Resume refresh only while the reader is still at the top: re-reading page
+  // one would otherwise throw away the pages they scrolled to.
+  function resume() {
+    if (!els || state.status === "loading" || !core.nearTop(els.screen)) {
+      return Promise.resolve();
+    }
+    return loadRecords(true, true);
+  }
+
+  core.registerView(VIEW, { mount: mount, onLang: onLang, onResume: resume });
 })(window);
