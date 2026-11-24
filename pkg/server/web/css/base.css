@@ -47,6 +47,9 @@
   --danger-fill: #dc2626;
   --danger-soft: rgba(220, 38, 38, 0.1);
   --success: #16a34a;
+  /* The tender signal. Exactly one use: the star on a notice whose matched
+     keyword was a project code. It is neither the accent nor a status colour. */
+  --flag: #b45309;
   --shadow-lift: 0 18px 44px rgba(9, 9, 11, 0.22);
   --shadow-float: 0 8px 24px rgba(9, 9, 11, 0.14);
   --narrow-label: 11px;
@@ -77,6 +80,7 @@ html[data-theme="dark"] {
   --danger-fill: #b91c1c;
   --danger-soft: rgba(248, 113, 113, 0.16);
   --success: #4ade80;
+  --flag: #fbbf24;
   --shadow-lift: 0 18px 48px rgba(0, 0, 0, 0.55);
   --shadow-float: 0 8px 26px rgba(0, 0, 0, 0.45);
 }
@@ -135,6 +139,7 @@ body {
     --danger-fill: #b91c1c;
     --danger-soft: rgba(248, 113, 113, 0.16);
     --success: #4ade80;
+    --flag: #fbbf24;
   }
 }
 
@@ -947,14 +952,43 @@ button {
 }
 
 .entry-lead {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
   font-size: 15px;
   font-weight: 600;
   line-height: var(--lh-lead);
   letter-spacing: var(--lead-ls);
+}
+
+/* The clamped box. The tender flag sits beside the title rather than inside the
+   clamp, so a flagged row still shows the same two lines as every other row. */
+.entry-title {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  min-width: 0;
+}
+
+/* The tender flag. It repeats the chat message's leading marker in the same
+   reading position, filled and amber so the rarest rows (under one percent of
+   notices) are seen before the title is read. --flag has this one use: the
+   accent stays with position / new / focus, green with status, red with
+   destructive actions. */
+.entry-flag {
+  flex: 0 0 auto;
+  /* Half the leading above the glyph centres the star on the first line. */
+  margin-top: calc((var(--lh-lead) - 1) * 7.5px);
+  color: var(--flag);
+}
+
+.entry-flag .icon {
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 0.5;
 }
 
 .entry-foot {
@@ -988,25 +1022,6 @@ button {
   height: 6px;
   border-radius: 50%;
   background: var(--accent);
-}
-
-.tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  flex: 0 0 auto;
-  padding: 1px 6px 1px 4px;
-  border: 1px solid var(--rule);
-  border-radius: 999px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
-.tag svg {
-  width: 11px;
-  height: 11px;
 }
 
 .entry-actions {

@@ -20,6 +20,7 @@ colors:
   destructive-fill: "#dc2626"
   destructive-soft: "rgba(220, 38, 38, 0.1)"
   success: "#16a34a"
+  flag: "#b45309"
   scrim: "rgba(0, 0, 0, 0.42)"
   ground-dark: "#17212b"
   ink-dark: "#f5f5f5"
@@ -39,6 +40,7 @@ colors:
   destructive-fill-dark: "#b91c1c"
   destructive-soft-dark: "rgba(248, 113, 113, 0.16)"
   success-dark: "#4ade80"
+  flag-dark: "#fbbf24"
 typography:
   display:
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', 'Microsoft YaHei', Arial, sans-serif"
@@ -179,8 +181,9 @@ variables (leading, label size and tracking), never selectors.
 
 **Key Characteristics:**
 - Hairline rules are the only separator; no borders wrapped around content, no cards.
-- Four colours, four meanings: ink for selection and primary action, accent for
-  position / new content / focus, green for status only, red for destructive only.
+- Five colours, five meanings: ink for selection and primary action, accent for
+  position / new content / focus, amber for the tender flag only, green for status only,
+  red for destructive only.
 - One type ramp with two parameters: Latin is tighter, CJK larger with more leading.
 - Every state has an exit: loading, failed refresh, empty, rate limited.
 - Reversible actions offer the undo toast; irreversible ones name the object.
@@ -222,6 +225,10 @@ hard-coded.
   are examples of that step, not extra tokens).
 - **Accent Soft** (`rgba(22, 104, 168, 0.12)`, dark `rgba(106, 179, 243, 0.16)`): the
   read-only banner, the selected member row, the search focus ring.
+- **Tender Flag** (`#b45309`, dark `#fbbf24`): exactly one use — the 15px filled star
+  that leads a notice row whose matched keyword was a project code. It is not a second
+  accent and not a status colour; it marks a kind of notice, which is why it is rare
+  (under one percent of rows) and always in the same slot.
 - **Success** (`#16a34a`, dark `#4ade80`): exactly one use — the access-control shield.
   It never fills a control.
 - **Destructive** (`#dc2626`, dark `#f87171`): the delete icon, the revoke action, the
@@ -235,6 +242,9 @@ hard-coded.
 ### Named Rules
 **The One Accent Rule.** The accent marks where you are, what is new and what has focus.
 Any other use is decoration and gets removed.
+
+**The Tender Flag Rule.** Amber appears only as the tender star. A second amber use is a
+new signal with its own token, not a reuse of this one.
 
 **The Status Green Rule.** Green is a status colour (the access shield), never a control
 fill. A green "on" switch was removed in v4 because green there meant "success", not
@@ -367,7 +377,11 @@ server-side where the dataset is paged (members, records, notices).
 - Deployment facts (build time, webhook state, stored counts) live in the administrator
   console, not on the settings root; the root only carries the app version.
 - Entry (Today): 15/600 lead clamped to two lines, a 13px meta line (new dot, time,
-  project code, tender tag) and three icon actions (PDF, PNG, open) on the same line.
+  project code) and three icon actions (PDF, PNG, open) on the same line.
+- A notice whose matched keyword was a project code gets a filled 15px amber star at
+  the head of the lead line — the slot the bot's chat message uses for the same marker.
+  The star carries no visible word; its accessible name is the localised "招标 / Bid"
+  label, so screen readers still hear why the row is marked.
 - Archived rows mute the lead and swap actions to restore + delete.
 - Disabled member rows mute the name; the meta line says "Disabled".
 
