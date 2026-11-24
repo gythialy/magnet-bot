@@ -299,14 +299,6 @@
       parts.push('<span class="sep" aria-hidden="true">\u00b7</span>');
       parts.push('<span class="num" data-meta="code">' + escape(item.code) + "</span>");
     }
-    if (item.hasTenderCode) {
-      parts.push(
-        '<span class="tag">' +
-          app.icon("tender") +
-          '<span data-meta="tag-label">' + escape(t("today.tagTender")) + "</span>" +
-          "</span>"
-      );
-    }
     return parts.join("");
   }
 
@@ -335,6 +327,14 @@
 
   function entryHTML(item, index) {
     var title = item.title || t("today.noTitle");
+    // The tender star leads the title, the slot the bot's chat message uses for
+    // the same marker. It is decorative here: the meta line still carries the
+    // word that explains it.
+    var flag = item.hasTenderCode
+      ? '<span class="entry-flag" role="img" aria-label="' + escape(t("today.tagTender")) + '">' +
+        app.icon("tender") +
+        "</span>"
+      : "";
     // Conversion and opening need a notice URL; the server re-checks ownership
     // and the host allow-list, so a notice without an https URL gets disabled
     // actions instead of buttons that can only fail.
@@ -342,7 +342,9 @@
       '<article class="entry is-link" data-action="detail" data-index="' + index + '">' +
       '<button type="button" class="entry-body" data-action="detail" data-index="' + index + '"' +
       ' aria-haspopup="dialog">' +
-      '<span class="entry-lead">' + escape(title) + "</span>" +
+      '<span class="entry-lead">' + flag +
+      '<span class="entry-title">' + escape(title) + "</span>" +
+      "</span>" +
       "</button>" +
       '<div class="entry-foot">' +
       '<div class="entry-meta">' + metaHTML(item) + "</div>" +
@@ -1336,13 +1338,14 @@
         continue;
       }
 
-      var lead = row.querySelector(".entry-lead");
-      if (lead) {
-        lead.textContent = item.title || t("today.noTitle");
+      // Only the title node is rewritten: the star beside it is structure, and
+      // replacing the lead's textContent would erase it.
+      var title = row.querySelector(".entry-title");
+      if (title) {
+        title.textContent = item.title || t("today.noTitle");
       }
       setText(row, '[data-meta="time"]', dateTime(item.updatedAt));
       setText(row, '[data-meta="code"]', item.code);
-      setText(row, '[data-meta="tag-label"]', item.hasTenderCode ? t("today.tagTender") : "");
     }
   }
 
