@@ -353,9 +353,12 @@ func TestNewStaticHandlerRejectsNonReadMethods(t *testing.T) {
 	}
 }
 
-// Every asset the document references must exist in the embedded bundle. A typo
-// in a <link> or <script> tag would otherwise only show up as a silent 404 in a
-// Telegram client, where nobody watches the network panel.
+// Every asset the document references must exist in the embedded bundle and
+// carry the ?v= token the server rewrites at startup. A typo in a <link> or
+// <script> tag would otherwise only show up as a silent 404 in a Telegram
+// client, where nobody watches the network panel, and a reference without the
+// token would resolve but never refresh: the assets are served immutable for a
+// year, so a URL that never changes keeps whatever bytes the client cached.
 func TestIndexReferencesOnlyEmbeddedAssets(t *testing.T) {
 	handler := newStaticTestHandler(t)
 
@@ -395,9 +398,25 @@ func TestIndexReferencesOnlyEmbeddedAssets(t *testing.T) {
 		}
 	}
 
+	// The versioned-URL test only sees references that already carry a token, so
+	// it cannot catch a new tag written without one. This is where that omission
+	// has to fail: otherwise the file is served at a stable URL under the
+	// immutable policy and a redeploy silently leaves old bytes in the client.
+	for _, match := range assetRefPattern.FindAllStringSubmatch(string(index), -1) {
+		ref := match[1]
+		if ref == "" || strings.HasPrefix(ref, "#") || isExternalRef(ref) {
+			continue
+		}
+		if !strings.Contains(ref, "?v=") {
+			t.Errorf("index references %s without a ?v= token", ref)
+		}
+	}
+
 	for ref := range refs {
-		if strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") || strings.HasPrefix(ref, "//") {
+		if isExternalRef(ref) {
 			t.Errorf("index document references an external resource: %s", ref)
+
+			continue
 		}
 
 		rec := serveStatic(t, handler, http.MethodGet, appPrefix+ref)
@@ -408,6 +427,14 @@ func TestIndexReferencesOnlyEmbeddedAssets(t *testing.T) {
 }
 
 var assetRefPattern = regexp.MustCompile(`(?:href|src)="([^"]+)"`)
+
+// isExternalRef reports whether a reference leaves the bundle. Neither form is
+// allowed in the index: the app must run from one origin with no network fetch.
+func isExternalRef(ref string) bool {
+	return strings.HasPrefix(ref, "http://") ||
+		strings.HasPrefix(ref, "https://") ||
+		strings.HasPrefix(ref, "//")
+}
 
 // referencedAssets collects the local href/src targets of a document, keyed by
 // path relative to the bundle root. Fragments and absolute URLs are kept as-is
