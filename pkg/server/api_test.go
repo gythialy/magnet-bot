@@ -39,7 +39,7 @@ func setupAPITestDB(t *testing.T) {
 		t.Fatalf("open test database: %v", err)
 	}
 	if err := db.AutoMigrate(&model.History{}, &model.Keyword{}, &model.Alarm{},
-		&model.NoticeContent{}); err != nil {
+		&model.NoticeContent{}, &model.KeywordNotice{}); err != nil {
 		t.Fatalf("migrate test database: %v", err)
 	}
 

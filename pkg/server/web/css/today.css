@@ -1,11 +1,11 @@
 /*
  * today.css — the Today view on the shared base vocabulary.
  *
- * base.css already owns the page head, stat line, controls band, entry rows,
- * sheet and state blocks. This file only adds the three
- * things the Today column needs on top of them: a button-shaped entry body
- * (the lead line opens the detail sheet from the keyboard too), a meta line
- * that wraps its parts instead of clipping them, and the action sizing.
+ * base.css already owns the page head, range band, controls band, entry rows,
+ * sheet and state blocks. This file only adds what the Today column needs on
+ * top of them: a button-shaped entry body (the lead line opens the detail sheet
+ * from the keyboard too), the two-column entry with one 44px action, and a meta
+ * line that wraps its parts instead of clipping them.
  *
  * Colour comes only from the base semantic tokens; there are no literals here.
  */
@@ -222,4 +222,47 @@
 #view-today .list-foot .btn-wide:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* v5: the entry is a two-column row — title and meta on the left, one 44px
+   action on the right — instead of a stacked block with three icon buttons. */
+#view-today .entry {
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 0;
+  padding: 0 6px 0 16px;
+}
+
+#view-today .entry-body {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 11px 0 12px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+#view-today .entry-body:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+#view-today .entry-meta {
+  margin-top: 3px;
+}
+
+/* The single row action holds a 44px target, the smallest hit area the design
+   system allows, without shrinking the row's text column. */
+#view-today .entry > .icon-btn {
+  width: 44px;
+  height: 44px;
 }

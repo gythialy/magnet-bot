@@ -17,13 +17,9 @@
   border-top: 0;
 }
 
-/* 320px phones: the three row actions must stay reachable without wrapping the
-   word onto a second line. */
+/* 320px phones: the row actions keep their 44px targets; only the archived
+   toggle's label shortens so the head still fits on one line. */
 @media (max-width: 359px) {
-  [data-view="library"] .row-actions .icon-btn {
-    width: 36px;
-  }
-
   [data-view="library"] .list-head .toggle-inline > span:first-child {
     /* The count chip and the switch carry the meaning; the label shortens. */
     max-width: 96px;
@@ -31,4 +27,42 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+}
+
+/* Cleanup row: the operator's lever against words that never matched. */
+.lib-cleanup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 16px;
+  /* The list below owns the separating rule; a second border here would
+     read as a 2px divider. */
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.lib-cleanup [data-slot="cleanup-text"] {
+  min-width: 0;
+}
+
+.lib-cleanup .btn-text {
+  margin-left: auto;
+  flex: 0 0 auto;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* "Never matched" tag on a word row: a neutral chip, not an error — the word
+   is not broken, it just has not earned its place yet. */
+.row-meta .tag {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--fill);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 17px;
 }

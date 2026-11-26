@@ -1,13 +1,13 @@
 /*
  * today.js — the Today view.
  *
- * Owns #view-today: the page head, the stat line, the range/search band, the
- * notice list, the "Load more" pager and the notice detail sheet.
+ * Owns #view-today: the page head (with its new badge and search mode), the
+ * range band, the notice list, the "Load more" pager and the notice detail
+ * sheet.
  *
- * The structure is the settled v4 vocabulary from css/base.css: page head ->
- * stat line -> controls-band -> entry list. This file builds every node on the
- * first mount and reuses them afterwards; index.html only carries the skeleton
- * it replaces.
+ * The structure is the v5 vocabulary from css/base.css: page head -> range band
+ * -> entry list. This file builds every node on the first mount and reuses them
+ * afterwards; index.html only carries the skeleton it replaces.
  *
  * Behaviour notes that are easy to get wrong later:
  *   - core.js calls mount() once when this script registers (before init() has
@@ -45,6 +45,8 @@
   var RANGES = ["today", "7d", "all"];
   var PAGE_LIMIT = 20;
   var SEARCH_DEBOUNCE_MS = 300;
+  // How long a row that arrived on refresh keeps its tint.
+  var FRESH_HIGHLIGHT_MS = 1200;
   var STORAGE_SEEN = "magnet.today.seenAt";
 
   // Project codes. The first pattern is the bot's own codeRegx from
@@ -87,6 +89,9 @@
   var state = {
     range: "today",
     q: "",
+    searching: false,
+    // Keys of the rows that arrived after this column had already rendered.
+    fresh: null,
     items: [],
     // Dedupe keys of everything already in items; offset paging over a live
     // table can repeat a row when new notices land between two pages.
@@ -125,14 +130,8 @@
   // pair is ignored until the first answers.
   var converting = Object.create(null);
 
-  var stats = {
-    history: null,
-    keywords: null,
-    related: null,
-    alarms: null,
-    loaded: false,
-    loading: false,
-  };
+  // The four-counter stat line is gone: the header carries what arrived since
+  // the last look and the range total, and nothing else needed a second row.
 
   /* Small helpers --------------------------------------------------------- */
 
@@ -276,17 +275,6 @@
 
   /* Template ------------------------------------------------------------- */
 
-  // One counter inside the stat line: label first because the line reads as a
-  // sentence, value in ink so the numbers still win.
-  function statHTML(key, labelKey) {
-    return (
-      '<span class="stat-item">' +
-      '<span class="stat-k" data-i18n="' + labelKey + '">' + escape(t(labelKey)) + "</span> " +
-      '<span class="stat-v num" data-stat="' + key + '">\u2014</span>' +
-      "</span>"
-    );
-  }
-
   function metaHTML(item) {
     var parts = [];
     if (item.unseen) {
@@ -335,25 +323,21 @@
         app.icon("tender") +
         "</span>"
       : "";
-    // Conversion and opening need a notice URL; the server re-checks ownership
-    // and the host allow-list, so a notice without an https URL gets disabled
-    // actions instead of buttons that can only fail.
+    var fresh = state.fresh && state.fresh[itemKey(item)] ? " is-fresh" : "";
+
+    // One action per row. Converting to PDF or PNG is rare next to opening the
+    // notice, and the sheet already offers it, so the list keeps the right edge
+    // for the action readers actually take.
     return (
-      '<article class="entry is-link" data-action="detail" data-index="' + index + '">' +
+      '<article class="entry is-link' + fresh + '" data-index="' + index + '">' +
       '<button type="button" class="entry-body" data-action="detail" data-index="' + index + '"' +
       ' aria-haspopup="dialog">' +
       '<span class="entry-lead">' + flag +
       '<span class="entry-title">' + escape(title) + "</span>" +
       "</span>" +
+      '<span class="entry-meta">' + metaHTML(item) + "</span>" +
       "</button>" +
-      '<div class="entry-foot">' +
-      '<div class="entry-meta">' + metaHTML(item) + "</div>" +
-      '<div class="entry-actions">' +
-      convertButton(index, "pdf", "list") +
-      convertButton(index, "png", "list") +
-      openButton(index) +
-      "</div>" +
-      "</div>" +
+      (item.url ? openButton(index) : "") +
       "</article>"
     );
   }
@@ -362,31 +346,49 @@
     '<div class="screen" data-role="screen">' +
     app.pageHeadHTML({
       titleKey: "today.title",
-      right: '<span class="page-time num" data-slot="updated"></span>',
+      hideCount: true,
+      lead: '<span class="head-new num" data-slot="new-count" hidden></span>',
+      right:
+        '<span class="page-time num" data-slot="updated"></span>' +
+        '<button type="button" class="icon-btn" data-role="search-toggle"' +
+        ' data-i18n-aria="aria.search" aria-label="' + escape(t("aria.search")) + '">' +
+        app.icon("search") +
+        "</button>",
+      bar:
+        '<div class="head-search" data-slot="search-mode" hidden>' +
+        '<label class="search">' +
+        app.icon("search", "icon-sm") +
+        '<input type="search" data-role="search" data-i18n-ph="today.searchPh"' +
+        ' data-i18n-aria="today.searchPh" aria-label="' + escape(t("today.searchPh")) + '"' +
+        ' placeholder="' + escape(t("today.searchPh")) + '"' +
+        ' autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" />' +
+        '<button type="button" class="search-clear" data-role="search-clear" hidden' +
+        ' data-i18n-aria="aria.clear" aria-label="' + escape(t("aria.clear")) + '">' +
+        app.icon("close", "icon-sm") +
+        "</button>" +
+        "</label>" +
+        '<button type="button" class="btn-text" data-role="search-cancel" data-i18n="common.cancel">' +
+        escape(t("common.cancel")) +
+        "</button>" +
+        "</div>",
     }) +
-    '<div class="page-meta stat-line" data-slot="stats">' +
-    statHTML("history", "stat.history") +
-    '<span class="stat-sep" aria-hidden="true">\u00b7</span>' +
-    statHTML("keywords", "stat.keywords") +
-    '<span class="stat-sep" aria-hidden="true">\u00b7</span>' +
-    statHTML("related", "stat.related") +
-    '<span class="stat-sep" aria-hidden="true">\u00b7</span>' +
-    statHTML("alarms", "stat.alarms") +
-    "</div>" +
-    '<div class="controls-band">' +
-    '<div class="segmented" role="group" data-i18n-aria="aria.dateRange"' +
+    '<div class="range-band">' +
+    '<div class="segmented is-compact" role="group" data-i18n-aria="aria.dateRange"' +
     ' aria-label="' + escape(t("aria.dateRange")) + '">' +
     rangeButton("today", true) +
     rangeButton("7d", false) +
     rangeButton("all", false) +
     "</div>" +
-    '<label class="search">' +
-    app.icon("search", "icon-sm") +
-    '<input type="search" data-role="search" data-i18n-ph="today.searchPh"' +
-    ' data-i18n-aria="today.searchPh" aria-label="' + escape(t("today.searchPh")) + '"' +
-    ' placeholder="' + escape(t("today.searchPh")) + '"' +
-    ' autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" />' +
-    "</label>" +
+    '<span class="range-total">' +
+    '<span class="num" data-slot="head-count"></span>' +
+    '<span data-slot="head-unit"></span>' +
+    "</span>" +
+    "</div>" +
+    '<div class="offline-bar" data-slot="offline" role="status" hidden>' +
+    app.icon("offline", "icon-sm") +
+    '<span data-i18n="today.offline">' +
+    escape(t("today.offline")) +
+    "</span>" +
     "</div>" +
     '<div data-slot="loading">' +
     '<p class="label state-label" role="status" data-i18n="common.loading">' +
@@ -407,6 +409,15 @@
     "</div>" +
     '<div class="empty-block" data-slot="empty" hidden>' +
     '<p class="empty-title" data-slot="empty-title"></p>' +
+    '<p class="empty-note" data-slot="empty-note" hidden></p>' +
+    '<div class="empty-actions" data-slot="empty-actions">' +
+    '<button type="button" class="btn-ghost" data-action="empty-range" data-i18n="today.emptyRange">' +
+    escape(t("today.emptyRange")) +
+    "</button>" +
+    '<button type="button" class="btn" data-action="empty-library" data-i18n="today.emptyLibrary">' +
+    escape(t("today.emptyLibrary")) +
+    "</button>" +
+    "</div>" +
     "</div>" +
     '<div class="list" data-slot="list" hidden></div>' +
     '<div class="list-foot" data-slot="more" hidden>' +
@@ -433,6 +444,7 @@
     "</button>" +
     "</div>" +
     "</div>" +
+    '<dl class="field-list" data-slot="detail-fields" hidden></dl>' +
     '<div class="sheet-body notice-body" data-slot="detail-body">' +
     '<p class="label state-label" data-slot="detail-loading" data-i18n="today.contentLoading" hidden>' +
     escape(t("today.contentLoading")) +
@@ -469,21 +481,25 @@
   function build(section) {
     section.innerHTML = TEMPLATE;
 
-    var statNodes = {};
-    Array.prototype.forEach.call(section.querySelectorAll("[data-stat]"), function (node) {
-      statNodes[node.getAttribute("data-stat")] = node;
-    });
-
     return {
       view: section,
       screen: section.querySelector('[data-role="screen"]'),
       count: section.querySelector('[data-slot="head-count"]'),
       unit: section.querySelector('[data-slot="head-unit"]'),
       updated: section.querySelector('[data-slot="updated"]'),
-      stats: statNodes,
       segmented: section.querySelector(".segmented"),
       rangeButtons: section.querySelectorAll("[data-action='range']"),
       search: section.querySelector('[data-role="search"]'),
+      searchToggle: section.querySelector('[data-role="search-toggle"]'),
+      searchMode: section.querySelector('[data-slot="search-mode"]'),
+      searchCancel: section.querySelector('[data-role="search-cancel"]'),
+      searchClear: section.querySelector('[data-role="search-clear"]'),
+      head: section.querySelector(".page-head"),
+      newCount: section.querySelector('[data-slot="new-count"]'),
+      offline: section.querySelector('[data-slot="offline"]'),
+      emptyNote: section.querySelector('[data-slot="empty-note"]'),
+      emptyActions: section.querySelector('[data-slot="empty-actions"]'),
+      fields: section.querySelector('[data-slot="detail-fields"]'),
       loading: section.querySelector('[data-slot="loading"]'),
       error: section.querySelector('[data-slot="error"]'),
       errorMsg: section.querySelector('[data-slot="error-msg"]'),
@@ -518,6 +534,13 @@
 
     refs = build(section);
     refs.search.addEventListener("input", app.debounce(applySearch, SEARCH_DEBOUNCE_MS));
+    refs.search.addEventListener("input", syncSearchClear);
+    refs.searchToggle.addEventListener("click", toggleSearch);
+    refs.searchCancel.addEventListener("click", cancelSearch);
+    refs.searchClear.addEventListener("click", clearSearchInput);
+    global.addEventListener("online", onOnline);
+    global.addEventListener("offline", syncOffline);
+    syncOffline();
     refs.screen.addEventListener("click", onClick);
     refs.detailText.addEventListener("click", onBodyClick);
     refs.scrim.addEventListener("click", closeDetail);
@@ -530,7 +553,6 @@
     syncSearchValue();
     syncRangeButtons();
     renderHead();
-    renderStats();
     return refs;
   }
 
@@ -546,6 +568,9 @@
     }
     refs.list.innerHTML = html;
     syncActionButtons();
+    if (state.fresh) {
+      clearFreshLater();
+    }
   }
 
   function renderHead() {
@@ -562,18 +587,26 @@
     refs.updated.textContent = state.updatedAt
       ? t("today.updated", { time: time(state.updatedAt) })
       : "";
-  }
 
-  function renderStats() {
-    if (!refs) {
-      return;
+    // What arrived since the reader last opened the column. A page that is not
+    // the whole history cannot count past what it fetched, so the badge says
+    // "20+" rather than inventing an exact number.
+    var unread = 0;
+    for (var i = 0; i < state.items.length; i++) {
+      if (state.items[i].unseen) {
+        unread++;
+      }
     }
-    // Counts are server integers, not user text, so textContent is used here:
-    // it cannot be parsed as markup no matter what the API returns.
-    refs.stats.history.textContent = stats.history === null ? "\u2014" : num(stats.history);
-    refs.stats.keywords.textContent = stats.keywords === null ? "\u2014" : num(stats.keywords);
-    refs.stats.related.textContent = stats.related === null ? "\u2014" : num(stats.related);
-    refs.stats.alarms.textContent = stats.alarms === null ? "\u2014" : num(stats.alarms);
+    if (unread > 0) {
+      var capped = unread === state.items.length && state.total > state.items.length;
+      refs.newCount.textContent = t(capped ? "today.newCountMore" : "today.newCount", {
+        n: num(unread),
+      });
+      refs.newCount.hidden = false;
+    } else {
+      refs.newCount.textContent = "";
+      refs.newCount.hidden = true;
+    }
   }
 
   function renderStates() {
@@ -616,6 +649,13 @@
       ? "today.emptyMatch"
       : RANGE_EMPTY_KEYS[state.range] || "today.empty";
     refs.emptyTitle.textContent = state.q ? t(key, { q: state.q }) : t(key);
+
+    // A search that found nothing has no action worth offering; an empty day
+    // does, and an empty state without an exit is just a dead end.
+    var searching = Boolean(state.q);
+    refs.emptyNote.textContent = searching ? "" : t("today.emptyNote");
+    refs.emptyNote.hidden = searching;
+    refs.emptyActions.hidden = searching;
   }
 
   function renderMore() {
@@ -632,7 +672,6 @@
 
   function renderAll() {
     renderHead();
-    renderStats();
     renderList();
     renderStates();
     renderMore();
@@ -646,7 +685,6 @@
     state.failed = false;
     state.loaded = false;
     renderHead();
-    renderStats();
     renderStates();
     renderMore();
   }
@@ -668,33 +706,6 @@
     });
   }
 
-  /* Statistics ----------------------------------------------------------- */
-
-  function loadStatistics() {
-    if (!refs || stats.loaded || stats.loading || !global.MagnetAPI) {
-      return;
-    }
-
-    stats.loading = true;
-
-    global.MagnetAPI.statistics()
-      .then(function (payload) {
-        stats.loading = false;
-        stats.loaded = true;
-        stats.history = toCount(payload && payload.history);
-        stats.keywords = toCount(payload && payload.keywords);
-        stats.related = toCount(payload && payload.relatedNotices);
-        stats.alarms = toCount(payload && payload.alarmKeywords);
-        renderStats();
-      })
-      .catch(function () {
-        // A failed counter must never take the list down with it: the stats
-        // stay at "—" and the next mount tries again.
-        stats.loading = false;
-        renderStats();
-      });
-  }
-
   /* Data loading --------------------------------------------------------- */
 
   function applyPage(payload, append, offset) {
@@ -711,6 +722,24 @@
     }
 
     if (!append) {
+      // Rows that were not on screen before are "new since the last look". Only
+      // a refresh of an already rendered column gets the tint; a first load has
+      // nothing to compare against.
+      var previous = Object.create(null);
+      if (state.loaded) {
+        for (var k = 0; k < state.items.length; k++) {
+          previous[itemKey(state.items[k])] = true;
+        }
+      }
+      state.fresh = null;
+      if (state.loaded) {
+        for (var n = 0; n < incoming.length; n++) {
+          if (!previous[itemKey(incoming[n])] && incoming[n].unseen) {
+            state.fresh = state.fresh || Object.create(null);
+            state.fresh[itemKey(incoming[n])] = true;
+          }
+        }
+      }
       state.items = [];
       state.seen = Object.create(null);
       markUnseen(incoming);
@@ -831,8 +860,6 @@
     if (!refs || state.loading || !app.nearTop(refs.screen)) {
       return Promise.resolve();
     }
-    stats.loaded = false;
-    loadStatistics();
     return fetchPage(false);
   }
 
@@ -841,6 +868,191 @@
       return Promise.resolve();
     }
     return fetchPage(true);
+  }
+
+  /* Search mode ---------------------------------------------------------- */
+
+  function setSearchMode(on) {
+    if (!refs) {
+      return;
+    }
+    state.searching = Boolean(on);
+    if (refs.head) {
+      refs.head.classList.toggle("is-searching", state.searching);
+    }
+    refs.searchMode.hidden = !state.searching;
+    refs.searchToggle.setAttribute("aria-expanded", state.searching ? "true" : "false");
+    syncSearchClear();
+
+    if (state.searching) {
+      refs.search.focus();
+    } else if (typeof refs.searchToggle.focus === "function") {
+      refs.searchToggle.focus();
+    }
+  }
+
+  function toggleSearch() {
+    setSearchMode(!state.searching);
+  }
+
+  // Cancelling discards the query: the reader asked for the column back, not
+  // for a filter to stay parked behind a hidden field.
+  function cancelSearch() {
+    if (!refs) {
+      return;
+    }
+    setSearchMode(false);
+    if (state.q) {
+      state.q = "";
+      syncSearchValue();
+      reload();
+    }
+  }
+
+  function clearSearchInput() {
+    if (!refs) {
+      return;
+    }
+    refs.search.value = "";
+    syncSearchClear();
+    refs.search.focus();
+    applySearch();
+  }
+
+  function syncSearchClear() {
+    if (!refs) {
+      return;
+    }
+    refs.searchClear.hidden = !refs.search.value;
+  }
+
+  /* Offline -------------------------------------------------------------- */
+
+  function syncOffline() {
+    if (!refs) {
+      return;
+    }
+    var offline = Boolean(global.navigator && global.navigator.onLine === false);
+    refs.offline.hidden = !offline;
+  }
+
+  function onOnline() {
+    syncOffline();
+    refresh();
+  }
+
+  /* Detail fields -------------------------------------------------------- */
+
+  // The host is what the reader needs when checking a notice against the
+  // portal it came from; the full URL is already on the sheet's primary action.
+  function hostOf(url) {
+    var match = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)/i.exec(String(url || ""));
+    return match ? match[1] : "";
+  }
+
+  function renderFields(item) {
+    if (!refs || !refs.fields) {
+      return;
+    }
+
+    var rows = [];
+    if (item.code) {
+      rows.push([t("today.fieldCode"), item.code, true]);
+    }
+    if (item.updatedAt) {
+      rows.push([t("today.fieldPublished"), dateTime(item.updatedAt), false]);
+    }
+    var host = hostOf(item.url);
+    if (host) {
+      rows.push([t("today.fieldSource"), host, true]);
+    }
+    if (item.hasTenderCode) {
+      rows.push([t("today.fieldFlag"), t("today.tagTender"), false]);
+    }
+
+    var html = "";
+    for (var i = 0; i < rows.length; i++) {
+      html +=
+        '<div class="field-row">' +
+        '<dt class="field-key">' + escape(rows[i][0]) + "</dt>" +
+        '<dd class="field-value">' + escape(rows[i][1]) + "</dd>" +
+        (rows[i][2]
+          ? '<button type="button" class="icon-btn field-copy" data-action="copy"' +
+            ' data-copy="' + escape(rows[i][1]) + '"' +
+            ' data-i18n-aria="aria.copy" aria-label="' + escape(t("aria.copy")) + '">' +
+            app.icon("copy", "icon-sm") +
+            "</button>"
+          : '<span aria-hidden="true"></span>') +
+        "</div>";
+    }
+
+    refs.fields.innerHTML = html;
+    refs.fields.hidden = rows.length === 0;
+  }
+
+  // Clipboard access is refused in some webviews, so the fallback keeps the
+  // action working instead of showing a button that never responds.
+  function copyText(value) {
+    if (global.navigator && global.navigator.clipboard && global.navigator.clipboard.writeText) {
+      return global.navigator.clipboard.writeText(value);
+    }
+    return new Promise(function (resolve, reject) {
+      try {
+        var field = document.createElement("textarea");
+        field.value = value;
+        field.setAttribute("readonly", "");
+        field.className = "copy-shuttle";
+        document.body.appendChild(field);
+        field.select();
+        var copied = document.execCommand("copy");
+        document.body.removeChild(field);
+        if (copied) {
+          resolve();
+        } else {
+          reject(new Error("copy refused"));
+        }
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  function copyField(value) {
+    var text = String(value || "");
+    if (!text) {
+      return;
+    }
+    copyText(text).then(
+      function () {
+        app.toast(t("today.copied"), "ok");
+      },
+      function () {
+        app.toast(t("today.copyFailed"), "error");
+      }
+    );
+  }
+
+  /* Fresh rows ----------------------------------------------------------- */
+
+  var freshTimer = null;
+
+  function clearFreshLater() {
+    if (!refs) {
+      return;
+    }
+    if (freshTimer) {
+      global.clearTimeout(freshTimer);
+    }
+    // One fade, then the tint is gone: a row that keeps glowing is a status,
+    // and the status belongs to the header badge.
+    freshTimer = global.setTimeout(function () {
+      freshTimer = null;
+      var rows = refs.list.querySelectorAll(".entry.is-fresh");
+      for (var i = 0; i < rows.length; i++) {
+        rows[i].classList.remove("is-fresh");
+      }
+      state.fresh = null;
+    }, FRESH_HIGHLIGHT_MS);
   }
 
   /* Search and range ----------------------------------------------------- */
@@ -890,6 +1102,7 @@
 
     refs.detailTitle.textContent = item.title || t("today.noTitle");
     refs.detailKicker.textContent = detailMeta(item);
+    renderFields(item);
     syncActionButtons();
 
     refs.scrim.hidden = false;
@@ -1252,6 +1465,19 @@
       closeDetail();
       return;
     }
+    if (name === "copy") {
+      copyField(action.getAttribute("data-copy"));
+      return;
+    }
+    if (name === "empty-range") {
+      setSearchMode(false);
+      setRange("7d");
+      return;
+    }
+    if (name === "empty-library") {
+      app.go("library");
+      return;
+    }
   }
 
   /*
@@ -1319,6 +1545,13 @@
     if (key !== "Escape" && key !== "Esc") {
       return;
     }
+    // Escape leaves search before it closes a sheet: the shallowest layer that
+    // is open is the one the key dismisses.
+    if (refs && state.searching) {
+      event.preventDefault();
+      cancelSearch();
+      return;
+    }
     if (!refs || refs.detail.hidden) {
       return;
     }
@@ -1372,13 +1605,18 @@
       return;
     }
     renderHead();
-    renderStats();
     renderStates();
     renderMore();
     syncRowText();
     syncDetailText();
-    // Only the programmatic copy needs rewriting here; the static labels are
-    // plain data-i18n nodes the shell has already updated.
+    // The field list is built from data, so an open sheet needs its keys and its
+    // dates rewritten; the static labels are data-i18n nodes the shell updates.
+    if (refs.detail && !refs.detail.hidden) {
+      var open = state.items[state.detailIndex];
+      if (open) {
+        renderFields(open);
+      }
+    }
     renderContent();
   }
 
@@ -1417,13 +1655,6 @@
       showSkeleton();
       return;
     }
-
-    // A write elsewhere (a new keyword changes the counters) marks the view
-    // stale; the strip must refetch even when the notice list does not.
-    if (needsReload()) {
-      stats.loaded = false;
-    }
-    loadStatistics();
 
     if (needsReload()) {
       reload();

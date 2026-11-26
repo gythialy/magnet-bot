@@ -85,9 +85,10 @@
   global.MagnetAPI = {
     /* Read ---------------------------------------------------------------- */
 
-    /** Counts plus top keywords for the Today summary bar. */
-    statistics: function () {
-      return get("statistics");
+    /** Counts plus top keywords for the Today summary bar.
+     * {since} (RFC3339) also asks how many alarm records arrived after it. */
+    statistics: function (params) {
+      return get("statistics", params);
     },
 
     /** Notices for a date range: {range: "today"|"7d"|"all", q, offset, limit}. */

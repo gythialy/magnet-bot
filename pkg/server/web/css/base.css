@@ -1,9 +1,10 @@
 /*
  * base.css — design tokens and the shared surface vocabulary.
  *
- * The vocabulary is the settled v4 design: a printed column with hairlines,
- * one ink for selection and primary actions, one accent for position/focus,
- * green only as a status colour and red only for destructive actions.
+ * The vocabulary is the v4 design, extended by the v5 pass: a printed column
+ * with hairlines, one ink for selection and primary actions, one accent for
+ * position/focus, green only as a status colour and red only for destructive
+ * actions.
  *
  * Every semantic token resolves through the Telegram palette that js/core.js
  * writes onto :root, so the app follows the client theme; the hard-coded values
@@ -440,31 +441,13 @@ button {
   white-space: nowrap;
 }
 
-/* The line under the head: counters, a total, one sentence. It scrolls away
-   with the content; only the head above it stays. */
+/* The line under the head: a total, one sentence. It scrolls away with the
+   content; only the head above it stays. */
 .page-meta {
   padding: 7px 16px 0;
   font-size: 13px;
   color: var(--muted);
   line-height: var(--lh-meta);
-}
-
-/* The four counters as one wrapped line instead of four stacked cells. */
-.stat-line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0 5px;
-}
-
-.stat-line .stat-v {
-  color: var(--ink);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.stat-line .stat-sep {
-  color: var(--faint);
 }
 
 .controls-band {
@@ -731,8 +714,8 @@ button {
 }
 
 .row-actions .icon-btn {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
 }
 
 .name-note {
@@ -1683,4 +1666,253 @@ html[data-motion="reduce"] *::after {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
+}
+
+/* v5 ---------------------------------------------------------------------- *
+ * Header actions, search mode, the offline strip, the notice field block and
+ * the tab badge. Everything here reads the semantic tokens only: a literal
+ * colour would break the dark theme and the five-colour rule.
+ */
+
+/* A text button for the header: no border, 44px tall, ink at rest. */
+.btn-text {
+  height: 44px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+  border-radius: var(--r-ctrl);
+}
+
+.btn-text:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.btn-text:active {
+  background: var(--fill);
+}
+
+/* The count of what arrived since the reader last looked. Accent is the one
+   colour that marks new content, so it carries the whole message. */
+.head-new {
+  margin-left: -2px;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.4;
+  letter-spacing: 0;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+/* Search mode swaps the title row for the field inside the same sticky head:
+   the context (which page, what range) never leaves the screen. */
+.page-head.is-searching .page-head-row {
+  display: none;
+}
+
+.head-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 8px 0;
+}
+
+.head-search .search {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 40px;
+}
+
+.head-search .btn-text {
+  flex: 0 0 auto;
+  padding: 0 10px;
+  color: var(--muted);
+}
+
+.search-clear {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--fill);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.search-clear[hidden] {
+  display: none;
+}
+
+/* The range control lost a row of its own: 32px tall, one band under the head,
+   with the count beside the title above it. */
+.range-band {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px 4px;
+}
+
+.segmented.is-compact {
+  height: 32px;
+  padding: 3px;
+}
+
+.segmented.is-compact button {
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.offline-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 16px 8px;
+  padding: 8px 10px;
+  border-radius: var(--r-ctrl);
+  background: var(--fill);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.offline-bar .icon {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+/* An empty state with no exit is a dead end; this one offers the two sensible
+   next moves, one of them secondary. */
+.empty-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.empty-actions .btn,
+.empty-actions .btn-ghost {
+  height: 40px;
+  padding: 0 14px;
+  font-weight: 600;
+}
+
+/* Notice fields: a definition list inside the sheet, one hairline per row, the
+   copy action at the right edge only where copying means something. The sheet
+   head already ends with a rule, so the list must not add a second one. */
+.field-list {
+  margin: 0;
+  padding: 0 16px;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.field-key {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.field-value {
+  margin: 0;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted-strong);
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.field-copy {
+  width: 32px;
+  height: 32px;
+}
+
+/* The off-screen field the copy fallback drives. It must stay focusable to hold
+   a selection, so it is moved out of view rather than display:none. */
+.copy-shuttle {
+  position: fixed;
+  top: -1000px;
+  left: -1000px;
+  opacity: 0;
+}
+
+/* A row that arrived on refresh: one tint, then gone. The header badge owns the
+   lasting "something is new" message. */
+.entry.is-fresh {
+  background: var(--accent-soft);
+}
+
+/* Records badge in the tab bar. Ground-coloured text keeps the count readable
+   on both the light accent and the brightened dark one. */
+.tab-badge {
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  min-width: 16px;
+  height: 16px;
+  margin-left: 6px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 16px;
+  text-align: center;
+}
+
+.tab-badge[hidden] {
+  display: none;
+}
+
+/* Rows, sheets and transitions all read these two durations. */
+:root {
+  --dur-fast: 180ms;
+  --dur-sheet: 240ms;
+}
+
+/* The range total: a small muted line at the far edge of the band, not a
+   second headline. */
+.range-total {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-left: auto;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.range-total .num {
+  font-weight: 600;
+  color: var(--muted-strong);
+}
+
+/* The app draws its own clear control; the browser's would be a second, blue
+   cross beside it. */
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+  display: none;
 }

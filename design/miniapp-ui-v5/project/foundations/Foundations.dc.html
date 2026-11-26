@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>基础规范 · v5 增补</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#1668a8}a:hover{color:#0d4a77}
+.tnum{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div style="width:960px;height:760px;box-sizing:border-box;padding:28px 32px 24px;background:#ffffff;color:#09090b;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'PingFang SC','Hiragino Sans GB','Noto Sans SC','Microsoft YaHei',Arial,sans-serif;line-break:strict">
+
+  <div style="display:flex;align-items:baseline;gap:12px;padding-bottom:14px;border-bottom:1px solid rgba(9,9,11,0.12)">
+    <h1 style="margin:0;font-size:20px;font-weight:650;line-height:1.3;letter-spacing:0">基础规范 · v5 增补</h1>
+    <span style="font-size:13px;line-height:1.45;color:#71717a">在 v4「印刷专栏」词汇上做增量：只新增行高、触控与动效三组参数，不重画已定稿的组件。</span>
+  </div>
+
+  <div style="display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:32px;padding-top:16px">
+
+    <div>
+      <p style="margin:0 0 6px;font-size:12px;font-weight:600;line-height:1.4;letter-spacing:0.12em;text-transform:uppercase;color:#71717a">Type · 一个组件，两套参数</p>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) 172px;align-items:baseline;gap:12px;padding:9px 0;border-top:1px solid rgba(9,9,11,0.12)">
+        <span style="font-size:17px;font-weight:650;line-height:1.3;letter-spacing:0">今日 · 128 条</span>
+        <span class="mono" style="font-size:11px;line-height:1.5;color:#71717a">17 / 650 · 1.3→1.4 · 0→-0.02em</span>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) 172px;align-items:baseline;gap:12px;padding:9px 0;border-top:1px solid rgba(9,9,11,0.12)">
+        <span style="font-size:15px;font-weight:600;line-height:1.55">云陵区人民医院医用耗材配送服务</span>
+        <span class="mono" style="font-size:11px;line-height:1.5;color:#71717a">15 / 600 · 1.4→1.55</span>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) 172px;align-items:baseline;gap:12px;padding:9px 0;border-top:1px solid rgba(9,9,11,0.12)">
+        <span style="font-size:15px;font-weight:400;line-height:1.7">正文说明，行高留给中文与标点。</span>
+        <span class="mono" style="font-size:11px;line-height:1.5;color:#71717a">15 / 400 · 1.5→1.7</span>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) 172px;align-items:baseline;gap:12px;padding:9px 0;border-top:1px solid rgba(9,9,11,0.12)">
+        <span style="font-size:13px;line-height:1.6;color:#71717a">09:42 · ZB-2026-1187 · 数字化</span>
+        <span class="mono" style="font-size:11px;line-height:1.5;color:#71717a">13 / 400 · 1.45→1.6</span>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) 172px;align-items:baseline;gap:12px;padding:9px 0;border-top:1px solid rgba(9,9,11,0.12)">
+        <span style="font-size:12px;font-weight:600;line-height:1.4;letter-spacing:0.04em;color:#71717a">匹配关键词 / MATCHED BY</span>
+        <span class="mono" style="font-size:11px;line-height:1.5;color:#71717a">11或12 / 600 · 0.12em或0.04em</span>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) 172px;align-items:baseline;gap:12px;padding:9px 0;border-top:1px solid rgba(9,9,11,0.12)">
+        <span style="font-size:12px;line-height:1.5;color:#71717a">小字说明：只存在这台手机上。</span>
+        <span class="mono" style="font-size:11px;line-height:1.5;color:#71717a">12 / 400 · 1.45→1.6</span>
+      </div>
+
+      <p style="margin:20px 0 6px;font-size:12px;font-weight:600;line-height:1.4;letter-spacing:0.12em;text-transform:uppercase;color:#71717a">Color · 五个意思，不多不少</p>
+
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 20px">
+
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid rgba(9,9,11,0.12)">
+          <span aria-hidden="true" style="flex:0 0 auto;width:20px;height:20px;border-radius:3px;background:#09090b"></span>
+          <span style="font-size:12px;line-height:1.4">ink <span class="mono" style="color:#71717a">#09090b</span></span>
+          <span style="font-size:11px;line-height:1.4;color:#71717a">文字 / 主操作 / 选中</span>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid rgba(9,9,11,0.12)">
+          <span aria-hidden="true" style="flex:0 0 auto;width:20px;height:20px;border-radius:3px;background:#1668a8"></span>
+          <span style="font-size:12px;line-height:1.4">accent <span class="mono" style="color:#71717a">#1668a8</span></span>
+          <span style="font-size:11px;line-height:1.4;color:#71717a">位置 / 新内容 / 焦点</span>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid rgba(9,9,11,0.12)">
+          <span aria-hidden="true" style="flex:0 0 auto;width:20px;height:20px;border-radius:3px;background:#71717a"></span>
+          <span style="font-size:12px;line-height:1.4">muted <span class="mono" style="color:#71717a">#71717a</span></span>
+          <span style="font-size:11px;line-height:1.4;color:#71717a">meta / 标签 / 未选中</span>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid rgba(9,9,11,0.12)">
+          <span aria-hidden="true" style="flex:0 0 auto;width:20px;height:20px;border-radius:3px;background:#b45309"></span>
+          <span style="font-size:12px;line-height:1.4">flag <span class="mono" style="color:#71717a">#b45309</span></span>
+          <span style="font-size:11px;line-height:1.4;color:#71717a">招标星标（唯一用途）</span>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid rgba(9,9,11,0.12)">
+          <span aria-hidden="true" style="flex:0 0 auto;width:20px;height:20px;border-radius:3px;background:#8d8d96"></span>
+          <span style="font-size:12px;line-height:1.4">faint <span class="mono" style="color:#71717a">#8d8d96</span></span>
+          <span style="font-size:11px;line-height:1.4;color:#71717a">行内分隔符，不排文字</span>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid rgba(9,9,11,0.12)">
+          <span aria-hidden="true" style="flex:0 0 auto;width:20px;height:20px;border-radius:3px;background:#dc2626"></span>
+          <span style="font-size:12px;line-height:1.4">danger <span class="mono" style="color:#71717a">#dc2626</span></span>
+          <span style="font-size:11px;line-height:1.4;color:#71717a">破坏性，仅图标与确认</span>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid rgba(9,9,11,0.12)">
+          <span aria-hidden="true" style="flex:0 0 auto;width:20px;height:20px;border-radius:3px;background:#16a34a"></span>
+          <span style="font-size:12px;line-height:1.4">success <span class="mono" style="color:#71717a">#16a34a</span></span>
+          <span style="font-size:11px;line-height:1.4;color:#71717a">状态：只有访问盾牌</span>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid rgba(9,9,11,0.12)">
+          <span aria-hidden="true" style="flex:0 0 auto;width:20px;height:20px;border-radius:3px;background:rgba(9,9,11,0.12)"></span>
+          <span style="font-size:12px;line-height:1.4">rule <span class="mono" style="color:#71717a">0.12</span></span>
+          <span style="font-size:11px;line-height:1.4;color:#71717a">唯一分隔线，1px 通栏</span>
+        </div>
+
+      </div>
+    </div>
+
+    <div>
+
+      <p style="margin:0 0 6px;font-size:12px;font-weight:600;line-height:1.4;letter-spacing:0.12em;text-transform:uppercase;color:#71717a">Space · 4 的倍数</p>
+
+      <div style="display:flex;align-items:flex-end;gap:10px;padding:10px 0 12px;border-top:1px solid rgba(9,9,11,0.12)">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><span aria-hidden="true" style="display:block;width:32px;height:4px;background:#09090b"></span><span class="mono" style="font-size:10px;color:#71717a">4</span></div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><span aria-hidden="true" style="display:block;width:32px;height:8px;background:#09090b"></span><span class="mono" style="font-size:10px;color:#71717a">8</span></div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><span aria-hidden="true" style="display:block;width:32px;height:12px;background:#09090b"></span><span class="mono" style="font-size:10px;color:#71717a">12</span></div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><span aria-hidden="true" style="display:block;width:32px;height:16px;background:#09090b"></span><span class="mono" style="font-size:10px;color:#71717a">16</span></div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><span aria-hidden="true" style="display:block;width:32px;height:24px;background:#09090b"></span><span class="mono" style="font-size:10px;color:#71717a">24</span></div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><span aria-hidden="true" style="display:block;width:32px;height:32px;background:#09090b"></span><span class="mono" style="font-size:10px;color:#71717a">32</span></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:76px minmax(0,1fr);gap:8px;padding:8px 0;border-top:1px solid rgba(9,9,11,0.12)">
+        <span style="font-size:12px;font-weight:600;line-height:1.5;color:#71717a">行高</span>
+        <span style="font-size:12px;line-height:1.5;color:#09090b">条目 76–92（随标题 1–2 行），设置行 48</span>
+      </div>
+      <div style="display:grid;grid-template-columns:76px minmax(0,1fr);gap:8px;padding:8px 0;border-top:1px solid rgba(9,9,11,0.12)">
+        <span style="font-size:12px;font-weight:600;line-height:1.5;color:#71717a">触控</span>
+        <span style="font-size:12px;line-height:1.5;color:#09090b">最小 44×44；行内图标 44 命中区，视觉 20</span>
+      </div>
+      <div style="display:grid;grid-template-columns:76px minmax(0,1fr);gap:8px;padding:8px 0;border-top:1px solid rgba(9,9,11,0.12)">
+        <span style="font-size:12px;font-weight:600;line-height:1.5;color:#71717a">圆角</span>
+        <span style="font-size:12px;line-height:1.5;color:#09090b">控件 6 / 提示 10 / 弹层 14 / 行 0</span>
+      </div>
+      <div style="display:grid;grid-template-columns:76px minmax(0,1fr);gap:8px;padding:8px 0;border-top:1px solid rgba(9,9,11,0.12)">
+        <span style="font-size:12px;font-weight:600;line-height:1.5;color:#71717a">栏高</span>
+        <span style="font-size:12px;line-height:1.5;color:#09090b">顶栏 48 / 筛选 32 / 底栏 58</span>
+      </div>
+
+      <p style="margin:18px 0 6px;font-size:12px;font-weight:600;line-height:1.4;letter-spacing:0.12em;text-transform:uppercase;color:#71717a">Motion · 只动位置与透明度</p>
+
+      <div style="display:grid;grid-template-columns:104px minmax(0,1fr);gap:8px;padding:8px 0;border-top:1px solid rgba(9,9,11,0.12)">
+        <span class="mono" style="font-size:11px;line-height:1.5;color:#71717a">180ms</span>
+        <span style="font-size:12px;line-height:1.5;color:#09090b">分段切换、按下反馈、错误条出现</span>
+      </div>
+      <div style="display:grid;grid-template-columns:104px minmax(0,1fr);gap:8px;padding:8px 0;border-top:1px solid rgba(9,9,11,0.12)">
+        <span class="mono" style="font-size:11px;line-height:1.5;color:#71717a">240ms</span>
+        <span style="font-size:12px;line-height:1.5;color:#09090b">弹层上滑、遮罩淡入</span>
+      </div>
+      <div style="display:grid;grid-template-columns:104px minmax(0,1fr);gap:8px;padding:8px 0;border-top:1px solid rgba(9,9,11,0.12)">
+        <span class="mono" style="font-size:11px;line-height:1.5;color:#71717a">1.2s</span>
+        <span style="font-size:12px;line-height:1.5;color:#09090b">刷新后新行的底色淡出，只做一次</span>
+      </div>
+      <div style="display:grid;grid-template-columns:104px minmax(0,1fr);gap:8px;padding:8px 0;border-top:1px solid rgba(9,9,11,0.12)">
+        <span class="mono" style="font-size:11px;line-height:1.5;color:#71717a">reduce</span>
+        <span style="font-size:12px;line-height:1.5;color:#09090b">prefers-reduced-motion 关掉位移与淡出，保留即时切换</span>
+      </div>
+
+      <p style="margin:18px 0 6px;font-size:12px;font-weight:600;line-height:1.4;letter-spacing:0.12em;text-transform:uppercase;color:#71717a">验收 · 六条</p>
+
+      <div style="display:grid;gap:0">
+        <div style="display:flex;align-items:baseline;gap:8px;padding:6px 0;border-top:1px solid rgba(9,9,11,0.12)"><span class="mono" style="font-size:11px;color:#1668a8">01</span><span style="font-size:12px;line-height:1.5">每个可点元素 ≥44×44，含行内图标</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;padding:6px 0;border-top:1px solid rgba(9,9,11,0.12)"><span class="mono" style="font-size:11px;color:#1668a8">02</span><span style="font-size:12px;line-height:1.5">正文 15/1.7，11px 标签也对 4.5:1</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;padding:6px 0;border-top:1px solid rgba(9,9,11,0.12)"><span class="mono" style="font-size:11px;color:#1668a8">03</span><span style="font-size:12px;line-height:1.5">数字一律 tabular-nums，刷新不抖</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;padding:6px 0;border-top:1px solid rgba(9,9,11,0.12)"><span class="mono" style="font-size:11px;color:#1668a8">04</span><span style="font-size:12px;line-height:1.5">加载 / 空 / 失败 / 离线 / 限流都有出口</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;padding:6px 0;border-top:1px solid rgba(9,9,11,0.12)"><span class="mono" style="font-size:11px;color:#1668a8">05</span><span style="font-size:12px;line-height:1.5">可逆给撤销，不可逆点名对象</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;padding:6px 0;border-top:1px solid rgba(9,9,11,0.12)"><span class="mono" style="font-size:11px;color:#1668a8">06</span><span style="font-size:12px;line-height:1.5">深色下文字 4.5:1，accent 提亮到 #6ab3f3</span></div>
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":960,"height":760}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

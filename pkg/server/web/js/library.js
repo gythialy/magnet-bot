@@ -68,6 +68,9 @@
     type: "keywords",
     q: "",
     showArchived: readShowArchived(),
+    // The cleanup list: only words that never matched, so a stale word is a
+    // decision rather than a row to scan past.
+    onlyNever: false,
     items: [],
     archivedCount: 0,
     status: "idle",
@@ -97,6 +100,12 @@
 
   function date(value) {
     return i18n ? i18n.date(value) : String(value || "");
+  }
+
+  // A match inside the 30-day window needs the month and day, not the year:
+  // "last 11/25" is what the operator reads, and it keeps the meta line short.
+  function monthDay(value) {
+    return i18n ? i18n.monthDay(value) : String(value || "");
   }
 
   function esc(value) {
@@ -195,6 +204,13 @@
     "</span>" +
     "</label>" +
     "</div>" +
+    '<div class="lib-cleanup" data-slot="cleanup" hidden>' +
+    '<span data-slot="cleanup-text"></span>' +
+    '<button type="button" class="btn-text" data-role="only-never" aria-pressed="false"' +
+    ' data-i18n="lib.cleanupShow">' +
+    esc(t("lib.cleanupShow")) +
+    "</button>" +
+    "</div>" +
     '<p class="label state-label" data-slot="state" role="status" hidden></p>' +
     '<div data-slot="error"></div>' +
     '<div class="list" data-slot="list" hidden></div>' +
@@ -216,7 +232,31 @@
 
   function keywordMeta(item) {
     var count = typeof item.counter === "number" ? item.counter : 0;
-    return '<span class="num">' + esc(num(count)) + "</span> " + esc(plural("unit.notices", count));
+    if (count === 0) {
+      // Never matched: the honest exit is the word's age, because the dedupe
+      // log only proves the last 30 days.
+      var spl = '<span class="sep" aria-hidden="true">\u00b7</span>';
+      var days = daysSince(item.createdAt);
+      return (
+        '<span class="tag">' + esc(t("lib.neverHit")) + "</span>" +
+        (days === null ? "" : spl + esc(t("lib.joined", { n: num(days) })))
+      );
+    }
+    var sep = '<span class="sep" aria-hidden="true">\u00b7</span>';
+    var hit = item.lastHitAt
+      ? esc(t("lib.lastHit", { date: esc(monthDay(item.lastHitAt)) }))
+      : esc(t("lib.recentNone"));
+    return '<span class="num">' + esc(num(count)) + "</span> " + esc(plural("unit.notices", count)) + sep + hit;
+  }
+
+  // Whole days since an RFC3339 stamp, or null when it cannot be parsed.
+  function daysSince(value) {
+    var at = Date.parse(value);
+    if (!isFinite(at)) {
+      return null;
+    }
+    var days = Math.floor((Date.now() - at) / 86400000);
+    return days > 0 ? days : 0;
   }
 
   function addedMeta(item) {
@@ -310,12 +350,29 @@
 
   function filteredItems() {
     var needle = state.q.trim().toLowerCase();
-    if (!needle) {
-      return state.items;
+    var items = state.items;
+    if (needle) {
+      items = items.filter(function (item) {
+        return item.keyword.toLowerCase().indexOf(needle) !== -1;
+      });
     }
-    return state.items.filter(function (item) {
-      return item.keyword.toLowerCase().indexOf(needle) !== -1;
-    });
+    if (state.onlyNever) {
+      items = items.filter(function (item) {
+        return (typeof item.counter === "number" ? item.counter : 0) === 0;
+      });
+    }
+    return items;
+  }
+
+  function neverMatchedCount() {
+    var total = 0;
+    for (var i = 0; i < state.items.length; i++) {
+      var item = state.items[i];
+      if (!item.archivedAt && (typeof item.counter === "number" ? item.counter : 0) === 0) {
+        total++;
+      }
+    }
+    return total;
   }
 
   function activeItems() {
@@ -497,6 +554,18 @@
     }
 
     els.count.textContent = num(active.length) + " " + plural(meta().unit, active.length);
+
+    // The cleanup row is the operator's one lever against stale words; it says
+    // the size of the problem and toggles the filtered list.
+    var never = neverMatchedCount();
+    els.cleanup.hidden = never === 0 && !state.onlyNever;
+    els.cleanupText.textContent = state.onlyNever
+      ? t("lib.onlyNever")
+      // The raw count, not the formatted one: the plural selector compares a
+      // number, and num() returns a string.
+      : t("lib.cleanupHint", { n: never });
+    els.onlyNever.textContent = state.onlyNever ? t("lib.allWords") : t("lib.cleanupShow");
+    els.onlyNever.setAttribute("aria-pressed", state.onlyNever ? "true" : "false");
     els.archivedCount.textContent = num(state.archivedCount);
     els.showArchived.checked = state.showArchived;
   }
@@ -982,6 +1051,8 @@
         id: row.id,
         keyword: typeof row.keyword === "string" ? row.keyword : "",
         counter: typeof row.counter === "number" && isFinite(row.counter) ? row.counter : 0,
+        // Newest match inside the dedupe window; null means "nothing inside it".
+        lastHitAt: row.lastHitAt || null,
         createdAt: row.createdAt || "",
         archivedAt: row.archivedAt || null,
       });
@@ -1118,6 +1189,9 @@
       listhead: section.querySelector('[data-slot="listhead"]'),
       count: section.querySelector('[data-slot="count"]'),
       archivedCount: section.querySelector('[data-slot="archived-count"]'),
+      cleanup: section.querySelector('[data-slot="cleanup"]'),
+      cleanupText: section.querySelector('[data-slot="cleanup-text"]'),
+      onlyNever: section.querySelector('[data-role="only-never"]'),
       showArchived: section.querySelector('[data-role="show-archived"]'),
       state: section.querySelector('[data-slot="state"]'),
       error: section.querySelector('[data-slot="error"]'),
@@ -1136,6 +1210,7 @@
         return;
       }
       state.type = button.getAttribute("data-type");
+      state.onlyNever = false;
       state.items = [];
       state.archivedCount = 0;
       state.loaded = false;
@@ -1151,6 +1226,12 @@
     els.showArchived.addEventListener("change", function () {
       state.showArchived = els.showArchived.checked;
       storeShowArchived(state.showArchived);
+      renderList();
+      renderEmpty();
+    });
+
+    els.onlyNever.addEventListener("click", function () {
+      state.onlyNever = !state.onlyNever;
       renderList();
       renderEmpty();
     });

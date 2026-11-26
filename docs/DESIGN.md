@@ -138,6 +138,17 @@ components:
     textColor: "{colors.primary-ink}"
     rounded: "{rounded.control}"
     height: "40px"
+  row-action:
+    backgroundColor: "{colors.ground}"
+    textColor: "{colors.ink-muted}"
+    rounded: "{rounded.control}"
+    width: "44px"
+    height: "44px"
+  badge:
+    backgroundColor: "{colors.accent}"
+    textColor: "{colors.ground}"
+    rounded: "{rounded.pill}"
+    height: "16px"
   switch:
     backgroundColor: "{colors.fill-strong}"
     rounded: "{rounded.pill}"
@@ -167,17 +178,25 @@ components:
 **Creative North Star: "The Printed Column, bilingual"**
 
 The Mini App is read, not operated like a control panel. Its reading surface behaves
-like a printed column: a sticky head line that says what you are looking at and how
-fresh it is, a packed line of counters under it, then entries separated by hairlines —
+like a printed column: a sticky head line that says what you are looking at, what is new
+and how fresh it is, a 32px range control in its own band, then entries separated by hairlines —
 no cards, no tiles, no shadows in the flow. The operator opens it between meetings,
 glances down one vertical rhythm, and closes it.
 
-v4 keeps that column and changes the information architecture around it: the watchlist
-merges keywords and alarm words into one tab, archiving is a reversible state instead of
-a deletion, an administrator can open anyone else's library read-only, settings split
-into a short root plus an admin console, and language is a device-local switch in exactly
-one place. The page still speaks two scripts with one component set: Chinese overrides
-variables (leading, label size and tracking), never selectors.
+v4 changed the information architecture: the watchlist merges keywords and alarm words
+into one tab, archiving is a reversible state instead of a deletion, an administrator can
+open anyone else's library read-only, settings split into a short root plus an admin
+console, and language is a device-local switch in exactly one place.
+
+v5 is the "answer first" pass on that structure. The first screen answers the one
+question the app exists for — did anything relevant arrive — so the header carries
+`3 条新` beside the title and the range total in the band, and the four-counter stat line
+and the stacked search row are gone (they cost about 85px above the first entry). Search
+became a mode of the head rather than a permanent row, entries keep one action instead of
+three, the notice sheet opens with its fields, the watchlist offers its idle words as a
+list to clean, and records group by month. The page still speaks two scripts with one
+component set: Chinese overrides variables (leading, label size and tracking), never
+selectors.
 
 **Key Characteristics:**
 - Hairline rules are the only separator; no borders wrapped around content, no cards.
@@ -294,10 +313,12 @@ the tab bar is its own row, so a scrolling `.screen` always ends above the bar.
   and the right edge for that page (freshness time, or one action). No brand bar: the
   client's title bar already names the app. 16px side gutters, `safe-area-inset-top`
   honoured.
-- Meta line: one optional non-sticky line under the head — counters, a total, one
-  sentence. It scrolls away; only the head above it stays.
-- Today: page head (title + count + unit + updated time), stat line, range segment +
-  search, then entries. Watchlist: page head (+ Members for admins), word-type segment +
+- Meta line: one optional non-sticky line under the head — a total, one sentence. It
+  scrolls away; only the head above it stays. Today has none: its numbers sit in the
+  head (what is new) and in the range band (how many).
+- Today: page head (title + "3 条新" badge + freshness + search action), one short band
+  carrying the 32px segmented control and the range total, then entries. Search is a
+  mode of the head, not a row of its own. Watchlist: page head (+ Members for admins), word-type segment +
   search + Add, list head with the archived toggle, then rows and — when the toggle is
   on — the archived group. Settings: page head, then three short groups — account (the
   identity row plus one access-state value), this device (language, appearance, reduced
@@ -306,7 +327,7 @@ the tab bar is its own row, so a scrolling `.screen` always ends above the bar.
   present only for that role — the role is what grants it, so it is not a group of its
   own. Records: page head (+ updated time), record count, search, rows.
 - A tab root has no refresh control. Freshness is a property of the page, not a button:
-  every view fetches on mount, and a foreground return after 30s refetches the open view
+  every view fetches on mount, and a foreground return after 15s refetches the open view
   in place — keeping its rows, its scroll position and any open sheet.
 - One rule per separation, edge to edge. Rows are square; controls are 6px; sheets are
   14px; marks are 2px.
@@ -335,17 +356,27 @@ column.
 Sticky, ground background, one bottom rule, 45px tall (44px row plus the rule;
 `safe-area-inset-top` adds on devices that need it). Title 17/650 on the left, then the
 count in accent 17/650 with its unit at 13 muted, then the right edge. The right edge
-holds one thing only: the freshness time (11 muted, `{time} updated`) on Today and
-Records, the Members action on the Watchlist, nothing on Settings. The head is the one
-element that stays while the column scrolls, so what the page is and how fresh it is
-never leave the screen.
+holds at most two things: the freshness time (11 muted, `{time} updated`) and, where the
+page has one, a single 44px action — Today's search toggle, the Watchlist's Members.
+The head is the one element that stays while the column scrolls, so what the page is and
+how fresh it is never leave the screen.
+
+Today adds two things the other tab roots do not have:
+
+- **The new badge** (`3 条新`): 13/650 in accent, right after the title. It counts rows
+  that arrived after this device's previous visit to Today; when the page cannot know
+  the full number (it only holds one page) it says `20+`. A first visit stores a
+  baseline and shows nothing, which keeps the first screen calm.
+- **Search mode**: the toggle swaps the title row for a 40px field plus a Cancel action
+  inside the same sticky head. Escape cancels, Cancel discards the query, and leaving
+  search returns the list and the focus to the toggle.
 
 ### Meta line
 One line, 13px muted, 7px above and no rule, under the head. It carries what does not
-need to survive scrolling: the four counters on Today (labels in muted, values in ink,
-separated by a faint `·` and allowed to wrap onto a second line), the record total on
-Records, the one-sentence explanation on Settings. It is the only place a page may put
-four numbers; the four-cell stat strip it replaces cost 61px of first screen.
+need to survive scrolling: the record total on Records, the one-sentence explanation on
+Settings. Today has no meta line at all — its four counters were removed in v5 because
+they answered a question nobody asked; the head says what is new and the range band says
+how many, and the first entry now starts about 90px from the top instead of 175px.
 
 ### Top bar (sub-pages only)
 Sticky, ground background, one bottom rule, 45px. Back chevron, title, 40px spacer to
@@ -364,8 +395,9 @@ server-side where the dataset is paged (members, records, notices).
 
 ### Rows and entries
 - Row: identity or word on the left, a 13px meta line beneath, actions on the right, one
-  rule below. Actions are 40px icon targets, muted at rest, ink on press; destructive
-  turns red only on press.
+  rule below. Actions are 44px targets (the accessibility floor, and the reason the icon
+  is drawn at 20px inside a larger box), muted at rest, ink on press; destructive turns
+  red only on press.
 - Settings rows have exactly one shape: a 15/600 label on the left (with at most one 13px
   explanation under it) and one thing on the right — a 13px muted value, a value plus a
   chevron, or a switch. There is no second status row, no tracked-caps label column and
@@ -376,8 +408,11 @@ server-side where the dataset is paged (members, records, notices).
   phone"). Two notes on one page is the ceiling.
 - Deployment facts (build time, webhook state, stored counts) live in the administrator
   console, not on the settings root; the root only carries the app version.
-- Entry (Today): 15/600 lead clamped to two lines, a 13px meta line (new dot, time,
-  project code) and three icon actions (PDF, PNG, open) on the same line.
+- Entry (Today): a two-column row — the title at 15/600 clamped to two lines with a 13px
+  meta line (new dot, time, project code) under it, and exactly one 44px action at the
+  right edge (open the source). Converting to PDF or PNG is rare next to opening the
+  notice, so both live in the sheet; the list keeps its text column instead of
+  reserving 108px for three small targets.
 - A notice whose matched keyword was a project code gets a filled 15px amber star at
   the head of the lead line — the slot the bot's chat message uses for the same marker.
   The star carries no visible word; its accessible name is the localised "招标 / Bid"
@@ -407,6 +442,31 @@ sheet is the only language switch in the app.
 Ink ground, ground text, 10px radius, one line, optional underline action. The archive
 toast is the canonical reversible toast: it names the word and offers Undo for five
 seconds.
+
+### Detail fields
+The notice sheet opens with a definition list, not prose: project code, publication
+time and source host, one hairline per row, 12/600 muted keys in an 84px column. Rows
+whose value is worth carrying elsewhere get a 32px copy action; the action reports
+success with the toast and failure with the "select the text instead" hint, because some
+webviews refuse clipboard access.
+
+### Watchlist cleanup
+Words that never matched are their own list, not a row to scan past: a `.lib-cleanup`
+line states how many have gone 30+ days without a match and toggles a filtered view.
+A word's meta line reads `12 notices · last 11/25`; a word with no match inside the
+dedupe window says so (`no match in 30 days`), and only a zero counter earns the
+`Never matched` tag — the log proves 30 days, the counter proves the whole life.
+
+### Records
+Punishments group under a month band (`2026-11` plus its count). The lead line carries
+the disposition as a neutral chip (the `handleResult` word, truncated), then the company
+name; the meta line keeps the business id and the date. Opening the tab stores the
+watermark that clears the tab bar's badge.
+
+### Tab badge
+A count on the Records tab for punishments that start after the device's watermark. It
+is decoration for a screen reader (`aria-hidden`): the tab's name stays the tab's name,
+and the records page itself says what arrived.
 
 ### Data freshness
 A tab root has no refresh control, because a control for "make this current" is a

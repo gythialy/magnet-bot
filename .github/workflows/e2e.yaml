@@ -1,0 +1,39 @@
+name: e2e
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: "go.mod"
+          cache: false
+
+      # The runner image ships Google Chrome. Naming the binary explicitly keeps
+      # a missing browser a failure: the specs skip when they cannot find one,
+      # which on CI would read as a pass.
+      - name: Browser-driven specs
+        run: go test -tags e2e -run TestE2E -count=1 -v ./pkg/server
+        env:
+          E2E_CHROME_BIN: /usr/bin/google-chrome
+          E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: ${{ runner.temp }}/e2e
+          if-no-files-found: ignore

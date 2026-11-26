@@ -1,6 +1,5 @@
 # Product
 
-<!-- impeccable:product-schema 1 -->
 
 ## Platform
 
@@ -284,10 +283,10 @@ of the shell.
 
 - The product name is **magnet** (lowercase in copy and image tags); the bot
   presents itself as a personal instrument, not a SaaS product.
-- Interface language is English, terse and literal: controls name their action,
-  errors name the problem. Chat help and prompts follow the same voice, but the
-  alarm message template and the complex-table placeholder are still Chinese —
-  a known inconsistency, not a style decision.
+- The voice is terse and literal in both scripts: controls name their action,
+  errors name the problem. Chat messages are English only; the Mini App carries
+  English and Chinese dictionaries and follows a device-local switch (or the
+  client's language, on Auto).
 - The app belongs to the Telegram client it is opened from: it follows the
   client's theme parameters, uses the platform type stack and never introduces a
   second accent colour of its own.
@@ -303,9 +302,8 @@ of the shell.
 - The repository carries no logo, illustration, marketing copy, testimonials or
   customer evidence; none may be invented. The only product visuals are the Mini
   App's own UI and its design system ([DESIGN.md](DESIGN.md)).
-- Tests and fixtures are synthetic by policy (290 test functions across
-  `cmd/` and `pkg/`), and the Gotenberg integration test is skipped unless
-  `GOTENBERG_URL` and `GOTENBERG_TEST_URL` are set.
+- Tests and fixtures are synthetic by policy, and the Gotenberg integration test
+  is skipped unless `GOTENBERG_URL` and `GOTENBERG_TEST_URL` are set.
 
 ## Product Principles
 
@@ -326,7 +324,7 @@ of the shell.
 
 ## Accessibility & Inclusion
 
-- Touch targets at least 40 px, body contrast at least 4.5:1 (the theme's accent
+- Touch targets at least 44 px, body contrast at least 4.5:1 (the theme's accent
   is re-derived when it fails), and every state is expressed in words as well as
   colour.
 - Dark theme is a first-class state, not an afterthought, and follows the
@@ -335,132 +333,8 @@ of the shell.
   recovery, and the app degrades to a gate screen rather than a broken shell when
   it is opened outside Telegram.
 
-## Appendix A — Chat command reference
+## Where the facts live
 
-Commands are registered with Telegram and listed in `/start` help. When the Mini
-App is enabled and publicly reachable, the retired commands answer with a prompt
-plus an "Open app" button instead of running, and are hidden from the command
-menu.
-
-| Command | Access | Behaviour | Retired with Mini App |
-| --- | --- | --- | --- |
-| `/start` | allowed | Help text; `alarm_<id>` payload opens one alarm | no |
-| `/me` | allowed | Echo the Telegram chat payload (dev utility) | no |
-| `/debug` | allowed | Send a fixed alarm deep link (dev utility) | no |
-| `/add_keywords <k1,k2>` | allowed | Add project keywords | yes |
-| `/edit_keywords id1=kw1;id2=kw2` | allowed | Rename keywords | yes |
-| `/delete_keywords <id1,id2>` | allowed | Delete keywords by id | yes |
-| `/add_alarm_keywords <k1,k2>` | allowed | Add alarm keywords | yes |
-| `/search_alarm_records <term>` | allowed | Page alarm records by credit name | yes |
-| `/search_history_title <term>` | allowed | Page history by title | yes |
-| `/list_today` | allowed | Page today's history | yes |
-| `/alarm <id>` | allowed | Show one alarm detail | yes |
-| `/convertpdf <url>` | allowed | Convert a notice to PDF | yes |
-| `/convertimg <url>` | allowed | Convert a notice to PNG | yes |
-| `/statistics` | allowed | Inline statistics report | yes |
-| `/settings` | admin | Point at the Mini App settings screen | no |
-| `/retry` | admin | Force one crawl and push for the caller | no |
-| `/clean` | admin | Prune history older than 30 days | no |
-
-Inline callback namespaces: `stats:`, `search:`, `alarm:`, `today:`.
-
-Anything else falls through to the default handler, which echoes the raw update
-as JSON — the historical debug fallback, not a user-facing behaviour.
-
-## Appendix B — HTTP surface
-
-All `/api/*` calls require a valid `X-Telegram-Init-Data` header; `/api/v1/admin/*`
-additionally requires an enabled administrator. Errors use
-`{"error":{"code":"..."}}` with `unauthorized`, `forbidden`,
-`forbidden_admin`, `not_found`, `bad_request`, `too_many_requests`,
-`conversion_failed`, `internal_error`, and admin guard answers
-`409 {"error":{"code":"guard","message":"..."}}` (self-change, last
-administrator, environment-managed row).
-
-| Method and path | Purpose |
-| --- | --- |
-| `GET /healthz` | Plain-text liveness probe, always registered |
-| `POST /telegram/webhook` | Telegram updates (webhook mode only, secret header) |
-| `POST /pdf/{id}` | Gotenberg result callback (optional `?token=`) |
-| `GET /app/` (and `/app` → 301) | Embedded Mini App shell and assets |
-| `GET /api/v1/statistics` | Four counters plus bot username |
-| `GET /api/v1/notices?range=today\|7d\|all&q=&offset=&limit=` | Paged notice history (`range` defaults to `today`) |
-| `GET /api/v1/notices/content?url=&refresh=` | Sanitized full text of one owned notice; served from cache unless `refresh=1` |
-| `GET /api/v1/keywords` | Project keywords, leaderboard order |
-| `GET /api/v1/alarms` | Alarm keywords, id order |
-| `GET /api/v1/alarm-records?q=&offset=&limit=` | Paged alarm records with detail fields and deep link |
-| `POST /api/v1/convert` | Start a conversion (`url`, `format` = `pdf`/`png`); 202 |
-| `GET /api/v1/me` | Caller identity, role, access mode, remark |
-| `GET /api/v1/admin/users?q=&offset=&limit=` | Paged people list |
-| `POST /api/v1/admin/users` | Batch add/update people (`userIds`, `role`, `remark`) |
-| `PATCH /api/v1/admin/users/{id}` | Edit remark, role, enabled |
-| `DELETE /api/v1/admin/users/{id}` | Remove an account (guarded) |
-| `GET /api/v1/admin/settings` | Current access mode |
-| `PATCH /api/v1/admin/settings` | Switch access mode (`off`/`restricted`) |
-| `GET /api/v1/admin/status` | Version, build, counts, webhook state, recent denials |
-
-## Appendix C — Data model
-
-| Table | Key | Holds |
-| --- | --- | --- |
-| `keywords` | `id` | Keyword text, owner, type (`PROJECT`/`ALARM`), delivered-notice counter, soft delete |
-| `histories` | `(user_id, url)` | Delivered notice: title, tender-code flag, delivery time |
-| `notice_contents` | `url` | Sanitized full text of a delivered notice, when it was fetched |
-| `alarms` | `(user_id, credit_code)` | Credit/punishment record: business id, credit fields, dates, handling, page links |
-| `keyword_notices` | `(keyword_id, url)` | Which notice a keyword actually delivered, the source of the counter |
-| `pending_attachments` | `(user_id, url)` | Attachment retry queue: attempts, next attempt, lease, last error |
-| `users` | `user_id` | Access row: remark, role, enabled, seeded-from-env flag, last seen |
-| `settings` | `key` | Persisted settings; currently the access mode |
-
-SQLite stores datetimes as text. Comparisons that matter for correctness (expiry,
-range boundaries) are done on parsed time values or with SQLite `julianday()`,
-never as string comparisons across different UTC offsets.
-
-## Appendix D — Configuration
-
-All settings are environment variables; [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
-is the authoritative guide (defaults, validation, startup failures). The
-essential ones:
-
-| Group | Variables |
-| --- | --- |
-| Telegram | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_NAME`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_WEBHOOK_ENABLED` |
-| Public surface | `PUBLIC_BASE_URL`, `WEBHOOK_SERVER_URL`, `WEBHOOK_SERVER_PORT`, `MINI_APP_ENABLED` |
-| Conversion | `PDF_SERVER_URL`, `WEBHOOK_TOKEN` |
-| Access | `MANAGER_ID`, `ALLOWED_USER_IDS` |
-| Crawling | `SERVER_URL`, `SCHEDULE_INTERVAL`, `CRAWL_DAYS` |
-| Storage and logs | `CONFIG_PATH`, `LOG_LEVEL` |
-
-`PUBLIC_BASE_URL` is the only switch that enables the public surface: empty means
-polling mode, no webhook registration, and the Mini App reachable only locally.
-When it is set and `TELEGRAM_WEBHOOK_ENABLED` is true, startup requires a valid
-HTTPS base URL, a valid webhook secret and a non-zero listener port, and fails
-otherwise instead of accepting updates it would then reject.
-
-## Appendix E — Code map
-
-| Path | Responsibility |
-| --- | --- |
-| `cmd/server` | Process entry point: build context, run until SIGINT/SIGTERM |
-| `pkg/config` | Environment parsing, validation, public URL helpers |
-| `pkg/constant` | Command names, env names, paths, version/build variables |
-| `pkg/model` | GORM models, HTTP payload shapes for notice/credit APIs, message templates |
-| `pkg/dal` | Data access, claims, access-control bootstrap and guards, migrations |
-| `pkg/rule` | Keyword-rule parsing, matching and specificity ordering |
-| `pkg/handler` | Bot wiring, crawler, push pipeline, commands, access enforcement, Gotenberg client, retries |
-| `pkg/server` | HTTP transport: routing, Mini App API, admin API, auth, rate limits, static assets |
-| `pkg/server/web` | Mini App shell, CSS and JS (no build step) |
-| `pkg/utils` | HTML simplification, URL validation, logging, misc helpers |
-
-The transport package (`pkg/server`) never imports `pkg/handler`: the handler
-configures the bot and injects the HTTP handlers, which keeps the dependency
-direction one-way.
-
-## Appendix F — Documentation map
-
-| Document | Purpose |
-| --- | --- |
-| [README.md](README.md) | Quick start and the environment-variable table |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Deployment, webhook/Caddy/cloudflared, access control, operations |
-| [DESIGN.md](DESIGN.md) | The Mini App's design system and visual rules |
-| [PRODUCT.md](PRODUCT.md) (this file) | Full product and feature inventory, kept in the Impeccable schema so design work can read it |
+Chat commands, the HTTP surface, the data model, configuration and the file map
+are owned by the code and by [DEPLOYMENT.md](DEPLOYMENT.md); this document keeps
+only the product intent that no source file records.

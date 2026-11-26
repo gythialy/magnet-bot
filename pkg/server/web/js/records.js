@@ -191,6 +191,26 @@
 
   /* Rendering ------------------------------------------------------------- */
 
+  function monthKey(value) {
+    var at = Date.parse(value);
+    if (!isFinite(at)) {
+      return "";
+    }
+    var when = new Date(at);
+    return when.getFullYear() + "-" + ("0" + (when.getMonth() + 1)).slice(-2);
+  }
+
+  // The disposition is the one word that tells a reader whether this matters;
+  // the full text stays in the sheet.
+  function resultTag(item) {
+    var result = String(item.handleResult || "").trim();
+    if (!result) {
+      return "";
+    }
+    var short = result.length > 10 ? result.slice(0, 10) + "\u2026" : result;
+    return '<span class="tag">' + esc(short) + "</span>";
+  }
+
   function rowHTML(item) {
     var name = item.creditName || t("records.unknownCredit");
     var start = date(item.startDate);
@@ -202,7 +222,7 @@
     return (
       '<button type="button" class="row is-link" data-id="' + esc(item.businessId) + '">' +
       '<span class="row-main">' +
-      '<span class="row-lead" data-row="name">' + esc(name) + "</span>" +
+      '<span class="row-lead" data-row="name">' + resultTag(item) + esc(name) + "</span>" +
       '<span class="row-meta">' +
       '<span class="num" data-row="id">' + esc(item.businessId) + "</span>" +
       datePart +
@@ -217,9 +237,30 @@
     if (!els) {
       return;
     }
-    var html = "";
+
+    // Punishments arrive in date order, so one pass can group them by month and
+    // say how many fall in each: an operator reads a month, not a flat run.
+    var totals = Object.create(null);
     for (var i = 0; i < state.items.length; i++) {
-      html += rowHTML(state.items[i]);
+      var key = monthKey(state.items[i].startDate);
+      if (key) {
+        totals[key] = (totals[key] || 0) + 1;
+      }
+    }
+
+    var html = "";
+    var current = null;
+    for (var j = 0; j < state.items.length; j++) {
+      var month = monthKey(state.items[j].startDate);
+      if (month && month !== current) {
+        current = month;
+        html +=
+          '<p class="records-group">' +
+          '<span class="num">' + esc(month) + "</span>" +
+          '<span class="count-chip num">' + esc(t("records.groupCount", { n: num(totals[month]) })) + "</span>" +
+          "</p>";
+      }
+      html += rowHTML(state.items[j]);
     }
     els.list.innerHTML = html;
   }
@@ -498,6 +539,12 @@
         state.status = "ready";
         state.updatedAt = new Date().toISOString();
         render();
+
+        // Reading the tab is what clears the shell's badge; a search narrows
+        // what is on screen but does not mean the reader saw the rest.
+        if (reset && !state.q && typeof core.markRecordsSeen === "function") {
+          core.markRecordsSeen();
+        }
       })
       .catch(function (err) {
         if (token !== state.seq) {

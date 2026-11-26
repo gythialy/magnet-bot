@@ -54,3 +54,27 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full deployment guide
 > [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) §9. A database with no administrator
 > starts in `off` mode; `MANAGER_ID` / `ALLOWED_USER_IDS` are startup seeds only,
 > and day-to-day changes belong in the Settings tab.
+
+## Design
+
+The Mini App's visual vocabulary — tokens, the bilingual type ramp, layout rules,
+component shapes and the states every screen owes an exit to — is
+[docs/DESIGN.md](https://github.com/gythialy/magnet-bot/blob/main/docs/DESIGN.md).
+The product intent behind it (who uses the bot, what it refuses to become) is
+[docs/PRODUCT.md](https://github.com/gythialy/magnet-bot/blob/main/docs/PRODUCT.md).
+
+Redesigns are drawn as a canvas under `design/`, one folder per pass; the current
+one is `design/miniapp-ui-v5` (an Open Artifact canvas, not a static site).
+
+## Tests
+
+`go test ./...` runs the unit suite. The Mini App's browser specs sit behind a
+build tag and need a local Chromium or Chrome:
+
+```bash
+make e2e                     # probes the usual install locations
+E2E_CHROME_BIN=/path/to/chrome make e2e
+```
+
+The CI job is [.github/workflows/e2e.yaml](.github/workflows/e2e.yaml); a failed
+spec also saves a screenshot and the DOM under `E2E_ARTIFACT_DIR`.

@@ -47,3 +47,38 @@ body.is-sheet-open {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* Month band between rows: a rule, the month, and its count. */
+.records-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 14px 16px 6px;
+  /* A row already ends with a rule; adding one above the band made every
+     month boundary two pixels wide. */
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.records-group .count-chip {
+  margin-left: auto;
+  font-weight: 500;
+}
+
+/* The disposition tag sits inside the lead line, ahead of the company name. */
+.row-lead .tag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--fill);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 17px;
+  vertical-align: 1px;
+}
