@@ -1,0 +1,8 @@
+# Local to the Open Artifact server on this computer; the canvas itself
+# (project/ and comments.json) is the design record and belongs in git.
+_agent/
+history/
+.sharing.json
+.artifact*
+*.log
+.DS_Store

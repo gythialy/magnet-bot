@@ -51,6 +51,10 @@ type statisticsResponse struct {
 	RelatedNotices int64  `json:"relatedNotices"`
 	AlarmKeywords  int    `json:"alarmKeywords"`
 	BotUsername    string `json:"botUsername"`
+	// NewRecords counts alarm records that start after the "since" the client
+	// sent, which is the watermark of the last time it read that tab. It stays
+	// zero when no watermark was sent.
+	NewRecords int64 `json:"newRecords"`
 }
 
 // noticesResponse is the payload of GET /api/v1/notices.
@@ -76,9 +80,12 @@ type keywordsResponse struct {
 }
 
 type keywordItem struct {
-	ID         int32   `json:"id"`
-	Keyword    string  `json:"keyword"`
-	Counter    int32   `json:"counter"`
+	ID      int32  `json:"id"`
+	Keyword string `json:"keyword"`
+	Counter int32  `json:"counter"`
+	// LastHitAt is the newest match inside the dedupe window; absent means no
+	// match since the window opened, not that the keyword never matched.
+	LastHitAt  *string `json:"lastHitAt,omitempty"`
 	CreatedAt  string  `json:"createdAt"`
 	ArchivedAt *string `json:"archivedAt,omitempty"`
 }
@@ -144,12 +151,25 @@ func (a *apiHandler) handleStatistics(w http.ResponseWriter, r *http.Request) {
 		related += int64(keyword.Counter)
 	}
 
+	// An unparsable watermark is ignored rather than refused: the badge is a
+	// hint, and a stale client must still get its counters.
+	var newRecords int64
+	if raw := strings.TrimSpace(r.URL.Query().Get("since")); raw != "" {
+		if since, parseErr := time.Parse(time.RFC3339, raw); parseErr == nil {
+			count, countErr := dal.AlarmStartsSince(user.ID, since)
+			if countErr == nil {
+				newRecords = count
+			}
+		}
+	}
+
 	WriteJSON(w, http.StatusOK, statisticsResponse{
 		History:        dal.History.CountByUserId(user.ID),
 		Keywords:       len(project),
 		RelatedNotices: related,
 		AlarmKeywords:  len(alarms),
 		BotUsername:    a.botUsername,
+		NewRecords:     newRecords,
 	})
 }
 
@@ -220,6 +240,14 @@ func (a *apiHandler) handleKeywords(w http.ResponseWriter, r *http.Request) {
 	sorted := slices.Clone(dal.Keyword.GetByUserIdAndTypeIncludingArchived(user.ID, model.PROJECT, true))
 	slices.SortStableFunc(sorted, compareKeywordsByCounter)
 
+	// One query answers "when did this word last hit" for the whole list; the
+	// window is the dedupe log's lifetime, so absence is reported by the client
+	// as "no match in 30 days" rather than "never".
+	lastHits, hitErr := dal.KeywordLastHits(user.ID)
+	if hitErr != nil {
+		lastHits = nil
+	}
+
 	items := make([]keywordItem, 0, len(sorted))
 	archivedCount := 0
 	for _, keyword := range sorted {
@@ -229,10 +257,21 @@ func (a *apiHandler) handleKeywords(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
+		var lastHit *string
+		id := int32(0)
+		if keyword.ID != nil {
+			id = *keyword.ID
+		}
+		if at, ok := lastHits[id]; ok && !at.IsZero() {
+			formatted := formatAPITime(at)
+			lastHit = &formatted
+		}
+
 		items = append(items, keywordItem{
 			ID:         keywordID(keyword),
 			Keyword:    keyword.Keyword,
 			Counter:    keyword.Counter,
+			LastHitAt:  lastHit,
 			CreatedAt:  formatAPITime(keyword.CreatedAt),
 			ArchivedAt: archivedAtString(keyword.ArchivedAt),
 		})

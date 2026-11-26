@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>状态板 · 加载/空/失败/离线</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#1668a8}a:hover{color:#0d4a77}
+.tnum{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+</style>
+</helmet>
+<div style="width:820px;height:800px;box-sizing:border-box;padding:20px;background:#ffffff;color:#09090b;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'PingFang SC','Hiragino Sans GB','Noto Sans SC','Microsoft YaHei',Arial,sans-serif;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;line-break:strict">
+
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;align-items:baseline;gap:8px">
+      <span style="font-size:12px;font-weight:600;line-height:1.4;letter-spacing:0.04em;color:#71717a">首屏加载</span>
+      <span style="font-size:12px;line-height:1.4;color:#71717a">行高等于最终行高，计数先占位</span>
+    </div>
+    <div style="width:380px;height:360px;overflow:hidden;background:#ffffff;border:1px solid rgba(9,9,11,0.12);border-radius:14px">
+      <div style="display:flex;align-items:center;gap:8px;min-height:48px;padding:0 16px;border-bottom:1px solid rgba(9,9,11,0.12)">
+        <span style="font-size:17px;font-weight:650;line-height:1.35">今日</span>
+        <span class="tnum" style="margin-left:auto;font-size:11px;color:#71717a">—</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 16px 8px">
+        <span style="display:block;width:172px;height:32px;border-radius:6px;background:rgba(9,9,11,0.045)"></span>
+        <span style="display:block;width:44px;height:12px;margin-left:auto;border-radius:3px;background:rgba(9,9,11,0.08)"></span>
+      </div>
+      <p class="label" style="margin:0;padding:8px 16px;font-size:12px;font-weight:600;line-height:1.4;letter-spacing:0.04em;color:#71717a">正在加载公告</p>
+      <div style="padding:6px 16px 0">
+        <div style="padding:12px 0;border-top:1px solid rgba(9,9,11,0.12)">
+          <span style="display:block;width:78%;height:15px;border-radius:3px;background:rgba(9,9,11,0.08)"></span>
+          <span style="display:block;width:46%;height:12px;margin-top:9px;border-radius:3px;background:rgba(9,9,11,0.045)"></span>
+        </div>
+        <div style="padding:12px 0;border-top:1px solid rgba(9,9,11,0.12)">
+          <span style="display:block;width:64%;height:15px;border-radius:3px;background:rgba(9,9,11,0.08)"></span>
+          <span style="display:block;width:52%;height:12px;margin-top:9px;border-radius:3px;background:rgba(9,9,11,0.045)"></span>
+        </div>
+        <div style="padding:12px 0;border-top:1px solid rgba(9,9,11,0.12)">
+          <span style="display:block;width:84%;height:15px;border-radius:3px;background:rgba(9,9,11,0.08)"></span>
+          <span style="display:block;width:40%;height:12px;margin-top:9px;border-radius:3px;background:rgba(9,9,11,0.045)"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;align-items:baseline;gap:8px">
+      <span style="font-size:12px;font-weight:600;line-height:1.4;letter-spacing:0.04em;color:#71717a">空</span>
+      <span style="font-size:12px;line-height:1.4;color:#71717a">空状态给动作，不只说「没有」</span>
+    </div>
+    <div style="width:380px;height:360px;overflow:hidden;background:#ffffff;border:1px solid rgba(9,9,11,0.12);border-radius:14px">
+      <div style="display:flex;align-items:center;gap:8px;min-height:48px;padding:0 16px;border-bottom:1px solid rgba(9,9,11,0.12)">
+        <span style="font-size:17px;font-weight:650;line-height:1.35">今日</span>
+        <span class="tnum" style="font-size:11px;color:#71717a">17:42</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 16px 8px">
+        <div role="group" aria-label="日期范围" style="display:flex;gap:2px;height:32px;padding:3px;box-sizing:border-box;border:1px solid rgba(9,9,11,0.12);border-radius:6px">
+          <span style="display:inline-block;padding:0 12px;border-radius:4px;background:#18181b;color:#fafafa;font-size:13px;font-weight:600;line-height:24px">今日</span>
+          <span style="display:inline-block;padding:0 12px;color:#71717a;font-size:13px;font-weight:550;line-height:24px">7 天</span>
+          <span style="display:inline-block;padding:0 12px;color:#71717a;font-size:13px;font-weight:550;line-height:24px">全部</span>
+        </div>
+        <span class="tnum" style="margin-left:auto;font-size:12px;color:#71717a">0 条</span>
+      </div>
+      <div style="padding:52px 24px 0;text-align:center">
+        <p style="margin:0;font-size:15px;font-weight:600;line-height:1.5;color:#09090b">今天还没有新公告</p>
+        <p style="margin:6px 0 0;font-size:13px;line-height:1.6;color:#71717a">关键词命中后会出现在这里；上一次推送是昨天 17:58。</p>
+        <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:20px">
+          <button type="button" style="height:40px;padding:0 16px;border:1px solid rgba(9,9,11,0.12);border-radius:6px;background:none;color:#09090b;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer">查看 7 天</button>
+          <button type="button" style="height:40px;padding:0 16px;border:0;border-radius:6px;background:#18181b;color:#fafafa;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer">去词库</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;align-items:baseline;gap:8px">
+      <span style="font-size:12px;font-weight:600;line-height:1.4;letter-spacing:0.04em;color:#71717a">刷新失败</span>
+      <span style="font-size:12px;line-height:1.4;color:#71717a">不清空列表，写明数据时刻</span>
+    </div>
+    <div style="width:380px;height:360px;overflow:hidden;background:#ffffff;border:1px solid rgba(9,9,11,0.12);border-radius:14px">
+      <div style="display:flex;align-items:center;gap:8px;min-height:48px;padding:0 16px;border-bottom:1px solid rgba(9,9,11,0.12)">
+        <span style="font-size:17px;font-weight:650;line-height:1.35">今日</span>
+        <span style="font-size:13px;font-weight:650;color:#1668a8">3 条新</span>
+        <span class="tnum" style="margin-left:auto;font-size:11px;color:#71717a">17:42</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 16px 8px">
+        <div role="group" aria-label="日期范围" style="display:flex;gap:2px;height:32px;padding:3px;box-sizing:border-box;border:1px solid rgba(9,9,11,0.12);border-radius:6px">
+          <span style="display:inline-block;padding:0 12px;border-radius:4px;background:#18181b;color:#fafafa;font-size:13px;font-weight:600;line-height:24px">今日</span>
+          <span style="display:inline-block;padding:0 12px;color:#71717a;font-size:13px;font-weight:550;line-height:24px">7 天</span>
+          <span style="display:inline-block;padding:0 12px;color:#71717a;font-size:13px;font-weight:550;line-height:24px">全部</span>
+        </div>
+        <span class="tnum" style="margin-left:auto;font-size:12px;color:#71717a">128 条</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin:0 16px 4px;padding:10px 12px;border:1px solid rgba(9,9,11,0.22);border-radius:6px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:0 0 auto"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5"/><path d="M12 16.5v.01"/></svg>
+        <div style="min-width:0">
+          <div style="font-size:13px;font-weight:600;line-height:1.45;color:#09090b">刷新失败</div>
+          <div style="font-size:12px;line-height:1.45;color:#71717a">仍在显示 17:42 的列表</div>
+        </div>
+        <button type="button" style="margin-left:auto;flex:0 0 auto;height:32px;padding:0 10px;border:1px solid rgba(9,9,11,0.12);border-radius:6px;background:none;color:#09090b;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer">重试</button>
+      </div>
+      <div style="padding:4px 0 0">
+        <div style="padding:11px 16px;border-top:1px solid rgba(9,9,11,0.12)">
+          <div style="font-size:15px;font-weight:600;line-height:1.55;color:#09090b">云陵区人民医院医用耗材配送服务（二次）招标公告</div>
+          <div style="margin-top:3px;font-size:13px;line-height:1.6;color:#71717a"><span class="tnum">09:42</span> · <span class="tnum">GC-2026-0442</span> · 医用耗材</div>
+        </div>
+        <div style="padding:11px 16px;border-top:1px solid rgba(9,9,11,0.12)">
+          <div style="font-size:15px;font-weight:600;line-height:1.55;color:#09090b">星海市档案馆 2027 年度馆藏数字化服务采购公告</div>
+          <div style="margin-top:3px;font-size:13px;line-height:1.6;color:#71717a"><span class="tnum">09:12</span> · <span class="tnum">ZB-2026-1187</span> · 数字化</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;align-items:baseline;gap:8px">
+      <span style="font-size:12px;font-weight:600;line-height:1.4;letter-spacing:0.04em;color:#71717a">离线 / 限流</span>
+      <span style="font-size:12px;line-height:1.4;color:#71717a">同一形态两种来源，不造第二个组件</span>
+    </div>
+    <div style="width:380px;height:360px;overflow:hidden;background:#ffffff;border:1px solid rgba(9,9,11,0.12);border-radius:14px">
+      <div style="display:flex;align-items:center;gap:8px;height:28px;padding:0 16px;background:rgba(9,9,11,0.045)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#71717a" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4l16 16"/><path d="M8.5 8.7A7 7 0 0 1 20 13"/><path d="M4 13a7 7 0 0 1 2.3-4"/><path d="M6.4 15.6A4.5 4.5 0 0 1 15 18"/><path d="M12 20v.01"/></svg>
+        <span style="font-size:12px;line-height:1.4;color:#09090b">网络已断开 · 正在显示 17:42 的数据</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;min-height:48px;padding:0 16px;border-bottom:1px solid rgba(9,9,11,0.12)">
+        <span style="font-size:17px;font-weight:650;line-height:1.35">今日</span>
+        <span style="font-size:13px;font-weight:650;color:#1668a8">3 条新</span>
+        <span class="tnum" style="margin-left:auto;font-size:11px;color:#71717a">17:42</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 16px 8px">
+        <div role="group" aria-label="日期范围" style="display:flex;gap:2px;height:32px;padding:3px;box-sizing:border-box;border:1px solid rgba(9,9,11,0.12);border-radius:6px">
+          <span style="display:inline-block;padding:0 12px;border-radius:4px;background:#18181b;color:#fafafa;font-size:13px;font-weight:600;line-height:24px">今日</span>
+          <span style="display:inline-block;padding:0 12px;color:#71717a;font-size:13px;font-weight:550;line-height:24px">7 天</span>
+          <span style="display:inline-block;padding:0 12px;color:#71717a;font-size:13px;font-weight:550;line-height:24px">全部</span>
+        </div>
+        <span class="tnum" style="margin-left:auto;font-size:12px;color:#71717a">128 条</span>
+      </div>
+      <div style="padding:0">
+        <div style="padding:11px 16px;border-top:1px solid rgba(9,9,11,0.12)">
+          <div style="font-size:15px;font-weight:600;line-height:1.55;color:#09090b">云陵区人民医院医用耗材配送服务（二次）招标公告</div>
+          <div style="margin-top:3px;font-size:13px;line-height:1.6;color:#71717a"><span class="tnum">09:42</span> · <span class="tnum">GC-2026-0442</span> · 医用耗材</div>
+        </div>
+        <div style="padding:11px 16px;border-top:1px solid rgba(9,9,11,0.12)">
+          <div style="font-size:15px;font-weight:600;line-height:1.55;color:#09090b">星海市档案馆 2027 年度馆藏数字化服务采购公告</div>
+          <div style="margin-top:3px;font-size:13px;line-height:1.6;color:#71717a"><span class="tnum">09:12</span> · <span class="tnum">ZB-2026-1187</span> · 数字化</div>
+        </div>
+      </div>
+      <div style="margin:10px 16px 0;height:40px;display:flex;align-items:center;justify-content:center;border:1px solid rgba(9,9,11,0.12);border-radius:6px;color:#71717a;font-size:13px;font-weight:550">离线 · 恢复后自动加载</div>
+      <div style="margin:14px 16px 0;padding:10px 12px;border-radius:10px;background:#09090b;color:#ffffff;font-size:12px;line-height:1.45">操作过于频繁，12 秒后可重试</div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":820,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

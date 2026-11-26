@@ -146,3 +146,26 @@ func (a *alarm) Remove(userId int64, creditCode string) error {
 	_, err := a.Where(a.UserID.Eq(userId), a.CreditCode.Eq(creditCode)).Delete()
 	return err
 }
+
+// AlarmStartsSince counts the account's records whose start date is later than
+// since.
+//
+// The comparison happens on decoded time values: SQLite keeps datetimes as
+// text, so a WHERE over the column would compare strings and two rows written
+// with different UTC offsets would sort wrongly.
+func AlarmStartsSince(userID int64, since time.Time) (int64, error) {
+	var starts []time.Time
+	if err := Q.db.Model(&model.Alarm{}).
+		Where("user_id = ?", userID).
+		Pluck("start_date", &starts).Error; err != nil {
+		return 0, err
+	}
+
+	var total int64
+	for _, start := range starts {
+		if start.After(since) {
+			total++
+		}
+	}
+	return total, nil
+}

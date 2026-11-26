@@ -326,6 +326,9 @@
     eye: '<path d="M2.6 12S6.2 5.6 12 5.6 21.4 12 21.4 12 17.8 18.4 12 18.4 2.6 12 2.6 12z"/><circle cx="12" cy="12" r="2.6"/>',
     shield: '<path d="M12 3.2l7 2.9v5.4c0 4-3 6.8-7 9.3-4-2.5-7-5.3-7-9.3V6.1z"/>',
     chevron: '<path d="M9.5 6l6 6-6 6"/>',
+    copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 5.5A1.5 1.5 0 0 0 13.5 4h-8A1.5 1.5 0 0 0 4 5.5v8A1.5 1.5 0 0 0 5.5 15"/>',
+    offline:
+      '<path d="M4 4l16 16"/><path d="M8.6 8.7A7.4 7.4 0 0 1 20 13"/><path d="M4 13a7.4 7.4 0 0 1 2.3-4.2"/><path d="M6.4 15.6A4.9 4.9 0 0 1 15 18.2"/><path d="M12 20v.01"/>',
   };
 
   function icon(name, extraClass) {
@@ -364,12 +367,20 @@
       '">' +
       escapeHTML(t(opts.titleKey)) +
       "</h2>" +
-      '<span class="page-count num" data-slot="head-count"></span>' +
-      '<span class="page-unit" data-slot="head-unit"></span>' +
+      (opts.lead || "") +
+      // Pages that put the total beside the range control hide it here; the
+      // slot names still identify the same numbers, so the contract holds.
+      (opts.hideCount
+        ? ""
+        : '<span class="page-count num" data-slot="head-count"></span>' +
+          '<span class="page-unit" data-slot="head-unit"></span>') +
       '<div class="page-head-right">' +
       right +
       "</div>" +
       "</div>" +
+      // Some pages swap the title row for a working row (the search bar); the
+      // bar lives inside the head so the sticky context never leaves the screen.
+      (opts.bar || "") +
       "</header>"
     );
   }
@@ -979,6 +990,10 @@
     bindRouting();
     bindResume();
 
+    // The badge lives in the shell, so it must load on whatever tab opened
+    // first; the request is shared with Today through the cache above.
+    statistics().catch(function () {});
+
     if (!global.location.hash) {
       try {
         global.history.replaceState(null, "", "#/" + DEFAULT_ROUTE);
@@ -990,6 +1005,80 @@
     }
 
     route();
+  }
+
+  /* Statistics --------------------------------------------------------- */
+
+  // One cached request feeds both the Today counters and the Records badge, so
+  // a cold start still costs a single call. Since is the watermark the client
+  // keeps for alarm records; the server compares it on time values, never on
+  // the stored text.
+  var statisticsPromise = null;
+  var RECORDS_SEEN_KEY = "magnet.records.seenAt";
+
+  function recordsSeenAt() {
+    try {
+      var raw = global.localStorage.getItem(RECORDS_SEEN_KEY);
+      var parsed = Number(raw);
+      return isFinite(parsed) && parsed > 0 ? parsed : 0;
+    } catch (err) {
+      return 0;
+    }
+  }
+
+  // The badge is a hint: the tab's own accessible name stays "Records", and the
+  // page behind it names what arrived, so a screen reader is not given a stray
+  // number out of context.
+  function setTabBadge(route, count) {
+    var tab = document.querySelector('#tabbar [data-route="' + route + '"]');
+    if (!tab) {
+      return;
+    }
+    var badge = tab.querySelector(".tab-badge");
+    if (count > 0) {
+      if (!badge) {
+        badge = document.createElement("span");
+        badge.className = "tab-badge num";
+        badge.setAttribute("aria-hidden", "true");
+        tab.appendChild(badge);
+      }
+      badge.textContent = count > 99 ? "99+" : String(count);
+      badge.hidden = false;
+    } else if (badge) {
+      badge.hidden = true;
+    }
+  }
+
+  function statistics(force) {
+    if (!global.MagnetAPI) {
+      return Promise.reject(new Error("api unavailable"));
+    }
+    if (!statisticsPromise || force) {
+      var since = recordsSeenAt();
+      statisticsPromise = global.MagnetAPI.statistics({
+        since: since ? new Date(since).toISOString() : "",
+      })
+        .then(function (payload) {
+          var fresh = payload && typeof payload.newRecords === "number" ? payload.newRecords : 0;
+          setTabBadge("#/records", fresh);
+          return payload;
+        })
+        .catch(function (err) {
+          // A failed counter must not poison the cache: the next mount retries.
+          statisticsPromise = null;
+          throw err;
+        });
+    }
+    return statisticsPromise;
+  }
+
+  function markRecordsSeen() {
+    try {
+      global.localStorage.setItem(RECORDS_SEEN_KEY, String(Date.now()));
+    } catch (err) {
+      // Storage failure only costs the badge, not the list.
+    }
+    setTabBadge("#/records", 0);
   }
 
   document.addEventListener("DOMContentLoaded", init);
@@ -1009,6 +1098,8 @@
     identity: identity,
     registerView: registerView,
     pageHeadHTML: pageHeadHTML,
+    statistics: statistics,
+    markRecordsSeen: markRecordsSeen,
     nearTop: nearTop,
     subTopbarHTML: subTopbarHTML,
     bindBack: bindBack,

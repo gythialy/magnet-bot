@@ -149,6 +149,11 @@ lint:
 test:
 	go test -race ./... -skip 'Test_(alarmQuery|historyQuery)'
 
+# Browser-driven specs. They need Chromium or Chrome: E2E_CHROME_BIN names one,
+# otherwise the usual install paths are probed and the specs skip.
+e2e:
+	go test -tags e2e -run TestE2E -count=1 ./pkg/server
+
 clean:
 	rm -rf $(BINDIR)
 

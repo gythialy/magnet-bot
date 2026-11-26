@@ -1,0 +1,39 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-11-26T07:40:00Z" },
+  "title": "magnet Mini App · UI/UX 优化 v5",
+  "launch": { "view": "canvas" },
+  "pages": [
+    { "id": "screens", "name": "优化方案" },
+    { "id": "foundations", "name": "基础规范" }
+  ],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 390, "h": 844, "title": "今日 · 优化后", "page": "screens", "radius": 28 },
+    "screens/Search.dc.html": { "x": 470, "y": 0, "w": 390, "h": 844, "title": "今日 · 搜索态", "page": "screens", "radius": 28 },
+    "screens/Notice.dc.html": { "x": 940, "y": 0, "w": 390, "h": 844, "title": "公告详情 · 弹层", "page": "screens", "radius": 28 },
+    "screens/Watchlist.dc.html": { "x": 1410, "y": 0, "w": 390, "h": 844, "title": "词库 · 优化后", "page": "screens", "radius": 28 },
+    "screens/Records.dc.html": { "x": 0, "y": 1100, "w": 390, "h": 844, "title": "记录 · 优化后", "page": "screens", "radius": 28 },
+    "screens/Settings.dc.html": { "x": 470, "y": 1100, "w": 390, "h": 844, "title": "Settings · optimized", "page": "screens", "radius": 28 },
+    "screens/Admin.dc.html": { "x": 940, "y": 1100, "w": 390, "h": 844, "title": "管理控制台 · 优化后", "page": "screens", "radius": 28 },
+    "screens/States.dc.html": { "x": 1410, "y": 1100, "w": 820, "h": 800, "title": "状态板 · 加载/空/失败/离线", "page": "screens", "radius": 14 },
+    "foundations/Foundations.dc.html": { "x": 0, "y": 0, "w": 960, "h": 760, "title": "基础规范 · v5 增补", "page": "foundations", "radius": 10 }
+  },
+  "order": [
+    "Main.dc.html",
+    "screens/Search.dc.html",
+    "screens/Notice.dc.html",
+    "screens/Watchlist.dc.html",
+    "screens/Records.dc.html",
+    "screens/Settings.dc.html",
+    "screens/Admin.dc.html",
+    "screens/States.dc.html",
+    "foundations/Foundations.dc.html"
+  ],
+  "notes": {
+    "t-screen": { "kind": "title1", "x": 0, "y": -240, "text": "优化方案 · 先给结论，再给细节", "maxW": 1800 },
+    "t-admin": { "kind": "title1", "x": 0, "y": 877, "text": "设置与管理 · 身份、权限与部署事实分层", "maxW": 2230 },
+    "n-1": { "x": 1900, "y": 0, "w": 240, "text": "首屏控件从 175px 压到 96px：搜索收进头部，四个计数换成「3 条新 · 128 条」一句结论。", "color": "blue" },
+    "n-2": { "x": 1900, "y": 430, "w": 240, "text": "词库把「从未命中」做成可清理的清单：死词不再平均地混在 42 行里。", "color": "orange" }
+  },
+  "designSystems": []
+}
